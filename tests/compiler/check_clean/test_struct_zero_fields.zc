@@ -1,0 +1,16 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// Fields left out of a struct literal are zero-initialised.
+import "std/vec.zc"
+
+struct Counter {
+    name: string;
+    hits: int;
+    history: Vec<int>;
+}
+
+fn main() {
+    let empty = Counter {};
+    let named = Counter { name: "visitas" };
+    named.history.push(3);
+    println "{empty.hits} {named.hits} {named.history.length()}";
+}

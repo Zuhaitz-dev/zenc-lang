@@ -1340,8 +1340,10 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         field_init = field_init->next;
     }
 
-    // Check for missing required fields
-    ASTNode *def_field = def->strct.fields;
+    // Fields left out of a struct literal are zero-initialised (the C designated
+    // initializer the build emits), so they are only reported in MISRA mode,
+    // which requires explicit initialization.
+    ASTNode *def_field = tc->pctx->config->misra_mode ? def->strct.fields : NULL;
     while (def_field)
     {
         if (def_field->kind == NODE_FIELD && def_field->field.name)
