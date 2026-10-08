@@ -2,6 +2,7 @@
 #include "lsp_c_headers.h"
 #include "lsp_project.h"
 #include "../utils/cJSON.h"
+#include "../utils/string_list.h"
 #include "../utils/utils.h"
 #include "../constants.h"
 #include "../platform/os.h"
@@ -11,24 +12,14 @@
 #include <string.h>
 #include <sys/stat.h>
 
-// Everything this module keeps lives in the libc heap: lookups run during read-only
-// requests, whose arena allocations are rewound afterwards, and the caches must also
-// survive a project rebuild.
+// libc heap, not the arena: lookups run in read-only requests, which rewind the arena.
 
-#define MAX_HEADER_IMPORTS 64
 #define MAX_INCLUDE_DEPTH 16
 #define MAX_HOVER_LINES 24
 #define MAX_DOC_LENGTH 2048
 #define COMPILER_OUTPUT_SIZE 65536
 
 /* --- libc-backed helpers --- */
-
-typedef struct
-{
-    char **items;
-    int count;
-    int capacity;
-} StringList;
 
 static char *copy_text(const char *text, size_t length)
 {
@@ -39,55 +30,6 @@ static char *copy_text(const char *text, size_t length)
         copy[length] = '\0';
     }
     return copy;
-}
-
-static int string_list_contains(const StringList *list, const char *text)
-{
-    for (int i = 0; i < list->count; i++)
-    {
-        if (strcmp(list->items[i], text) == 0)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-// Appends a copy of `text` unless it is empty or already in the list.
-static void string_list_add(StringList *list, const char *text)
-{
-    if (!text[0] || string_list_contains(list, text))
-    {
-        return;
-    }
-    if (list->count == list->capacity)
-    {
-        int capacity = list->capacity ? list->capacity * 2 : 8;
-        char **items = libc_realloc(list->items, (size_t)capacity * sizeof(char *));
-        if (!items)
-        {
-            return;
-        }
-        list->items = items;
-        list->capacity = capacity;
-    }
-    char *copy = copy_text(text, strlen(text));
-    if (copy)
-    {
-        list->items[list->count++] = copy;
-    }
-}
-
-static void string_list_free(StringList *list)
-{
-    for (int i = 0; i < list->count; i++)
-    {
-        libc_free(list->items[i]);
-    }
-    libc_free(list->items);
-    list->items = NULL;
-    list->count = 0;
-    list->capacity = 0;
 }
 
 // Copies `text[0..length)` into `out` without surrounding whitespace.
@@ -296,11 +238,99 @@ static const StringList *pkg_config_dirs(const char *spec)
     return &entry->dirs;
 }
 
-// Directories named by the document's `//> include:` and `//> pkg-config:` directives.
-// Relative include paths are taken from `base_dir`, the project root, which is where
-// `zc build` normally runs.
-static void collect_directive_dirs(const char *source, const char *base_dir, StringList *dirs)
+/* --- Search directories --- */
+
+#define MAX_MODULE_DEPTH 8
+
+static char *read_file(const char *path);
+
+typedef struct
 {
+    char *path;
+    char *origin; ///< What made it a search directory, for hover.
+} SearchDir;
+
+typedef struct
+{
+    SearchDir *items;
+    int count;
+    int capacity;
+} SearchDirList;
+
+static void search_dirs_add(SearchDirList *list, const char *path, const char *origin)
+{
+    if (!path[0])
+    {
+        return;
+    }
+    for (int i = 0; i < list->count; i++)
+    {
+        if (strcmp(list->items[i].path, path) == 0)
+        {
+            return;
+        }
+    }
+    if (list->count == list->capacity)
+    {
+        int capacity = list->capacity ? list->capacity * 2 : 8;
+        SearchDir *items = libc_realloc(list->items, (size_t)capacity * sizeof(SearchDir));
+        if (!items)
+        {
+            return;
+        }
+        list->items = items;
+        list->capacity = capacity;
+    }
+    char *path_copy = copy_text(path, strlen(path));
+    char *origin_copy = copy_text(origin, strlen(origin));
+    if (!path_copy || !origin_copy)
+    {
+        libc_free(path_copy);
+        libc_free(origin_copy);
+        return;
+    }
+    list->items[list->count].path = path_copy;
+    list->items[list->count].origin = origin_copy;
+    list->count++;
+}
+
+static void search_dirs_append(SearchDirList *list, const SearchDirList *other)
+{
+    for (int i = 0; i < other->count; i++)
+    {
+        search_dirs_add(list, other->items[i].path, other->items[i].origin);
+    }
+}
+
+static void search_dirs_free(SearchDirList *list)
+{
+    for (int i = 0; i < list->count; i++)
+    {
+        libc_free(list->items[i].path);
+        libc_free(list->items[i].origin);
+    }
+    libc_free(list->items);
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+// Name of a file without its directories, for messages.
+static const char *file_label(const char *path)
+{
+    const char *separator = z_path_last_sep(path);
+    return separator ? separator + 1 : path;
+}
+
+// Directories named by `//> include:` and `//> pkg-config:` directives in `source`.
+// Relative include paths are taken from the project root, which is where `zc build`
+// normally runs.
+static void collect_directive_dirs(const char *source, const char *file_path, SearchDirList *dirs)
+{
+    char file_dir[MAX_PATH_LEN];
+    directory_of(file_path, file_dir, sizeof(file_dir));
+    const char *base_dir = (g_project && g_project->root_path) ? g_project->root_path : file_dir;
+
     const char *line_start = source;
     while (*line_start)
     {
@@ -319,6 +349,9 @@ static void collect_directive_dirs(const char *source, const char *base_dir, Str
             char directive[2048];
             if (resolve_build_directive(raw, directive, sizeof(directive)))
             {
+                char origin[MAX_PATH_LEN];
+                snprintf(origin, sizeof(origin), "`//> %s` in %s", directive,
+                         file_label(file_path));
                 if (strncmp(directive, "include:", 8) == 0)
                 {
                     for (char *word = strtok(directive + 8, " \t"); word;
@@ -326,7 +359,7 @@ static void collect_directive_dirs(const char *source, const char *base_dir, Str
                     {
                         char path[MAX_PATH_LEN];
                         join_path(base_dir, word, path, sizeof(path));
-                        string_list_add(dirs, path);
+                        search_dirs_add(dirs, path, origin);
                     }
                 }
                 else if (strncmp(directive, "pkg-config:", 11) == 0)
@@ -336,7 +369,7 @@ static void collect_directive_dirs(const char *source, const char *base_dir, Str
                     const StringList *found = pkg_config_dirs(spec);
                     for (int i = 0; found && i < found->count; i++)
                     {
-                        string_list_add(dirs, found->items[i]);
+                        search_dirs_add(dirs, found->items[i], origin);
                     }
                 }
             }
@@ -350,62 +383,148 @@ static void collect_directive_dirs(const char *source, const char *base_dir, Str
     }
 }
 
-// Where the C compiler will look for headers when building this document: its
-// directives, the configured include paths and the compiler's own directories, in the
-// order the compiler searches them.
-static void collect_search_dirs(const char *source, const char *document_dir, StringList *dirs)
+// Where the C compiler will look for headers when building `file_path`: its directives,
+// the configured include paths and the compiler's own directories, in the order the
+// compiler searches them.
+static void collect_search_dirs(const char *source, const char *file_path, SearchDirList *dirs)
 {
-    const char *base_dir =
-        (g_project && g_project->root_path) ? g_project->root_path : document_dir;
-    collect_directive_dirs(source, base_dir, dirs);
+    collect_directive_dirs(source, file_path, dirs);
     for (size_t i = 0; i < g_config.include_paths.length; i++)
     {
-        string_list_add(dirs, g_config.include_paths.data[i]);
+        search_dirs_add(dirs, g_config.include_paths.data[i], "the configured include paths");
     }
     probe_compiler_dirs();
+    char origin[MAX_PATH_LEN];
+    snprintf(origin, sizeof(origin), "the default directories of the C compiler (`%s`)",
+             g_config.cc);
     for (int i = 0; i < g_compiler_dirs.count; i++)
     {
-        string_list_add(dirs, g_compiler_dirs.items[i]);
+        search_dirs_add(dirs, g_compiler_dirs.items[i], origin);
     }
 }
 
 // Resolves a header like the C preprocessor: `local_dir` first for `"x.h"` (the directory
-// of the file that includes it, NULL for `<x.h>`), then the search directories.
-static char *find_header(const char *name, const char *local_dir, const StringList *dirs)
+// of the file that includes it, NULL for `<x.h>`), then the search directories. Returns a
+// libc string or NULL, and what found it in `found_by` when given.
+static char *find_header(const char *name, const char *local_dir, const SearchDirList *dirs,
+                         char *found_by, size_t found_by_size)
 {
+    char path[MAX_PATH_LEN];
+    const char *origin = NULL;
     if (z_is_abs_path(name))
     {
-        return is_regular_file(name) ? copy_text(name, strlen(name)) : NULL;
-    }
-
-    char path[MAX_PATH_LEN];
-    if (local_dir && local_dir[0])
-    {
-        join_path(local_dir, name, path, sizeof(path));
-        if (is_regular_file(path))
+        if (is_regular_file(name))
         {
-            return copy_text(path, strlen(path));
+            snprintf(path, sizeof(path), "%s", name);
+            origin = "its absolute path";
         }
     }
-    for (int i = 0; i < dirs->count; i++)
+    else
     {
-        join_path(dirs->items[i], name, path, sizeof(path));
-        if (is_regular_file(path))
+        if (local_dir && local_dir[0])
         {
-            return copy_text(path, strlen(path));
+            join_path(local_dir, name, path, sizeof(path));
+            if (is_regular_file(path))
+            {
+                origin = "the directory of the file that imports it";
+            }
+        }
+        for (int i = 0; !origin && i < dirs->count; i++)
+        {
+            join_path(dirs->items[i].path, name, path, sizeof(path));
+            if (is_regular_file(path))
+            {
+                origin = dirs->items[i].origin;
+            }
         }
     }
-    return NULL;
+    if (!origin)
+    {
+        return NULL;
+    }
+    if (found_by)
+    {
+        snprintf(found_by, found_by_size, "%s", origin);
+    }
+    return copy_text(path, strlen(path));
 }
 
-/* --- Headers named by a document --- */
+/* --- Imports of a file --- */
 
 typedef struct
 {
     char name[MAX_PATH_LEN];
     char alias[MAX_VAR_NAME_LEN]; ///< Empty when imported without `as` or with `as *`.
     int is_system;                ///< `include <x.h>`.
+    int is_export;                ///< `export import`.
+    int line;                     ///< 0-based line of the import.
+    int alias_column;             ///< Column of the alias, -1 without alias.
+    int name_column;              ///< Column of the header name.
 } HeaderImport;
+
+typedef struct
+{
+    char name[MAX_PATH_LEN];
+    int is_export;
+    int line;
+    int name_column;
+} ModuleImport;
+
+typedef struct
+{
+    HeaderImport *headers;
+    int header_count;
+    int header_capacity;
+    ModuleImport *modules;
+    int module_count;
+    int module_capacity;
+} FileImports;
+
+static HeaderImport *add_header_import(FileImports *imports)
+{
+    if (imports->header_count == imports->header_capacity)
+    {
+        int capacity = imports->header_capacity ? imports->header_capacity * 2 : 4;
+        HeaderImport *headers =
+            libc_realloc(imports->headers, (size_t)capacity * sizeof(HeaderImport));
+        if (!headers)
+        {
+            return NULL;
+        }
+        imports->headers = headers;
+        imports->header_capacity = capacity;
+    }
+    HeaderImport *header = &imports->headers[imports->header_count];
+    memset(header, 0, sizeof(HeaderImport));
+    header->alias_column = -1;
+    return header;
+}
+
+static ModuleImport *add_module_import(FileImports *imports)
+{
+    if (imports->module_count == imports->module_capacity)
+    {
+        int capacity = imports->module_capacity ? imports->module_capacity * 2 : 4;
+        ModuleImport *modules =
+            libc_realloc(imports->modules, (size_t)capacity * sizeof(ModuleImport));
+        if (!modules)
+        {
+            return NULL;
+        }
+        imports->modules = modules;
+        imports->module_capacity = capacity;
+    }
+    ModuleImport *module = &imports->modules[imports->module_count];
+    memset(module, 0, sizeof(ModuleImport));
+    return module;
+}
+
+static void free_imports(FileImports *imports)
+{
+    libc_free(imports->headers);
+    libc_free(imports->modules);
+    memset(imports, 0, sizeof(FileImports));
+}
 
 static const char *skip_blanks(const char *p)
 {
@@ -440,65 +559,92 @@ static const char *read_until(const char *p, char close, char *out, size_t out_s
     return p + length + 1;
 }
 
-static int is_header_name(const char *name)
+static int has_extension(const char *name, const char *extension)
 {
     size_t length = strlen(name);
-    return length > 2 && strcmp(name + length - 2, ".h") == 0;
+    size_t extension_length = strlen(extension);
+    return length > extension_length && strcmp(name + length - extension_length, extension) == 0;
 }
 
-// C headers named by the document's `import "x.h" [as alias]` and `include` lines.
-static int collect_header_imports(const char *source, HeaderImport *imports, int max_imports)
+// The `import "x.h" [as alias]`, `include <x.h>`/`include "x.h"` and `import "x.zc"` lines
+// of a file, with their positions.
+static void collect_imports(const char *source, FileImports *imports)
 {
-    int count = 0;
+    int line = 0;
     const char *line_start = source;
-    while (*line_start && count < max_imports)
+    while (*line_start)
     {
         const char *p = skip_blanks(line_start);
-        if (starts_with_word(p, "export"))
+        int is_export = starts_with_word(p, "export");
+        if (is_export)
         {
             p = skip_blanks(p + 6);
         }
 
-        HeaderImport *import = &imports[count];
-        import->alias[0] = '\0';
-        import->is_system = 0;
+        char name[MAX_PATH_LEN];
         if (starts_with_word(p, "import"))
         {
             p = skip_blanks(p + 6);
-            if (*p == '"')
+            const char *name_start = p + 1;
+            const char *after = *p == '"' ? read_until(name_start, '"', name, sizeof(name)) : NULL;
+            if (after && has_extension(name, ".h"))
             {
-                p = read_until(p + 1, '"', import->name, sizeof(import->name));
-                if (p && is_header_name(import->name))
+                HeaderImport *header = add_header_import(imports);
+                if (header)
                 {
-                    p = skip_blanks(p);
-                    if (starts_with_word(p, "as"))
+                    snprintf(header->name, sizeof(header->name), "%s", name);
+                    header->is_export = is_export;
+                    header->line = line;
+                    header->name_column = (int)(name_start - line_start);
+                    const char *q = skip_blanks(after);
+                    if (starts_with_word(q, "as"))
                     {
-                        p = skip_blanks(p + 2);
+                        q = skip_blanks(q + 2);
                         size_t length = 0;
-                        while (is_identifier_char(p[length]))
+                        while (is_identifier_char(q[length]))
                         {
                             length++;
                         }
-                        if (length < sizeof(import->alias))
+                        if (length > 0 && length < sizeof(header->alias))
                         {
-                            memcpy(import->alias, p, length);
-                            import->alias[length] = '\0';
+                            memcpy(header->alias, q, length);
+                            header->alias[length] = '\0';
+                            header->alias_column = (int)(q - line_start);
                         }
                     }
-                    count++;
+                    imports->header_count++;
+                }
+            }
+            else if (after && has_extension(name, ".zc"))
+            {
+                ModuleImport *module = add_module_import(imports);
+                if (module)
+                {
+                    snprintf(module->name, sizeof(module->name), "%s", name);
+                    module->is_export = is_export;
+                    module->line = line;
+                    module->name_column = (int)(name_start - line_start);
+                    imports->module_count++;
                 }
             }
         }
-        else if (starts_with_word(p, "include"))
+        else if (!is_export && starts_with_word(p, "include"))
         {
             p = skip_blanks(p + 7);
             if (*p == '<' || *p == '"')
             {
                 char close = *p == '<' ? '>' : '"';
-                if (read_until(p + 1, close, import->name, sizeof(import->name)))
+                if (read_until(p + 1, close, name, sizeof(name)))
                 {
-                    import->is_system = close == '>';
-                    count++;
+                    HeaderImport *header = add_header_import(imports);
+                    if (header)
+                    {
+                        snprintf(header->name, sizeof(header->name), "%s", name);
+                        header->is_system = close == '>';
+                        header->line = line;
+                        header->name_column = (int)(p + 1 - line_start);
+                        imports->header_count++;
+                    }
                 }
             }
         }
@@ -509,14 +655,153 @@ static int collect_header_imports(const char *source, HeaderImport *imports, int
             break;
         }
         line_start = line_end + 1;
+        line++;
     }
-    return count;
 }
 
-// The identifier at (`line`, `col`) and, for `alias::Name`, its alias. Fails when the
-// cursor is on the alias itself.
-static int symbol_at(const char *source, int line, int col, char *qualifier, size_t qualifier_size,
-                     char *name, size_t name_size)
+// The text of `line` in `source`, trimmed, into `out`.
+static void source_line(const char *source, int line, char *out, size_t out_size)
+{
+    const char *p = source;
+    for (int i = 0; i < line && p; i++)
+    {
+        p = strchr(p, '\n');
+        if (p)
+        {
+            p++;
+        }
+    }
+    if (!p)
+    {
+        out[0] = '\0';
+        return;
+    }
+    const char *end = strchr(p, '\n');
+    copy_trimmed(p, end ? (size_t)(end - p) : strlen(p), out, out_size);
+}
+
+/* --- Modules imported by a file --- */
+
+// Resolves `import "x.zc"` next to the importing file, then from the project root.
+static char *find_module_file(const char *name, const char *from_dir)
+{
+    char path[MAX_PATH_LEN];
+    if (z_is_abs_path(name))
+    {
+        return is_regular_file(name) ? copy_text(name, strlen(name)) : NULL;
+    }
+    join_path(from_dir, name, path, sizeof(path));
+    if (is_regular_file(path))
+    {
+        return copy_text(path, strlen(path));
+    }
+    if (g_project && g_project->root_path)
+    {
+        join_path(g_project->root_path, name, path, sizeof(path));
+        if (is_regular_file(path))
+        {
+            return copy_text(path, strlen(path));
+        }
+    }
+    return NULL;
+}
+
+// Text of a module: the client's version when it is open, otherwise the file on disk.
+static char *module_text(const char *path)
+{
+    char uri[MAX_PATH_LEN + 8];
+    snprintf(uri, sizeof(uri), "file://%s", path);
+    ProjectFile *file = lsp_project_get_file(uri);
+    if (file && file->source)
+    {
+        return copy_text(file->source, strlen(file->source));
+    }
+    return read_file(path);
+}
+
+typedef struct
+{
+    const ModuleImport *top; ///< The document's own import that leads to the module.
+    const char *module_path;
+    const char *module_source;
+    const HeaderImport *header;
+} ModuleHeader;
+
+typedef int (*ModuleHeaderVisitor)(const ModuleHeader *entry, void *data);
+
+// Visits the C headers imported by the modules that `source` imports, depth first. With
+// `only_reexports`, only what they re-export: `export import "x.h"`, through modules they
+// `export import` themselves. Stops when `visit` returns non-zero, and returns that value.
+static int walk_module_headers(const char *source, const char *file_path, const ModuleImport *top,
+                               int only_reexports, int depth, StringList *visited,
+                               ModuleHeaderVisitor visit, void *data)
+{
+    if (depth > MAX_MODULE_DEPTH)
+    {
+        return 0;
+    }
+    FileImports imports = {0};
+    collect_imports(source, &imports);
+    char file_dir[MAX_PATH_LEN];
+    directory_of(file_path, file_dir, sizeof(file_dir));
+
+    int stop = 0;
+    for (int i = 0; i < imports.module_count && !stop; i++)
+    {
+        const ModuleImport *module = &imports.modules[i];
+        if (only_reexports && depth > 0 && !module->is_export)
+        {
+            continue;
+        }
+        char *path = find_module_file(module->name, file_dir);
+        if (!path || string_list_contains(visited, path))
+        {
+            libc_free(path);
+            continue;
+        }
+        string_list_add(visited, path);
+
+        char *text = module_text(path);
+        if (text)
+        {
+            const ModuleImport *entry_top = top ? top : module;
+            FileImports module_imports = {0};
+            collect_imports(text, &module_imports);
+            for (int h = 0; h < module_imports.header_count && !stop; h++)
+            {
+                if (only_reexports && !module_imports.headers[h].is_export)
+                {
+                    continue;
+                }
+                ModuleHeader entry = {entry_top, path, text, &module_imports.headers[h]};
+                stop = visit(&entry, data);
+            }
+            free_imports(&module_imports);
+            if (!stop)
+            {
+                stop = walk_module_headers(text, path, entry_top, only_reexports, depth + 1,
+                                           visited, visit, data);
+            }
+            libc_free(text);
+        }
+        libc_free(path);
+    }
+    free_imports(&imports);
+    return stop;
+}
+
+/* --- Symbol under the cursor --- */
+
+typedef struct
+{
+    char name[MAX_VAR_NAME_LEN];
+    char qualifier[MAX_VAR_NAME_LEN]; ///< `alias` of `alias::name`, or empty.
+    int is_qualifier;                 ///< The cursor is on `alias` itself.
+    int column;                       ///< Column where the identifier starts.
+    const char *line_start;
+} CursorSymbol;
+
+static int symbol_at(const char *source, int line, int col, CursorSymbol *cursor)
 {
     const char *p = source;
     for (int i = 0; i < line && p; i++)
@@ -548,18 +833,18 @@ static int symbol_at(const char *source, int line, int col, char *qualifier, siz
     {
         end++;
     }
-    if (start == end || isdigit((unsigned char)p[start]) || (size_t)(end - start) >= name_size)
+    if (start == end || isdigit((unsigned char)p[start]) ||
+        (size_t)(end - start) >= sizeof(cursor->name))
     {
         return 0;
     }
-    if (end + 1 < length && p[end] == ':' && p[end + 1] == ':')
-    {
-        return 0;
-    }
-    memcpy(name, p + start, (size_t)(end - start));
-    name[end - start] = '\0';
+    memcpy(cursor->name, p + start, (size_t)(end - start));
+    cursor->name[end - start] = '\0';
+    cursor->column = start;
+    cursor->line_start = p;
+    cursor->is_qualifier = end + 1 < length && p[end] == ':' && p[end + 1] == ':';
 
-    qualifier[0] = '\0';
+    cursor->qualifier[0] = '\0';
     if (start >= 2 && p[start - 1] == ':' && p[start - 2] == ':')
     {
         int qualifier_end = start - 2;
@@ -569,10 +854,10 @@ static int symbol_at(const char *source, int line, int col, char *qualifier, siz
             qualifier_start--;
         }
         size_t qualifier_length = (size_t)(qualifier_end - qualifier_start);
-        if (qualifier_length > 0 && qualifier_length < qualifier_size)
+        if (qualifier_length > 0 && qualifier_length < sizeof(cursor->qualifier))
         {
-            memcpy(qualifier, p + qualifier_start, qualifier_length);
-            qualifier[qualifier_length] = '\0';
+            memcpy(cursor->qualifier, p + qualifier_start, qualifier_length);
+            cursor->qualifier[qualifier_length] = '\0';
         }
     }
     return 1;
@@ -1523,7 +1808,7 @@ static int collect_matches(HeaderFile *header, const char *name, const CHeaderSy
 
 // Searches `path` and then, depth first, the headers it includes. Returns the matches of the
 // first header that declares `name`.
-static int search_header_tree(const char *path, const char *name, const StringList *dirs,
+static int search_header_tree(const char *path, const char *name, const SearchDirList *dirs,
                               StringList *visited, const CHeaderSymbol **results, int max_results,
                               int depth)
 {
@@ -1549,7 +1834,7 @@ static int search_header_tree(const char *path, const char *name, const StringLi
     for (int i = 0; i < header->include_count; i++)
     {
         char *child = find_header(header->includes[i].name,
-                                  header->includes[i].is_system ? NULL : header_dir, dirs);
+                                  header->includes[i].is_system ? NULL : header_dir, dirs, NULL, 0);
         if (!child)
         {
             continue;
@@ -1564,60 +1849,255 @@ static int search_header_tree(const char *path, const char *name, const StringLi
     return 0;
 }
 
-int lsp_c_headers_find_at(const char *document_path, const char *source, int line, int col,
-                          const CHeaderSymbol **results, int max_results)
+static void fill_origin(CHeaderOrigin *origin, const HeaderImport *header, const char *file_path,
+                        const char *file_source, int is_re_export, const SearchDirList *dirs)
 {
-    if (!document_path || !source || max_results <= 0)
+    snprintf(origin->header, sizeof(origin->header), "%s", header->name);
+    snprintf(origin->alias, sizeof(origin->alias), "%s", header->alias);
+    snprintf(origin->declared_in, sizeof(origin->declared_in), "%s", file_path);
+    source_line(file_source, header->line, origin->statement, sizeof(origin->statement));
+    origin->line = header->line;
+    origin->alias_column = header->alias_column;
+    origin->alias_length = (int)strlen(header->alias);
+    origin->name_column = header->name_column;
+    origin->is_re_export = is_re_export;
+
+    char file_dir[MAX_PATH_LEN];
+    directory_of(file_path, file_dir, sizeof(file_dir));
+    origin->found_by[0] = '\0';
+    char *path = find_header(header->name, header->is_system ? NULL : file_dir, dirs,
+                             origin->found_by, sizeof(origin->found_by));
+    snprintf(origin->path, sizeof(origin->path), "%s", path ? path : "");
+    libc_free(path);
+}
+
+// Where to look for a header that a module imports: where the document looks, plus the
+// module's own directives. `zc build` ignores those (see lsp_c_headers_add_diagnostics()),
+// but the module may well be compiled on its own or with them copied over.
+static void module_search_dirs(const SearchDirList *document_dirs, const ModuleHeader *entry,
+                               SearchDirList *dirs)
+{
+    search_dirs_append(dirs, document_dirs);
+    collect_directive_dirs(entry->module_source, entry->module_path, dirs);
+}
+
+typedef struct
+{
+    const char *qualifier;
+    const char *name;
+    const SearchDirList *document_dirs;
+    StringList *visited_headers;
+    const CHeaderSymbol **results;
+    int max_results;
+    CHeaderOrigin *via;
+    int found;
+} ReexportSearch;
+
+static int search_reexport(const ModuleHeader *entry, void *data)
+{
+    ReexportSearch *search = data;
+    if (search->qualifier[0] && strcmp(entry->header->alias, search->qualifier) != 0)
     {
         return 0;
     }
-    char qualifier[MAX_VAR_NAME_LEN];
-    char name[MAX_VAR_NAME_LEN];
-    if (!symbol_at(source, line, col, qualifier, sizeof(qualifier), name, sizeof(name)))
+    SearchDirList dirs = {0};
+    module_search_dirs(search->document_dirs, entry, &dirs);
+    CHeaderOrigin origin;
+    fill_origin(&origin, entry->header, entry->module_path, entry->module_source, 1, &dirs);
+    if (origin.path[0])
+    {
+        search->found =
+            search_header_tree(origin.path, search->name, &dirs, search->visited_headers,
+                               search->results, search->max_results, 0);
+    }
+    search_dirs_free(&dirs);
+    if (search->found > 0 && search->via)
+    {
+        *search->via = origin;
+    }
+    // A qualified name stops at its alias, whether the header declares it or not.
+    return search->found > 0 || search->qualifier[0];
+}
+
+int lsp_c_headers_find_at(const char *document_path, const char *source, int line, int col,
+                          const CHeaderSymbol **results, int max_results, CHeaderOrigin *via)
+{
+    if (via)
+    {
+        via->is_re_export = 0;
+        via->declared_in[0] = '\0';
+    }
+    CursorSymbol cursor;
+    if (!document_path || !source || max_results <= 0 || !symbol_at(source, line, col, &cursor) ||
+        cursor.is_qualifier)
     {
         return 0;
     }
 
-    HeaderImport *imports = libc_malloc(MAX_HEADER_IMPORTS * sizeof(HeaderImport));
-    if (!imports)
-    {
-        return 0;
-    }
-    int import_count = collect_header_imports(source, imports, MAX_HEADER_IMPORTS);
-    if (import_count == 0)
-    {
-        libc_free(imports);
-        return 0;
-    }
-
+    FileImports imports = {0};
+    collect_imports(source, &imports);
+    SearchDirList dirs = {0};
+    collect_search_dirs(source, document_path, &dirs);
     char document_dir[MAX_PATH_LEN];
     directory_of(document_path, document_dir, sizeof(document_dir));
-    StringList dirs = {0};
-    collect_search_dirs(source, document_dir, &dirs);
 
     StringList visited = {0};
     int found = 0;
-    for (int i = 0; i < import_count && found == 0; i++)
+    for (int i = 0; i < imports.header_count && found == 0; i++)
     {
-        if (qualifier[0] && strcmp(imports[i].alias, qualifier) != 0)
+        const HeaderImport *header = &imports.headers[i];
+        if (cursor.qualifier[0] && strcmp(header->alias, cursor.qualifier) != 0)
         {
             continue;
         }
         char *path =
-            find_header(imports[i].name, imports[i].is_system ? NULL : document_dir, &dirs);
+            find_header(header->name, header->is_system ? NULL : document_dir, &dirs, NULL, 0);
         if (!path)
         {
-            fprintf(stderr, "zls: C header '%s' not found\n", imports[i].name);
+            fprintf(stderr, "zls: C header '%s' not found\n", header->name);
             continue;
         }
-        found = search_header_tree(path, name, &dirs, &visited, results, max_results, 0);
+        found = search_header_tree(path, cursor.name, &dirs, &visited, results, max_results, 0);
         libc_free(path);
     }
 
+    if (found == 0)
+    {
+        // Headers that imported modules re-export (`export import "x.h" as alias`).
+        ReexportSearch search = {cursor.qualifier, cursor.name, &dirs, &visited,
+                                 results,          max_results, via,   0};
+        StringList visited_modules = {0};
+        walk_module_headers(source, document_path, NULL, 1, 0, &visited_modules, search_reexport,
+                            &search);
+        string_list_free(&visited_modules);
+        found = search.found;
+    }
+
     string_list_free(&visited);
-    string_list_free(&dirs);
-    libc_free(imports);
+    search_dirs_free(&dirs);
+    free_imports(&imports);
     return found;
+}
+
+int lsp_c_headers_is_extern_name(const char *source, int line, int col)
+{
+    CursorSymbol cursor;
+    if (!source || !symbol_at(source, line, col, &cursor) || cursor.qualifier[0] ||
+        cursor.is_qualifier)
+    {
+        return 0;
+    }
+    // `extern fn name`: walk back over `fn` and `extern`.
+    const char *p = cursor.line_start + cursor.column;
+    const char *const keywords[] = {"fn", "extern"};
+    for (int k = 0; k < 2; k++)
+    {
+        while (p > cursor.line_start && (p[-1] == ' ' || p[-1] == '\t'))
+        {
+            p--;
+        }
+        size_t length = strlen(keywords[k]);
+        if ((size_t)(p - cursor.line_start) < length ||
+            strncmp(p - length, keywords[k], length) != 0)
+        {
+            return 0;
+        }
+        p -= length;
+        if (p > cursor.line_start && is_identifier_char(p[-1]))
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+typedef struct
+{
+    const char *alias;
+    const SearchDirList *document_dirs;
+    CHeaderOrigin *origin;
+} AliasSearch;
+
+static int find_reexported_alias(const ModuleHeader *entry, void *data)
+{
+    AliasSearch *search = data;
+    if (strcmp(entry->header->alias, search->alias) != 0)
+    {
+        return 0;
+    }
+    SearchDirList dirs = {0};
+    module_search_dirs(search->document_dirs, entry, &dirs);
+    fill_origin(search->origin, entry->header, entry->module_path, entry->module_source, 1, &dirs);
+    search_dirs_free(&dirs);
+    return 1;
+}
+
+CHeaderOriginKind lsp_c_headers_origin_at(const char *document_path, const char *source, int line,
+                                          int col, CHeaderOrigin *origin)
+{
+    if (!document_path || !source)
+    {
+        return C_HEADER_NONE;
+    }
+    FileImports imports = {0};
+    collect_imports(source, &imports);
+    SearchDirList dirs = {0};
+    CHeaderOriginKind kind = C_HEADER_NONE;
+
+    // On an import line of the document: its alias or its header name.
+    for (int i = 0; i < imports.header_count && kind == C_HEADER_NONE; i++)
+    {
+        const HeaderImport *header = &imports.headers[i];
+        if (header->line != line)
+        {
+            continue;
+        }
+        int alias_end = header->alias_column + (int)strlen(header->alias);
+        int name_end = header->name_column + (int)strlen(header->name);
+        if (header->alias_column >= 0 && col >= header->alias_column && col <= alias_end)
+        {
+            kind = C_HEADER_ALIAS_DECLARATION;
+        }
+        else if (col >= header->name_column && col <= name_end)
+        {
+            kind = C_HEADER_NAME;
+        }
+        if (kind != C_HEADER_NONE)
+        {
+            collect_search_dirs(source, document_path, &dirs);
+            fill_origin(origin, header, document_path, source, 0, &dirs);
+        }
+    }
+
+    // On `alias` of `alias::name`: imported here, or re-exported by an imported module.
+    CursorSymbol cursor;
+    if (kind == C_HEADER_NONE && symbol_at(source, line, col, &cursor) && cursor.is_qualifier)
+    {
+        collect_search_dirs(source, document_path, &dirs);
+        for (int i = 0; i < imports.header_count && kind == C_HEADER_NONE; i++)
+        {
+            if (strcmp(imports.headers[i].alias, cursor.name) == 0)
+            {
+                fill_origin(origin, &imports.headers[i], document_path, source, 0, &dirs);
+                kind = C_HEADER_ALIAS_USE;
+            }
+        }
+        if (kind == C_HEADER_NONE)
+        {
+            AliasSearch search = {cursor.name, &dirs, origin};
+            StringList visited = {0};
+            if (walk_module_headers(source, document_path, NULL, 1, 0, &visited,
+                                    find_reexported_alias, &search))
+            {
+                kind = C_HEADER_ALIAS_USE;
+            }
+            string_list_free(&visited);
+        }
+    }
+
+    search_dirs_free(&dirs);
+    free_imports(&imports);
+    return kind;
 }
 
 /* --- Hover --- */
@@ -1744,7 +2224,7 @@ static void append(char **out, size_t *used, size_t *capacity, const char *text,
     (*out)[*used] = '\0';
 }
 
-char *lsp_c_headers_hover(const CHeaderSymbol *symbol)
+char *lsp_c_headers_hover(const CHeaderSymbol *symbol, const CHeaderOrigin *via)
 {
     HeaderFile *header = symbol ? find_cached_header(symbol->path) : NULL;
     if (!header || !header->text || symbol->end_line >= header->line_count)
@@ -1838,7 +2318,55 @@ char *lsp_c_headers_hover(const CHeaderSymbol *symbol)
     char location[MAX_PATH_LEN + 32];
     snprintf(location, sizeof(location), "`%s:%d`", symbol->path, symbol->line + 1);
     append(&out, &used, &capacity, location, strlen(location));
+    if (via && via->is_re_export)
+    {
+        char reexport[MAX_PATH_LEN + 600];
+        snprintf(reexport, sizeof(reexport), "\n\nRe-exported by `%s`:\n```zc\n%s\n```",
+                 file_label(via->declared_in), via->statement);
+        append(&out, &used, &capacity, reexport, strlen(reexport));
+    }
     return out;
+}
+
+char *lsp_c_headers_origin_hover(const CHeaderOrigin *origin, CHeaderOriginKind kind)
+{
+    char text[MAX_PATH_LEN * 3];
+    size_t used = 0;
+    if (kind == C_HEADER_NAME)
+    {
+        used += (size_t)snprintf(text, sizeof(text), "C header `%s`", origin->header);
+    }
+    else
+    {
+        used += (size_t)snprintf(text, sizeof(text), "`%s`: alias of the C header `%s`",
+                                 origin->alias, origin->header);
+    }
+    if (origin->is_re_export)
+    {
+        used += (size_t)snprintf(text + used, sizeof(text) - used,
+                                 "\n\nRe-exported by `%s`:\n```zc\n%s\n```",
+                                 file_label(origin->declared_in), origin->statement);
+    }
+    else if (kind == C_HEADER_ALIAS_USE)
+    {
+        used += (size_t)snprintf(text + used, sizeof(text) - used,
+                                 "\n\nImported at line %d:\n```zc\n%s\n```", origin->line + 1,
+                                 origin->statement);
+    }
+    if (used < sizeof(text))
+    {
+        if (origin->path[0])
+        {
+            snprintf(text + used, sizeof(text) - used, "\n\n`%s`\n\nFound through %s.",
+                     origin->path, origin->found_by);
+        }
+        else
+        {
+            snprintf(text + used, sizeof(text) - used,
+                     "\n\nNot found where the C compiler will look for it.");
+        }
+    }
+    return copy_text(text, strlen(text));
 }
 
 /* --- Locations --- */
@@ -1877,31 +2405,138 @@ static char *path_to_uri(const char *path)
     return uri;
 }
 
+static cJSON *make_range(int line, int column, int length)
+{
+    cJSON *range = cJSON_CreateObject();
+    cJSON *start = cJSON_CreateObject();
+    cJSON_AddNumberToObject(start, "line", line);
+    cJSON_AddNumberToObject(start, "character", column);
+    cJSON *end = cJSON_CreateObject();
+    cJSON_AddNumberToObject(end, "line", line);
+    cJSON_AddNumberToObject(end, "character", column + length);
+    cJSON_AddItemToObject(range, "start", start);
+    cJSON_AddItemToObject(range, "end", end);
+    return range;
+}
+
+static cJSON *make_location(const char *path, int line, int column, int length)
+{
+    char *uri = path_to_uri(path);
+    if (!uri)
+    {
+        return NULL;
+    }
+    cJSON *location = cJSON_CreateObject();
+    cJSON_AddStringToObject(location, "uri", uri);
+    libc_free(uri);
+    cJSON_AddItemToObject(location, "range", make_range(line, column, length));
+    return location;
+}
+
 struct cJSON *lsp_c_headers_locations(const CHeaderSymbol **symbols, int count)
 {
     cJSON *locations = cJSON_CreateArray();
     for (int i = 0; i < count; i++)
     {
-        char *uri = path_to_uri(symbols[i]->path);
-        if (!uri)
+        cJSON *location = make_location(symbols[i]->path, symbols[i]->line, symbols[i]->column,
+                                        symbols[i]->length);
+        if (location)
         {
-            continue;
+            cJSON_AddItemToArray(locations, location);
         }
-        cJSON *location = cJSON_CreateObject();
-        cJSON_AddStringToObject(location, "uri", uri);
-        libc_free(uri);
-
-        cJSON *range = cJSON_CreateObject();
-        cJSON *start = cJSON_CreateObject();
-        cJSON_AddNumberToObject(start, "line", symbols[i]->line);
-        cJSON_AddNumberToObject(start, "character", symbols[i]->column);
-        cJSON *end = cJSON_CreateObject();
-        cJSON_AddNumberToObject(end, "line", symbols[i]->line);
-        cJSON_AddNumberToObject(end, "character", symbols[i]->column + symbols[i]->length);
-        cJSON_AddItemToObject(range, "start", start);
-        cJSON_AddItemToObject(range, "end", end);
-        cJSON_AddItemToObject(location, "range", range);
-        cJSON_AddItemToArray(locations, location);
     }
     return locations;
+}
+
+struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeaderOriginKind kind)
+{
+    if (kind == C_HEADER_ALIAS_USE)
+    {
+        return make_location(origin->declared_in, origin->line, origin->alias_column,
+                             origin->alias_length);
+    }
+    return origin->path[0] ? make_location(origin->path, 0, 0, 0) : NULL;
+}
+
+/* --- Diagnostics --- */
+
+typedef struct
+{
+    const SearchDirList *document_dirs;
+    struct cJSON *diagnostics;
+    StringList warned;
+} DirectiveCheck;
+
+// `zc build` only applies the `//>` directives of the file it compiles, but every header
+// of every imported module ends up in the generated C. Warns about the headers that only a
+// module's own directive makes findable.
+static int check_module_header(const ModuleHeader *entry, void *data)
+{
+    DirectiveCheck *check = data;
+    const HeaderImport *header = entry->header;
+    if (string_list_contains(&check->warned, header->name))
+    {
+        return 0;
+    }
+    char module_dir[MAX_PATH_LEN];
+    directory_of(entry->module_path, module_dir, sizeof(module_dir));
+    char *path = find_header(header->name, header->is_system ? NULL : module_dir,
+                             check->document_dirs, NULL, 0);
+    if (path)
+    {
+        libc_free(path);
+        return 0;
+    }
+
+    SearchDirList module_dirs = {0};
+    collect_directive_dirs(entry->module_source, entry->module_path, &module_dirs);
+    char found_by[MAX_PATH_LEN];
+    path = find_header(header->name, NULL, &module_dirs, found_by, sizeof(found_by));
+    search_dirs_free(&module_dirs);
+    if (!path)
+    {
+        return 0;
+    }
+    libc_free(path);
+    string_list_add(&check->warned, header->name);
+
+    char message[MAX_PATH_LEN * 2];
+    snprintf(message, sizeof(message),
+             "C header '%s' (imported by %s) is only found through %s, but zc build only "
+             "applies the directives of the file it compiles: add that directive here.",
+             header->name, file_label(entry->module_path), found_by);
+    cJSON *diagnostic = cJSON_CreateObject();
+    cJSON_AddItemToObject(
+        diagnostic, "range",
+        make_range(entry->top->line, entry->top->name_column, (int)strlen(entry->top->name)));
+    cJSON_AddNumberToObject(diagnostic, "severity", 2);
+    cJSON_AddStringToObject(diagnostic, "message", message);
+    cJSON_AddItemToArray(check->diagnostics, diagnostic);
+    return 0;
+}
+
+void lsp_c_headers_add_diagnostics(const char *document_path, const char *source,
+                                   struct cJSON *diagnostics)
+{
+    if (!document_path || !source || !diagnostics)
+    {
+        return;
+    }
+    FileImports imports = {0};
+    collect_imports(source, &imports);
+    int module_count = imports.module_count;
+    free_imports(&imports);
+    if (module_count == 0)
+    {
+        return;
+    }
+
+    SearchDirList dirs = {0};
+    collect_search_dirs(source, document_path, &dirs);
+    DirectiveCheck check = {&dirs, diagnostics, {0}};
+    StringList visited = {0};
+    walk_module_headers(source, document_path, NULL, 0, 0, &visited, check_module_header, &check);
+    string_list_free(&visited);
+    string_list_free(&check.warned);
+    search_dirs_free(&dirs);
 }

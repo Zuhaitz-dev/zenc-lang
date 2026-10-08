@@ -170,6 +170,9 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
         d = d->next;
     }
 
+    const char *document_path = strncmp(uri, "file://", 7) == 0 ? uri + 7 : uri;
+    lsp_c_headers_add_diagnostics(document_path, json_src, diag_array);
+
     cJSON_AddItemToObject(params, "diagnostics", diag_array);
     cJSON_AddItemToObject(root, "params", params);
 
@@ -200,6 +203,26 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
     int target_start_line = 0, target_start_col = 0;
     int target_end_line = 0, target_end_col = 0;
     int found = 0;
+
+    // On a C header alias or name, and on the name of an `extern fn`, the C side is what
+    // matters, even where Zen C has a definition of its own.
+    CHeaderOrigin c_origin;
+    CHeaderOriginKind c_origin_kind = C_HEADER_NONE;
+    const CHeaderSymbol *c_symbols[8];
+    int c_symbol_count = 0;
+    if (pf->source)
+    {
+        c_origin_kind = lsp_c_headers_origin_at(pf->path, pf->source, line, col, &c_origin);
+        if (c_origin_kind == C_HEADER_NONE && lsp_c_headers_is_extern_name(pf->source, line, col))
+        {
+            c_symbol_count =
+                lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8, NULL);
+        }
+        if (c_origin_kind != C_HEADER_NONE || c_symbol_count > 0)
+        {
+            r = NULL;
+        }
+    }
 
     if (r)
     {
@@ -259,18 +282,23 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
         }
     }
 
-    const CHeaderSymbol *c_symbols[8];
-    int c_symbol_count = 0;
-    if (!found && pf->source)
+    if (!found && c_origin_kind == C_HEADER_NONE && c_symbol_count == 0 && pf->source)
     {
-        c_symbol_count = lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8);
+        c_symbol_count = lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8, NULL);
     }
+    cJSON *c_location = c_origin_kind != C_HEADER_NONE
+                            ? lsp_c_headers_origin_location(&c_origin, c_origin_kind)
+                            : NULL;
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
 
-    if (c_symbol_count > 0)
+    if (c_location)
+    {
+        cJSON_AddItemToObject(root, "result", c_location);
+    }
+    else if (c_symbol_count > 0)
     {
         cJSON_AddItemToObject(root, "result", lsp_c_headers_locations(c_symbols, c_symbol_count));
     }
@@ -469,6 +497,31 @@ void lsp_hover(const char *uri, int line, int col, int id)
     int is_primitive = 0;
     char *c_hover = NULL;
 
+    // On a C header alias or name, and on the name of an `extern fn`, show the C side.
+    if (pf->source)
+    {
+        CHeaderOrigin c_origin;
+        CHeaderOriginKind c_origin_kind =
+            lsp_c_headers_origin_at(pf->path, pf->source, line, col, &c_origin);
+        if (c_origin_kind != C_HEADER_NONE)
+        {
+            c_hover = lsp_c_headers_origin_hover(&c_origin, c_origin_kind);
+        }
+        else if (lsp_c_headers_is_extern_name(pf->source, line, col))
+        {
+            const CHeaderSymbol *c_symbol = NULL;
+            if (lsp_c_headers_find_at(pf->path, pf->source, line, col, &c_symbol, 1, NULL) > 0)
+            {
+                c_hover = lsp_c_headers_hover(c_symbol, NULL);
+            }
+        }
+        if (c_hover)
+        {
+            text = c_hover;
+            r = NULL;
+        }
+    }
+
     if (r)
     {
         if (r->kind == RANGE_DEFINITION)
@@ -539,9 +592,10 @@ void lsp_hover(const char *uri, int line, int col, int id)
     if (!text && pf && pf->source)
     {
         const CHeaderSymbol *c_symbol = NULL;
-        if (lsp_c_headers_find_at(pf->path, pf->source, line, col, &c_symbol, 1) > 0)
+        CHeaderOrigin via;
+        if (lsp_c_headers_find_at(pf->path, pf->source, line, col, &c_symbol, 1, &via) > 0)
         {
-            c_hover = lsp_c_headers_hover(c_symbol);
+            c_hover = lsp_c_headers_hover(c_symbol, &via);
             text = c_hover;
         }
     }
