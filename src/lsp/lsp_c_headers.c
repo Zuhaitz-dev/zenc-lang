@@ -2448,14 +2448,49 @@ struct cJSON *lsp_c_headers_locations(const CHeaderSymbol **symbols, int count)
     return locations;
 }
 
-struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeaderOriginKind kind)
+struct cJSON *lsp_c_headers_origin_range(const CHeaderOrigin *origin, CHeaderOriginKind kind)
+{
+    if (kind == C_HEADER_NAME)
+    {
+        return make_range(origin->line, origin->name_column, (int)strlen(origin->header));
+    }
+    if (kind == C_HEADER_ALIAS_DECLARATION)
+    {
+        return make_range(origin->line, origin->alias_column, origin->alias_length);
+    }
+    return NULL;
+}
+
+struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeaderOriginKind kind,
+                                            int link_support)
 {
     if (kind == C_HEADER_ALIAS_USE)
     {
         return make_location(origin->declared_in, origin->line, origin->alias_column,
                              origin->alias_length);
     }
-    return origin->path[0] ? make_location(origin->path, 0, 0, 0) : NULL;
+    if (!origin->path[0])
+    {
+        return NULL;
+    }
+    if (!link_support)
+    {
+        return make_location(origin->path, 0, 0, 0);
+    }
+    char *uri = path_to_uri(origin->path);
+    if (!uri)
+    {
+        return NULL;
+    }
+    cJSON *link = cJSON_CreateObject();
+    cJSON_AddItemToObject(link, "originSelectionRange", lsp_c_headers_origin_range(origin, kind));
+    cJSON_AddStringToObject(link, "targetUri", uri);
+    libc_free(uri);
+    cJSON_AddItemToObject(link, "targetRange", make_range(0, 0, 0));
+    cJSON_AddItemToObject(link, "targetSelectionRange", make_range(0, 0, 0));
+    cJSON *links = cJSON_CreateArray();
+    cJSON_AddItemToArray(links, link);
+    return links;
 }
 
 /* --- Diagnostics --- */

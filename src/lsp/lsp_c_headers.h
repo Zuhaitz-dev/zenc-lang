@@ -100,11 +100,19 @@ char *lsp_c_headers_origin_hover(const CHeaderOrigin *origin, CHeaderOriginKind 
 struct cJSON *lsp_c_headers_locations(const CHeaderSymbol **symbols, int count);
 
 /**
- * @brief LSP `Location` for go to definition on a header alias or name: the alias goes to
- * the import that declares it, the declaration and the name go to the header. NULL when the
- * header is not found.
+ * @brief Go to definition on a header alias or name: the alias goes to the import that
+ * declares it, the declaration and the name go to the header. With `link_support`, a
+ * `LocationLink[]` whose origin is the whole header name, which the client's notion of a word
+ * would split at the dot; otherwise a `Location`. NULL when the header is not found.
  */
-struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeaderOriginKind kind);
+struct cJSON *lsp_c_headers_origin_location(const CHeaderOrigin *origin, CHeaderOriginKind kind,
+                                            int link_support);
+
+/**
+ * @brief Range of the header name or alias under the cursor, for the hover to highlight it
+ * whole. NULL for an alias in `alias::name`, which is a plain word.
+ */
+struct cJSON *lsp_c_headers_origin_range(const CHeaderOrigin *origin, CHeaderOriginKind kind);
 
 /**
  * @brief Adds a warning for every C header that the document's imported modules need and

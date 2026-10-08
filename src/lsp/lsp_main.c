@@ -13,6 +13,7 @@
 #endif
 
 int g_lsp_request_is_readonly = 1;
+int g_lsp_definition_link_support = 0;
 
 // Simple Main Loop for LSP.
 int lsp_main(int argc, char **argv)

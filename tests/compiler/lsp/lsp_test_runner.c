@@ -833,6 +833,18 @@ static void test_c_header_symbols(void)
     expect_definition(810, "alias", main_path, 4, 5, "/main.zc", 1);
     expect_hover(811, "alias", main_path, 4, 5, "alias of the C header `fake.h`");
     expect_definition(812, "header name", main_path, 1, 10, "/include/fake.h", 0);
+
+    // The hover highlights the whole header name, which a client splits at the dot.
+    cJSON *response = position_request(813, "textDocument/hover", main_path, 1, 10);
+    cJSON *range = cJSON_GetObjectItem(cJSON_GetObjectItem(response, "result"), "range");
+    cJSON *start = cJSON_GetObjectItem(cJSON_GetObjectItem(range, "start"), "character");
+    cJSON *end = cJSON_GetObjectItem(cJSON_GetObjectItem(range, "end"), "character");
+    if (!cJSON_IsNumber(start) || !cJSON_IsNumber(end) || start->valueint != 8 ||
+        end->valueint != 14)
+    {
+        fail("The hover on a header name must cover the whole name");
+    }
+    cJSON_Delete(response);
     printf("PASS: test_c_header_symbols (alias and header name)\n");
 }
 

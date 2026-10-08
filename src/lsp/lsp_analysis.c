@@ -3,6 +3,7 @@
 #include "../constants.h"
 #include "lsp_project.h" // Includes lsp_index.h, parser.h
 #include "lsp_c_headers.h"
+#include "json_rpc.h"
 #include "../plugins/plugin_manager.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -286,9 +287,10 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
     {
         c_symbol_count = lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8, NULL);
     }
-    cJSON *c_location = c_origin_kind != C_HEADER_NONE
-                            ? lsp_c_headers_origin_location(&c_origin, c_origin_kind)
-                            : NULL;
+    cJSON *c_location =
+        c_origin_kind != C_HEADER_NONE
+            ? lsp_c_headers_origin_location(&c_origin, c_origin_kind, g_lsp_definition_link_support)
+            : NULL;
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
@@ -496,6 +498,7 @@ void lsp_hover(const char *uri, int line, int col, int id)
     char *text = NULL;
     int is_primitive = 0;
     char *c_hover = NULL;
+    cJSON *c_hover_range = NULL;
 
     // On a C header alias or name, and on the name of an `extern fn`, show the C side.
     if (pf->source)
@@ -506,6 +509,7 @@ void lsp_hover(const char *uri, int line, int col, int id)
         if (c_origin_kind != C_HEADER_NONE)
         {
             c_hover = lsp_c_headers_origin_hover(&c_origin, c_origin_kind);
+            c_hover_range = lsp_c_headers_origin_range(&c_origin, c_origin_kind);
         }
         else if (lsp_c_headers_is_extern_name(pf->source, line, col))
         {
@@ -625,6 +629,11 @@ void lsp_hover(const char *uri, int line, int col, int id)
         }
 
         cJSON_AddItemToObject(result, "contents", contents);
+        if (c_hover_range)
+        {
+            cJSON_AddItemToObject(result, "range", c_hover_range);
+            c_hover_range = NULL;
+        }
         cJSON_AddItemToObject(root, "result", result);
     }
     else
@@ -634,6 +643,7 @@ void lsp_hover(const char *uri, int line, int col, int id)
 
     send_json_response(root);
     libc_free(c_hover);
+    cJSON_Delete(c_hover_range);
 }
 
 static void enqueue_node_children(ASTNode *curr, ASTNode **queue, int *q_tail, int q_limit)
