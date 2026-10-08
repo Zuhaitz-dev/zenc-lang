@@ -1580,6 +1580,96 @@ static void test_signature_help()
     free(resp);
 }
 
+static void write_config_fixture(const char *path, const char *content)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0 || write(fd, content, strlen(content)) != (ssize_t)strlen(content))
+    {
+        fail("Could not write a config fixture");
+    }
+    close(fd);
+}
+
+// main.zc imports a library that lives outside the workspace root, so the import resolves only
+// through the include_paths of zenc.server.json.
+static void test_project_config(void)
+{
+    printf("Running test_project_config...\n");
+    mkdir("/tmp/zc_lsp_config", 0755);
+    mkdir("/tmp/zc_lsp_config/ws", 0755);
+    mkdir("/tmp/zc_lsp_config/libs", 0755);
+    write_config_fixture("/tmp/zc_lsp_config/ws/zenc.server.json",
+                         "{\"include_paths\": [\"../libs\"]}\n");
+    write_config_fixture("/tmp/zc_lsp_config/libs/mathx.zc",
+                         "fn mathx_double(x: int) -> int { return x * 2; }\n");
+    const char *main_src = "import \\\"mathx.zc\\\"\\nfn main() { let r = mathx_double(4); }\\n";
+    write_config_fixture("/tmp/zc_lsp_config/ws/main.zc",
+                         "import \"mathx.zc\"\nfn main() { let r = mathx_double(4); }\n");
+
+    global_len = 0;
+    global_buf[0] = 0;
+    start_lsp_server();
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 1100, \"method\": \"initialize\", \"params\": "
+                 "{\"rootUri\": \"file:///tmp/zc_lsp_config/ws\"}}");
+    free(wait_for_response(1100));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"initialized\", \"params\": {}}");
+
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+             "{\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_config/ws/main.zc\", "
+             "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"%s\"}}}",
+             main_src);
+    send_request(json);
+
+    // The diagnostics of main.zc report the import as missing unless include_paths resolved it.
+    // A request after didOpen guarantees they were flushed; they arrive before its response.
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1101, \"method\": \"textDocument/documentSymbol\", "
+        "\"params\": {\"textDocument\": {\"uri\": "
+        "\"file:///tmp/zc_lsp_config/ws/main.zc\"}}}");
+    char *diagnostics = NULL;
+    for (int i = 0; i < 50; i++)
+    {
+        char *msg = read_message();
+        if (!msg)
+        {
+            break;
+        }
+        if (strstr(msg, "textDocument/publishDiagnostics") &&
+            strstr(msg, "zc_lsp_config/ws/main.zc"))
+        {
+            diagnostics = msg;
+        }
+        else if (strstr(msg, "\"id\":1101"))
+        {
+            free(msg);
+            break;
+        }
+        else
+        {
+            free(msg);
+        }
+    }
+    if (!diagnostics)
+    {
+        fail("No diagnostics received for main.zc");
+    }
+    if (strstr(diagnostics, "Could not find module"))
+    {
+        printf("diagnostics: %s\n", diagnostics);
+        fail("An import was not resolved through include_paths of zenc.server.json");
+    }
+    free(diagnostics);
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1102, \"method\": \"shutdown\", \"params\": null}");
+    free(wait_for_response(1102));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
+    waitpid(child_pid, NULL, 0);
+    printf("PASS: test_project_config\n");
+}
+
 int main()
 {
     // Don't die with a cryptic 141 (SIGPIPE) if the LSP server crashes and
@@ -1618,6 +1708,7 @@ int main()
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);
     test_index_gitignore();
+    test_project_config();
     printf("All LSP tests passed!\n");
     return 0;
 }

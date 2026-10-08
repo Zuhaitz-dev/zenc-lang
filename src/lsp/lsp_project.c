@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "lsp_project.h"
+#include "lsp_config.h"
 #include "../utils/utils.h"
 #include "../constants.h"
 #include <ctype.h>
@@ -116,6 +117,8 @@ void lsp_project_init(const char *root_path)
         snprintf(std_path, sizeof(std_path), "%s/std", cfg->root_path);
         zvec_push_Str(&cfg->include_paths, xstrdup(std_path));
     }
+
+    lsp_config_load(root_path, cfg);
 }
 
 void lsp_project_index_workspace(void)

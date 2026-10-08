@@ -313,6 +313,20 @@ zc-lsp
 
 It communicates via standard I/O (JSON-RPC 2.0).
 
+#### Project configuration
+
+Place a `zenc.server.json` file in the workspace root to configure the server per project:
+
+```json
+{
+  "include_paths": ["../libs", "third_party/include"]
+}
+```
+
+*   `include_paths`: extra directories used to resolve imports, like `zc -I`. Relative paths are resolved against the directory containing `zenc.server.json`.
+
+Invalid JSON ignores the whole file; an unknown key or a value of the wrong type is ignored. Either case is reported in the editor with a warning.
+
 ### REPL
 
 The Read-Eval-Print Loop allows you to experiment with Zen C code interactively using modern **In-Process JIT Compilation** (powered by LibTCC).
