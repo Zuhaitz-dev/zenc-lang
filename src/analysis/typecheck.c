@@ -193,9 +193,18 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             {
                 apply_implicit_struct_pointer_conversions(tc, &node->ret.value,
                                                           tc->current_func->func.ret_type_info);
-                check_type_compatibility(tc, tc->current_func->func.ret_type_info,
-                                         node->ret.value->type_info, node->token, node->ret.value,
-                                         0);
+                Type *returned = node->ret.value->type_info;
+                Type *expected = get_inner_type(tc->current_func->func.ret_type_info);
+                // In a method whose `self` is a pointer, `return self;` returns the
+                // value: codegen emits `return *self;` (see codegen_stmt.c).
+                if (returned && expected && returned->kind == TYPE_POINTER &&
+                    expected->kind != TYPE_POINTER && node->ret.value->kind == NODE_EXPR_VAR &&
+                    strcmp(node->ret.value->var_ref.name, "self") == 0)
+                {
+                    returned = returned->inner;
+                }
+                check_type_compatibility(tc, tc->current_func->func.ret_type_info, returned,
+                                         node->token, node->ret.value, 0);
             }
         }
         tc->is_unreachable = 1;

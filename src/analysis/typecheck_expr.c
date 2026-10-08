@@ -65,6 +65,76 @@ static const char *resolve_alias_name(TypeChecker *tc, const char *name)
     return name;
 }
 
+// Canonical spelling of a type for alias-insensitive comparison: aliases
+// resolved by name, pointers spelled outside (`alias P = T*;` makes `P*` and
+// `T**` the same). Returns an allocated string, or NULL when there is nothing
+// to resolve.
+static char *canonical_type_name(TypeChecker *tc, Type *t, int depth)
+{
+    if (!t || depth > 16)
+    {
+        return NULL;
+    }
+    t = resolve_alias(t);
+    if (t->kind == TYPE_POINTER)
+    {
+        char *inner = canonical_type_name(tc, t->inner, depth + 1);
+        if (!inner)
+        {
+            return NULL;
+        }
+        size_t len = strlen(inner);
+        char *out = xmalloc(len + 2);
+        memcpy(out, inner, len);
+        out[len] = '*';
+        out[len + 1] = 0;
+        zfree(inner);
+        return out;
+    }
+    if (!t->name)
+    {
+        return NULL;
+    }
+    const char *name = resolve_alias_name(tc, t->name);
+    // Template instantiation spells a pointer argument as `<Name>Ptr`
+    // (`Vec<DirEntry*>` substitutes T by `DirEntryPtr`): read it back as
+    // `<Name>*` when `<Name>Ptr` is not a type of its own.
+    size_t name_len = strlen(name);
+    if (name_len > 3 && strcmp(name + name_len - 3, "Ptr") == 0 &&
+        !find_struct_def(tc->pctx, name) && !find_type_alias(tc->pctx, name))
+    {
+        char *base_name = xstrdup(name);
+        base_name[name_len - 3] = 0;
+        Type base = {0};
+        base.kind = TYPE_STRUCT;
+        base.name = base_name;
+        char *inner = canonical_type_name(tc, &base, depth + 1);
+        zfree(base_name);
+        if (inner)
+        {
+            size_t len = strlen(inner);
+            char *out = xmalloc(len + 2);
+            memcpy(out, inner, len);
+            out[len] = '*';
+            out[len + 1] = 0;
+            zfree(inner);
+            return out;
+        }
+    }
+    // Drop spaces so "DirEntry *" and "DirEntry*" compare equal.
+    char *out = xmalloc(strlen(name) + 1);
+    char *w = out;
+    for (const char *r = name; *r; r++)
+    {
+        if (*r != ' ')
+        {
+            *w++ = *r;
+        }
+    }
+    *w = 0;
+    return out;
+}
+
 Type *resolve_alias(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && t->inner)
@@ -850,6 +920,22 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         misra_check_pointer_conversion(tc->pctx, target, value, t);
     }
 
+    // A literal 0 is a null pointer constant, as in C. MISRA mode reports it
+    // above (Rule 11.9); otherwise it is accepted for any pointer.
+    if (resolved_target->kind == TYPE_POINTER && value_node)
+    {
+        ASTNode *expr = value_node;
+        while (expr && expr->kind == NODE_EXPR_CAST)
+        {
+            expr = expr->cast.expr;
+        }
+        if (expr && expr->kind == NODE_EXPR_LITERAL && expr->literal.kind == LITERAL_INT &&
+            expr->literal.int_val == 0)
+        {
+            return 1;
+        }
+    }
+
     // Resolution of Integer compatibility (Rule 10.3)
     // This MUST happen before type_eq fast-path because type_eq is lax for integers.
     if (is_integer_type(resolved_target) && is_integer_type(resolved_value))
@@ -902,14 +988,16 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         }
     }
 
-    // Named types that are aliases of one another (`alias PersonId =
-    // Handle<PersonKind>`): the alias may reach here as a struct named after it.
-    if (resolved_target->kind != TYPE_POINTER && resolved_value->kind != TYPE_POINTER &&
-        resolved_target->name && resolved_value->name)
+    // Types that are aliases of one another (`alias UserId = Handle<UserKind>`,
+    // `alias EntryPtr = Entry*` making `EntryPtr*` and `Entry**` equal): an alias
+    // may also reach here as a struct named after it.
     {
-        const char *target_name = resolve_alias_name(tc, resolved_target->name);
-        const char *value_name = resolve_alias_name(tc, resolved_value->name);
-        if (target_name && value_name && strcmp(target_name, value_name) == 0)
+        char *target_name = canonical_type_name(tc, target, 0);
+        char *value_name = canonical_type_name(tc, value, 0);
+        int same = target_name && value_name && strcmp(target_name, value_name) == 0;
+        zfree(target_name);
+        zfree(value_name);
+        if (same)
         {
             return 1;
         }
@@ -1243,7 +1331,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
             }
             check_type_compatibility(tc, localized_expected,
                                      field_init->var_decl.init_expr->type_info, field_init->token,
-                                     NULL, 0);
+                                     field_init->var_decl.init_expr, 0);
         }
 
         // Move Analysis: Check if the initializer moves a non-copy value.
