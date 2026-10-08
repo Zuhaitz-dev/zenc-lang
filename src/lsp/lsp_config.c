@@ -14,7 +14,8 @@ typedef struct
 {
     const char *key;
     // Applies the value to `cfg` and returns a short summary of what it loaded ("" if nothing).
-    const char *(*apply)(const cJSON *value, const char *root_path, CompilerConfig *cfg);
+    const char *(*apply)(const cJSON *value, const char *root_path, CompilerConfig *cfg,
+                         LSPProject *project);
 } ConfigKey;
 
 // Log a problem to stderr and tell the client about it.
@@ -48,8 +49,9 @@ static void config_warn(const char *fmt, ...)
 }
 
 static const char *apply_include_paths(const cJSON *value, const char *root_path,
-                                       CompilerConfig *cfg)
+                                       CompilerConfig *cfg, LSPProject *project)
 {
+    (void)project;
     if (!cJSON_IsArray(value))
     {
         config_warn(CONFIG_FILE_NAME ": \"include_paths\" must be an array of strings, ignored");
@@ -90,8 +92,58 @@ static const char *apply_include_paths(const cJSON *value, const char *root_path
     return summary;
 }
 
+static const char *apply_exclude(const cJSON *value, const char *root_path, CompilerConfig *cfg,
+                                 LSPProject *project)
+{
+    (void)root_path;
+    (void)cfg;
+    if (!cJSON_IsArray(value))
+    {
+        config_warn(CONFIG_FILE_NAME ": \"exclude\" must be an array of strings, ignored");
+        return "";
+    }
+
+    int count = 0;
+    int index = 0;
+    const cJSON *entry = NULL;
+    cJSON_ArrayForEach(entry, value)
+    {
+        if (!cJSON_IsString(entry) || !entry->valuestring[0])
+        {
+            config_warn(CONFIG_FILE_NAME ": \"exclude\"[%d] is not a non-empty string, ignored",
+                        index);
+        }
+        else
+        {
+            zvec_push_Str(&project->exclude_patterns, xstrdup(entry->valuestring));
+            count++;
+        }
+        index++;
+    }
+
+    char *summary = xmalloc(64);
+    snprintf(summary, 64, "%d exclude pattern(s)", count);
+    return summary;
+}
+
+static const char *apply_use_gitignore(const cJSON *value, const char *root_path,
+                                       CompilerConfig *cfg, LSPProject *project)
+{
+    (void)root_path;
+    (void)cfg;
+    if (!cJSON_IsBool(value))
+    {
+        config_warn(CONFIG_FILE_NAME ": \"use_gitignore\" must be true or false, ignored");
+        return "";
+    }
+    project->use_gitignore = cJSON_IsTrue(value);
+    return project->use_gitignore ? "" : ".gitignore not used";
+}
+
 static const ConfigKey CONFIG_KEYS[] = {
     {"include_paths", apply_include_paths},
+    {"exclude", apply_exclude},
+    {"use_gitignore", apply_use_gitignore},
 };
 
 static int line_of(const char *source, const char *at)
@@ -107,7 +159,7 @@ static int line_of(const char *source, const char *at)
     return line;
 }
 
-void lsp_config_load(const char *root_path, CompilerConfig *cfg)
+void lsp_config_load(const char *root_path, CompilerConfig *cfg, LSPProject *project)
 {
     char path[MAX_PATH_LEN];
     snprintf(path, sizeof(path), "%s/" CONFIG_FILE_NAME, root_path);
@@ -163,7 +215,7 @@ void lsp_config_load(const char *root_path, CompilerConfig *cfg)
             continue;
         }
 
-        const char *what = known->apply(item, root_path, cfg);
+        const char *what = known->apply(item, root_path, cfg, project);
         if (what[0])
         {
             size_t used = strlen(summary);

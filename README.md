@@ -319,11 +319,15 @@ Place a `zenc.server.json` file in the workspace root to configure the server pe
 
 ```json
 {
-  "include_paths": ["../libs", "third_party/include"]
+  "include_paths": ["../libs", "third_party/include"],
+  "exclude": ["generated/", "*.tmp.zc"],
+  "use_gitignore": true
 }
 ```
 
 *   `include_paths`: extra directories used to resolve imports, like `zc -I`. Relative paths are resolved against the directory containing `zenc.server.json`.
+*   `exclude`: patterns in `.gitignore` syntax, relative to the workspace root, that the workspace indexing skips (names at any depth, `/anchored` paths, a trailing `/` for directories only, `*`, `?`, a leading `**/`), on top of the `.gitignore` rules.
+*   `use_gitignore`: `true` by default. When `false`, the root `.gitignore` is not read and `exclude` alone decides what is skipped.
 
 Invalid JSON ignores the whole file; an unknown key or a value of the wrong type is ignored. Either case is reported in the editor with a warning.
 
