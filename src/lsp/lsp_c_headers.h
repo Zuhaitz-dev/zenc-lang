@@ -95,6 +95,15 @@ char *lsp_c_headers_hover(const CHeaderSymbol *symbol, const CHeaderOrigin *via)
 char *lsp_c_headers_origin_hover(const CHeaderOrigin *origin, CHeaderOriginKind kind);
 
 /**
+ * @brief Completion items for `alias::typed` when `alias` names a C header, imported here or
+ * re-exported by an imported module: the declarations of that header, and of the headers it
+ * includes with quotes, whose names contain the typed characters in order. NULL when the
+ * cursor is not after such an alias, so the caller completes as usual.
+ */
+struct cJSON *lsp_c_headers_completion(const char *document_path, const char *source, int line,
+                                       int col);
+
+/**
  * @brief LSP `Location[]` pointing at the names of the given declarations.
  */
 struct cJSON *lsp_c_headers_locations(const CHeaderSymbol **symbols, int count);

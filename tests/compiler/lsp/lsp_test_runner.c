@@ -903,6 +903,60 @@ static void test_c_header_reexports(void)
     printf("PASS: test_c_header_reexports\n");
 }
 
+// Completion at (line, character) must offer `expected` with `kind`, and not the generic
+// keyword list.
+static void expect_completion(int id, const char *path, int line, int character,
+                              const char *expected, int kind)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    int found = 0;
+    int keywords = 0;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+        cJSON *item_kind = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "kind");
+        if (cJSON_IsString(label) && strcmp(label->valuestring, expected) == 0 &&
+            cJSON_IsNumber(item_kind) && item_kind->valueint == kind)
+        {
+            found = 1;
+        }
+        if (cJSON_IsString(label) && strcmp(label->valuestring, "if") == 0)
+        {
+            keywords = 1;
+        }
+    }
+    if (!found || keywords)
+    {
+        printf("Completion at %d:%d without %s (kind %d) or with keywords\n", line, character,
+               expected, kind);
+        fail("Wrong completion after a C header alias");
+    }
+    cJSON_Delete(response);
+}
+
+static void test_c_header_completion(void)
+{
+    printf("Running test_c_header_completion...\n");
+    write_c_header_fixtures();
+    const char *path = C_TEST_DIR "/complete.zc";
+    open_document(path, "//> include: " C_TEST_DIR "/include\n"
+                        "import \"fake.h\" as fk;\n"
+                        "\n"
+                        "fn main() {\n"
+                        "    fk::fake_\n"
+                        "    fk::FAKE_O\n"
+                        "    fk::\n"
+                        "}\n");
+    expect_completion(830, path, 4, 13, "fake_add", 3);
+    expect_completion(831, path, 4, 13, "fake_nested", 3);
+    expect_completion(832, path, 5, 14, "FAKE_ON", 20);
+    expect_completion(833, path, 6, 8, "FakePoint", 22);
+    // A header re-exported by an imported module (use_a.zc, from test_c_header_reexports).
+    expect_completion(834, C_TEST_DIR "/use_a.zc", 3, 11, "mod_function", 3);
+    printf("PASS: test_c_header_completion\n");
+}
+
 static void test_shutdown()
 {
     printf("Running test_shutdown...\n");
@@ -1352,6 +1406,7 @@ int main()
     test_workspace_symbol();
     test_c_header_symbols();
     test_c_header_reexports();
+    test_c_header_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);

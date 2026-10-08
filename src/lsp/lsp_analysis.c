@@ -887,6 +887,16 @@ void lsp_completion(const char *uri, int line, int col, int id)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
+
+    // After the alias of a C header (`rl::`), the declarations of that header.
+    cJSON *c_items = pf->source ? lsp_c_headers_completion(pf->path, pf->source, line, col) : NULL;
+    if (c_items)
+    {
+        cJSON_AddItemToObject(root, "result", c_items);
+        send_json_response(root);
+        return;
+    }
+
     cJSON *items = cJSON_CreateArray();
 
     ASTNode *target_func = NULL;

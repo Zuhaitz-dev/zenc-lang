@@ -865,11 +865,24 @@ static int symbol_at(const char *source, int line, int col, CursorSymbol *cursor
 
 /* --- Header cache --- */
 
+// LSP CompletionItemKind of each kind of C declaration.
+typedef enum
+{
+    C_SYMBOL_FUNCTION = 3,
+    C_SYMBOL_VARIABLE = 6,
+    C_SYMBOL_ENUM = 13,
+    C_SYMBOL_ENUM_MEMBER = 20,
+    C_SYMBOL_CONSTANT = 21,
+    C_SYMBOL_STRUCT = 22,
+    C_SYMBOL_TYPE = 25
+} CSymbolKind;
+
 typedef struct
 {
     CHeaderSymbol symbol;
     char *name;
     int is_forward; ///< `struct X;` without a body.
+    int kind;       ///< LSP CompletionItemKind (see CSymbolKind).
 } HeaderSymbol;
 
 typedef struct
@@ -917,7 +930,7 @@ static int line_of(const HeaderFile *header, int offset)
 }
 
 static void add_header_symbol(HeaderFile *header, const char *name, int name_length, int offset,
-                              int start_line, int end_line, int is_forward)
+                              int start_line, int end_line, int is_forward, int kind)
 {
     if (header->symbol_count == header->symbol_capacity)
     {
@@ -939,6 +952,7 @@ static void add_header_symbol(HeaderFile *header, const char *name, int name_len
     HeaderSymbol *entry = &header->symbols[header->symbol_count++];
     entry->name = copy;
     entry->is_forward = is_forward;
+    entry->kind = kind;
     entry->symbol.path = header->path;
     entry->symbol.line = line_of(header, offset);
     entry->symbol.column = offset - header->line_offsets[entry->symbol.line];
@@ -1152,10 +1166,10 @@ static int is_name_token(const Statement *statement, const CToken *token)
 }
 
 static void record(HeaderFile *header, const Statement *statement, const CToken *token,
-                   int start_line, int end_line, int is_forward)
+                   int start_line, int end_line, int is_forward, int kind)
 {
     add_header_symbol(header, statement->chars + token->start, token->length,
-                      statement->offsets[token->start], start_line, end_line, is_forward);
+                      statement->offsets[token->start], start_line, end_line, is_forward, kind);
 }
 
 // First token of `kind` at the statement's top level (outside braces and parentheses).
@@ -1185,7 +1199,7 @@ static void record_enumerators(HeaderFile *header, const Statement *statement, c
             (i == body + 1 || tokens[i - 1].kind == ','))
         {
             int line = line_of(header, statement->offsets[tokens[i].start]);
-            record(header, statement, &tokens[i], line, line, 0);
+            record(header, statement, &tokens[i], line, line, 0, C_SYMBOL_ENUM_MEMBER);
         }
     }
 }
@@ -1223,7 +1237,8 @@ static void process_typedef(HeaderFile *header, const Statement *statement, cons
             (is_enum || token_is(statement, &tokens[1], "struct") ||
              token_is(statement, &tokens[1], "union")))
         {
-            record(header, statement, &tokens[body - 1], start_line, end_line, 0);
+            record(header, statement, &tokens[body - 1], start_line, end_line, 0,
+                   is_enum ? C_SYMBOL_ENUM : C_SYMBOL_STRUCT);
         }
         if (is_enum)
         {
@@ -1234,7 +1249,8 @@ static void process_typedef(HeaderFile *header, const Statement *statement, cons
         {
             if (tokens[i].paren_depth == 0 && is_name_token(statement, &tokens[i]))
             {
-                record(header, statement, &tokens[i], start_line, end_line, 0);
+                record(header, statement, &tokens[i], start_line, end_line, 0,
+                       is_enum ? C_SYMBOL_ENUM : C_SYMBOL_STRUCT);
             }
         }
         return;
@@ -1248,7 +1264,7 @@ static void process_typedef(HeaderFile *header, const Statement *statement, cons
             int name = function_pointer_name(statement, tokens, count, i);
             if (name >= 0)
             {
-                record(header, statement, &tokens[name], start_line, end_line, 0);
+                record(header, statement, &tokens[name], start_line, end_line, 0, C_SYMBOL_TYPE);
                 return;
             }
         }
@@ -1273,7 +1289,7 @@ static void process_typedef(HeaderFile *header, const Statement *statement, cons
     }
     if (last_name >= 0)
     {
-        record(header, statement, &tokens[last_name], start_line, end_line, 0);
+        record(header, statement, &tokens[last_name], start_line, end_line, 0, C_SYMBOL_TYPE);
     }
 }
 
@@ -1291,13 +1307,14 @@ static void process_function_or_variable(HeaderFile *header, const Statement *st
         int pointer_name = function_pointer_name(statement, tokens, count, i);
         if (pointer_name >= 0)
         {
-            record(header, statement, &tokens[pointer_name], start_line, end_line, 0);
+            record(header, statement, &tokens[pointer_name], start_line, end_line, 0,
+                   C_SYMBOL_VARIABLE);
             return;
         }
         // RLAPI void InitWindow(int width, int height, const char *title);
         if (i > 0 && is_name_token(statement, &tokens[i - 1]))
         {
-            record(header, statement, &tokens[i - 1], start_line, end_line, 0);
+            record(header, statement, &tokens[i - 1], start_line, end_line, 0, C_SYMBOL_FUNCTION);
             return;
         }
         // `__attribute__((...))` and the like: the name comes later.
@@ -1328,7 +1345,7 @@ static void process_function_or_variable(HeaderFile *header, const Statement *st
     }
     if (is_extern && last_name >= 0)
     {
-        record(header, statement, &tokens[last_name], start_line, end_line, 0);
+        record(header, statement, &tokens[last_name], start_line, end_line, 0, C_SYMBOL_VARIABLE);
     }
 }
 
@@ -1423,7 +1440,9 @@ static void process_statement(HeaderFile *header, const Statement *statement)
             // struct Tag { ... };   enum { A, B };   struct Tag;
             if (count >= 2 && declaration[1].kind == 'w')
             {
-                record(header, statement, &declaration[1], start_line, end_line, body < 0);
+                record(header, statement, &declaration[1], start_line, end_line, body < 0,
+                       token_is(statement, &declaration[0], "enum") ? C_SYMBOL_ENUM
+                                                                    : C_SYMBOL_STRUCT);
             }
             if (body >= 0 && token_is(statement, &declaration[0], "enum"))
             {
@@ -1501,8 +1520,10 @@ static int scan_preprocessor_line(HeaderFile *header, int offset)
         if (length > 0)
         {
             int start_line = line_of(header, offset);
+            // `#define NAME(args)` reads like a function; `#define NAME value` like a constant.
             add_header_symbol(header, name, length, (int)(name - text), start_line,
-                              line_of(header, end > offset ? end - 1 : offset), 0);
+                              line_of(header, end > offset ? end - 1 : offset), 0,
+                              name[length] == '(' ? C_SYMBOL_FUNCTION : C_SYMBOL_CONSTANT);
         }
     }
     else if (strncmp(p, "include", 7) == 0)
@@ -2367,6 +2388,190 @@ char *lsp_c_headers_origin_hover(const CHeaderOrigin *origin, CHeaderOriginKind 
         }
     }
     return copy_text(text, strlen(text));
+}
+
+/* --- Completion --- */
+
+#define MAX_COMPLETION_ITEMS 2000
+
+// `typed` matches `name` when its characters appear in it in order, ignoring case, as the
+// client filters.
+static int matches_typed(const char *name, const char *typed)
+{
+    for (; *typed; typed++)
+    {
+        int wanted = tolower((unsigned char)*typed);
+        while (*name && tolower((unsigned char)*name) != wanted)
+        {
+            name++;
+        }
+        if (!*name)
+        {
+            return 0;
+        }
+        name++;
+    }
+    return 1;
+}
+
+// The line that declares the name, without its comment.
+static void symbol_detail(const HeaderFile *header, const CHeaderSymbol *symbol, char *detail,
+                          size_t detail_size)
+{
+    int length;
+    const char *text = line_text(header, symbol->line, &length);
+    int comment = comment_column(text, length);
+    copy_trimmed(text, (size_t)(comment >= 0 ? comment : length), detail, detail_size);
+}
+
+// The comment on the declaration's last line, or the comment block above it.
+static void symbol_documentation(const HeaderFile *header, const CHeaderSymbol *symbol, char *doc,
+                                 size_t doc_size)
+{
+    doc[0] = '\0';
+    int length;
+    const char *text = line_text(header, symbol->end_line, &length);
+    int comment = comment_column(text, length);
+    if (comment >= 0)
+    {
+        append_comment_text(doc, doc_size, text + comment, length - comment);
+    }
+    if (!doc[0])
+    {
+        leading_comment(header, symbol->start_line, doc, doc_size);
+    }
+}
+
+// Completion items for the declarations of `path` matching `typed`, then those of the headers
+// it includes with quotes: `#include "x.h"` belongs to the same library, while `<x.h>` brings
+// in the system or other libraries.
+static void add_completion_items(const char *path, const char *typed, const SearchDirList *dirs,
+                                 StringList *visited, StringList *names, cJSON *items, int depth)
+{
+    if (depth > MAX_INCLUDE_DEPTH || string_list_contains(visited, path))
+    {
+        return;
+    }
+    string_list_add(visited, path);
+    HeaderFile *header = get_header(path);
+    if (!header || !header->text)
+    {
+        return;
+    }
+
+    for (int i = 0; i < header->symbol_count && names->count < MAX_COMPLETION_ITEMS; i++)
+    {
+        const HeaderSymbol *entry = &header->symbols[i];
+        // Reserved names (`__declspec`, `_X`) belong to the implementation, not the library.
+        if (is_reserved_identifier(entry->name) || !matches_typed(entry->name, typed) ||
+            string_list_contains(names, entry->name))
+        {
+            continue;
+        }
+        string_list_add(names, entry->name);
+        char detail[256];
+        symbol_detail(header, &entry->symbol, detail, sizeof(detail));
+        char doc[MAX_DOC_LENGTH];
+        symbol_documentation(header, &entry->symbol, doc, sizeof(doc));
+
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "label", entry->name);
+        cJSON_AddNumberToObject(item, "kind", entry->kind);
+        cJSON_AddStringToObject(item, "detail", detail);
+        if (doc[0])
+        {
+            cJSON_AddStringToObject(item, "documentation", doc);
+        }
+        cJSON_AddItemToArray(items, item);
+    }
+
+    char header_dir[MAX_PATH_LEN];
+    directory_of(path, header_dir, sizeof(header_dir));
+    for (int i = 0; i < header->include_count; i++)
+    {
+        if (header->includes[i].is_system)
+        {
+            continue;
+        }
+        char *child = find_header(header->includes[i].name, header_dir, dirs, NULL, 0);
+        if (child)
+        {
+            add_completion_items(child, typed, dirs, visited, names, items, depth + 1);
+            libc_free(child);
+        }
+    }
+}
+
+struct cJSON *lsp_c_headers_completion(const char *document_path, const char *source, int line,
+                                       int col)
+{
+    if (!document_path || !source || col < 0)
+    {
+        return NULL;
+    }
+    const char *p = source;
+    for (int i = 0; i < line && p; i++)
+    {
+        p = strchr(p, '\n');
+        if (p)
+        {
+            p++;
+        }
+    }
+    if (!p)
+    {
+        return NULL;
+    }
+    const char *line_end = strchr(p, '\n');
+    int length = line_end ? (int)(line_end - p) : (int)strlen(p);
+    if (col > length)
+    {
+        col = length;
+    }
+
+    // `alias::typed|`
+    int typed_start = col;
+    while (typed_start > 0 && is_identifier_char(p[typed_start - 1]))
+    {
+        typed_start--;
+    }
+    if (typed_start < 3 || p[typed_start - 1] != ':' || p[typed_start - 2] != ':')
+    {
+        return NULL;
+    }
+    int alias_end = typed_start - 2;
+    int alias_start = alias_end;
+    while (alias_start > 0 && is_identifier_char(p[alias_start - 1]))
+    {
+        alias_start--;
+    }
+    char typed[MAX_VAR_NAME_LEN];
+    size_t typed_length = (size_t)(col - typed_start);
+    if (alias_start == alias_end || typed_length >= sizeof(typed))
+    {
+        return NULL;
+    }
+    memcpy(typed, p + typed_start, typed_length);
+    typed[typed_length] = '\0';
+
+    CHeaderOrigin origin;
+    if (lsp_c_headers_origin_at(document_path, source, line, alias_start, &origin) !=
+            C_HEADER_ALIAS_USE ||
+        !origin.path[0])
+    {
+        return NULL;
+    }
+
+    SearchDirList dirs = {0};
+    collect_search_dirs(source, document_path, &dirs);
+    StringList visited = {0};
+    StringList names = {0};
+    cJSON *items = cJSON_CreateArray();
+    add_completion_items(origin.path, typed, &dirs, &visited, &names, items, 0);
+    string_list_free(&names);
+    string_list_free(&visited);
+    search_dirs_free(&dirs);
+    return items;
 }
 
 /* --- Locations --- */
