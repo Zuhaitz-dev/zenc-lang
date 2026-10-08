@@ -17,6 +17,10 @@ int pipe_out[2];
 pid_t child_pid;
 // Checks that report a failure and carry on; main() exits with 1 if any did.
 static int failures = 0;
+// Absolute path of ./zc, so that the server can run from another directory.
+static char zc_path[4096] = "./zc";
+// Working directory of the next server; NULL keeps the runner's (the repo root).
+static const char *lsp_cwd = NULL;
 
 static ZC_NORETURN void fail(const char *msg)
 {
@@ -44,7 +48,11 @@ static void start_lsp_server()
         close(pipe_in[1]);
         close(pipe_out[0]);
         close(pipe_out[1]);
-        execl("./zc", "zc", "lsp", NULL);
+        if (lsp_cwd && chdir(lsp_cwd) != 0)
+        {
+            fail("chdir to the server's working directory failed");
+        }
+        execl(zc_path, "zc", "lsp", NULL);
         fail("Execl failed");
     }
     else
@@ -1764,11 +1772,91 @@ static void test_index_exclude(void)
     printf("PASS: test_index_exclude\n");
 }
 
+// A project of its own (no std/ inside, unlike the compiler's tree) imports the stdlib. The
+// server must find it where the compiler finds it, not under the workspace root.
+static void test_std_import_in_other_project(void)
+{
+    printf("Running test_std_import_in_other_project...\n");
+    mkdir("/tmp/zc_lsp_std", 0755);
+    write_config_fixture("/tmp/zc_lsp_std/main.zc",
+                         "import \"std/vec.zc\"\nfn main() { let v = Vec<int>::new(); }\n");
+    const char *main_src =
+        "import \\\"std/vec.zc\\\"\\nfn main() { let v = Vec<int>::new(); }\\n";
+
+    // An editor starts the server in the workspace, where "./std" does not exist.
+    global_len = 0;
+    global_buf[0] = 0;
+    lsp_cwd = "/tmp/zc_lsp_std";
+    start_lsp_server();
+    lsp_cwd = NULL;
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 1300, \"method\": \"initialize\", \"params\": "
+                 "{\"rootUri\": \"file:///tmp/zc_lsp_std\"}}");
+    free(wait_for_response(1300));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"initialized\", \"params\": {}}");
+
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+             "{\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_std/main.zc\", "
+             "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"%s\"}}}",
+             main_src);
+    send_request(json);
+
+    // As in test_project_config: the diagnostics arrive before the response to this request.
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1301, \"method\": \"textDocument/documentSymbol\", "
+        "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_std/main.zc\"}}}");
+    char *diagnostics = NULL;
+    for (int i = 0; i < 50; i++)
+    {
+        char *msg = read_message();
+        if (!msg)
+        {
+            break;
+        }
+        if (strstr(msg, "textDocument/publishDiagnostics") && strstr(msg, "zc_lsp_std/main.zc"))
+        {
+            free(diagnostics);
+            diagnostics = msg;
+        }
+        else if (strstr(msg, "\"id\":1301"))
+        {
+            free(msg);
+            break;
+        }
+        else
+        {
+            free(msg);
+        }
+    }
+    if (!diagnostics)
+    {
+        fail("No diagnostics received for main.zc");
+    }
+    if (strstr(diagnostics, "Could not find module"))
+    {
+        printf("diagnostics: %s\n", diagnostics);
+        fail("A stdlib import was not resolved in a workspace outside the compiler's tree");
+    }
+    free(diagnostics);
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1302, \"method\": \"shutdown\", \"params\": null}");
+    free(wait_for_response(1302));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
+    waitpid(child_pid, NULL, 0);
+    printf("PASS: test_std_import_in_other_project\n");
+}
+
 int main()
 {
     // Don't die with a cryptic 141 (SIGPIPE) if the LSP server crashes and
     // closes its pipe; send_request will report a clear failure instead.
     signal(SIGPIPE, SIG_IGN);
+    if (!realpath("./zc", zc_path))
+    {
+        fail("./zc not found: run the LSP tests from the repository root");
+    }
 
     start_lsp_server();
     test_initialize();
@@ -1805,6 +1893,7 @@ int main()
     test_index_gitignore();
     test_project_config();
     test_index_exclude();
+    test_std_import_in_other_project();
     if (failures > 0)
     {
         fprintf(stderr, "TEST FAIL: %d LSP check(s) failed\n", failures);
