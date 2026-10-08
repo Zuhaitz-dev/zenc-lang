@@ -513,6 +513,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 zfree(mangled_idx);
                 zfree(mangled_get);
             }
+            // The overload lookup above looks through a pointer to a struct;
+            // the element type comes from the array/pointer type itself.
+            if (is_ptr)
+            {
+                t = node->index.array->type_info;
+            }
             if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER || t->kind == TYPE_VECTOR)
             {
                 if (t->kind == TYPE_VECTOR && !t->inner && t->name)
