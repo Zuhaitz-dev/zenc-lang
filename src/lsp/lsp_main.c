@@ -44,6 +44,7 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
 
     cfg->mode_lsp = 1;
     compiler->diag_consumer = lsp_diagnose_consumer;
+    fprintf(stderr, "zls: zc-lsp %s\n", ZEN_VERSION);
 
     // root_path (where std/ is found) was set by z_compiler_setup, which looks for std.zc in
     // the executable's directory and its parents.

@@ -3,6 +3,7 @@
 #include "lsp_config.h"
 #include "../utils/utils.h"
 #include "../constants.h"
+#include "../platform/os.h"
 #include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -29,6 +30,9 @@ static size_t g_built_total = 0;
 static int g_workspace_indexed = 0;
 // The compiler the server works with, owned by zc-lsp's main(). Projects point to it.
 static ZenCompiler *g_server_compiler = NULL;
+
+// Files parsed by the current workspace indexing, for its summary.
+static int g_indexed_file_count = 0;
 
 static void scan_dir(const char *dir_path);
 static void load_ignore_rules(const char *root_path);
@@ -78,6 +82,7 @@ void lsp_project_init(const char *root_path)
 
     g_project = xcalloc(1, sizeof(LSPProject));
     g_project->root_path = xstrdup(root_path);
+    fprintf(stderr, "zls: project root: %s\n", root_path);
     g_project->use_gitignore = 1;
 
     // Create a persistent global context
@@ -126,9 +131,13 @@ void lsp_project_index_workspace(void)
     // Scan workspace
     load_ignore_rules(g_project->root_path);
     g_scan_root_length = strlen(g_project->root_path);
+    double start = z_get_monotonic_time();
+    g_indexed_file_count = 0;
     g_is_indexing = 1;
     scan_dir(g_project->root_path);
     g_is_indexing = 0;
+    fprintf(stderr, "zls: indexed %d files in %.0f ms\n", g_indexed_file_count,
+            (z_get_monotonic_time() - start) * 1000.0);
     g_ignore_rules = NULL;
     g_ignore_rule_count = 0;
 
@@ -426,6 +435,7 @@ static void scan_file(const char *path)
     }
 
     lsp_project_update_file(uri, src);
+    g_indexed_file_count++;
 
     // Free source after update
     zfree(src);
