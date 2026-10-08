@@ -43,6 +43,28 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     }
 }
 
+// Follows `alias A = B;` by name until it reaches a name that is not an alias
+// (the parser stores the target already mangled: `Handle<K>` -> `Handle__K`).
+// Opaque aliases stop the chain: they must stay distinct types.
+static const char *resolve_alias_name(TypeChecker *tc, const char *name)
+{
+    for (int depth = 0; name && depth < 16; depth++)
+    {
+        TypeAlias *ta = find_type_alias_node(tc->pctx, name);
+        if (ta && ta->is_opaque)
+        {
+            return name;
+        }
+        const char *next = find_type_alias(tc->pctx, name);
+        if (!next || strcmp(next, name) == 0)
+        {
+            return name;
+        }
+        name = next;
+    }
+    return name;
+}
+
 Type *resolve_alias(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && t->inner)
@@ -880,6 +902,19 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         }
     }
 
+    // Named types that are aliases of one another (`alias PersonId =
+    // Handle<PersonKind>`): the alias may reach here as a struct named after it.
+    if (resolved_target->kind != TYPE_POINTER && resolved_value->kind != TYPE_POINTER &&
+        resolved_target->name && resolved_value->name)
+    {
+        const char *target_name = resolve_alias_name(tc, resolved_target->name);
+        const char *value_name = resolve_alias_name(tc, resolved_value->name);
+        if (target_name && value_name && strcmp(target_name, value_name) == 0)
+        {
+            return 1;
+        }
+    }
+
     // Fast path: exact match
     if (type_eq(target, value))
     {
@@ -1125,8 +1160,12 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         }
     }
 
-    // Find struct definition
+    // Find struct definition (the literal may name it through an alias)
     ASTNode *def = find_struct_def(tc->pctx, node->struct_init.struct_name);
+    if (!def)
+    {
+        def = find_struct_def(tc->pctx, resolve_alias_name(tc, node->struct_init.struct_name));
+    }
     if (!def)
     {
         char msg[MAX_SHORT_MSG_LEN];
