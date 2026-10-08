@@ -87,7 +87,8 @@ void z_compiler_setup(ZenCompiler *compiler)
     {
         cfg->root_path = xstrdup(self_path);
 
-        // Improve root_path discovery: look for std.zc in root_path or its parents
+        // Improve root_path discovery: look for std.zc in root_path or its parents, and in
+        // their share/zenc (where `make install` puts it: PREFIX/bin/zc finds PREFIX/share/zenc).
         char current_root[MAX_PATH_SIZE];
         strncpy(current_root, self_path, sizeof(current_root) - 1);
         current_root[sizeof(current_root) - 1] = '\0';
@@ -101,6 +102,14 @@ void z_compiler_setup(ZenCompiler *compiler)
                 // Found it!
                 zfree(cfg->root_path);
                 cfg->root_path = xstrdup(current_root);
+                break;
+            }
+            snprintf(check_path, sizeof(check_path), "%s/share/zenc/std.zc", current_root);
+            if (access(check_path, F_OK) == 0)
+            {
+                zfree(cfg->root_path);
+                snprintf(check_path, sizeof(check_path), "%s/share/zenc", current_root);
+                cfg->root_path = xstrdup(check_path);
                 break;
             }
 
