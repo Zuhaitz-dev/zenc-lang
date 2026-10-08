@@ -1042,6 +1042,91 @@ static void test_c_header_completion(void)
     printf("PASS: test_c_header_completion\n");
 }
 
+static void write_index_fixture(const char *path, const char *content)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0 || write(fd, content, strlen(content)) != (ssize_t)strlen(content))
+    {
+        fail("Could not write an indexing fixture");
+    }
+    close(fd);
+}
+
+// The server lists the symbols of a file it was never sent only if the workspace scan indexed
+// it: `expected` is its symbol, or NULL when the scan must have skipped the file.
+static void expect_indexed(int id, const char *relative_path, const char *expected)
+{
+    char json[512];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/documentSymbol\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_index/%s\"}}}",
+             id, relative_path);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    cJSON *name =
+        cJSON_GetObjectItem(cJSON_GetArrayItem(cJSON_GetObjectItem(parsed, "result"), 0), "name");
+    int indexed = cJSON_IsString(name);
+    if (expected ? !indexed || strcmp(name->valuestring, expected) != 0 : indexed)
+    {
+        printf("%s: expected %s, got %s\n", relative_path, expected ? expected : "not indexed",
+               response ? response : "no response");
+        fail("The workspace scan did not follow the root .gitignore");
+    }
+    cJSON_Delete(parsed);
+    free(response);
+}
+
+static void test_index_gitignore(void)
+{
+    printf("Running test_index_gitignore...\n");
+    const char *directories[] = {"/tmp/zc_lsp_index",
+                                 "/tmp/zc_lsp_index/kept",
+                                 "/tmp/zc_lsp_index/ignored",
+                                 "/tmp/zc_lsp_index/nested",
+                                 "/tmp/zc_lsp_index/nested/ignored",
+                                 "/tmp/zc_lsp_index/anchored_dir",
+                                 "/tmp/zc_lsp_index/nested/anchored_dir"};
+    for (size_t i = 0; i < sizeof(directories) / sizeof(directories[0]); i++)
+    {
+        mkdir(directories[i], 0755);
+    }
+    write_index_fixture("/tmp/zc_lsp_index/.gitignore", "# generated\n"
+                                                        "ignored/\n"
+                                                        "*.tmp.zc\n"
+                                                        "/anchored_dir\n");
+    write_index_fixture("/tmp/zc_lsp_index/kept/k.zc", "fn kept_fn() {}\n");
+    write_index_fixture("/tmp/zc_lsp_index/ignored/i.zc", "fn ignored_fn() {}\n");
+    write_index_fixture("/tmp/zc_lsp_index/nested/ignored/deep.zc", "fn deep_fn() {}\n");
+    write_index_fixture("/tmp/zc_lsp_index/x.tmp.zc", "fn tmp_fn() {}\n");
+    write_index_fixture("/tmp/zc_lsp_index/anchored_dir/a.zc", "fn anchored_fn() {}\n");
+    write_index_fixture("/tmp/zc_lsp_index/nested/anchored_dir/b.zc",
+                        "fn nested_anchored_fn() {}\n");
+
+    // A server of its own, rooted there, which indexes the workspace on `initialized`.
+    global_len = 0;
+    global_buf[0] = 0;
+    start_lsp_server();
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 1000, \"method\": \"initialize\", \"params\": "
+                 "{\"rootUri\": \"file:///tmp/zc_lsp_index\"}}");
+    free(wait_for_response(1000));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"initialized\", \"params\": {}}");
+
+    expect_indexed(1001, "kept/k.zc", "kept_fn");
+    expect_indexed(1002, "ignored/i.zc", NULL);
+    expect_indexed(1003, "nested/ignored/deep.zc", NULL);
+    expect_indexed(1004, "x.tmp.zc", NULL);
+    expect_indexed(1005, "anchored_dir/a.zc", NULL);
+    expect_indexed(1006, "nested/anchored_dir/b.zc", "nested_anchored_fn");
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1007, \"method\": \"shutdown\", \"params\": null}");
+    free(wait_for_response(1007));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
+    waitpid(child_pid, NULL, 0);
+    printf("PASS: test_index_gitignore\n");
+}
+
 static void test_shutdown()
 {
     printf("Running test_shutdown...\n");
@@ -1532,6 +1617,7 @@ int main()
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);
+    test_index_gitignore();
     printf("All LSP tests passed!\n");
     return 0;
 }

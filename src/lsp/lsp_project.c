@@ -2,6 +2,7 @@
 #include "lsp_project.h"
 #include "../utils/utils.h"
 #include "../constants.h"
+#include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +30,22 @@ static int g_workspace_indexed = 0;
 static ZenCompiler *g_server_compiler = NULL;
 
 static void scan_dir(const char *dir_path);
+static void load_ignore_rules(const char *root_path);
+
+/**
+ * @brief A pattern of the project's root .gitignore, which the workspace scan skips.
+ */
+typedef struct
+{
+    char *pattern;
+    int directory_only; ///< Written with a trailing `/`.
+    int anchored;       ///< Relative to the root rather than a name at any depth.
+} IgnoreRule;
+
+// Rules of the scan in progress (only valid while lsp_project_index_workspace() runs).
+static IgnoreRule *g_ignore_rules = NULL;
+static int g_ignore_rule_count = 0;
+static size_t g_scan_root_length = 0;
 
 // Initialize the project with a root directory
 
@@ -109,9 +126,13 @@ void lsp_project_index_workspace(void)
     }
 
     // Scan workspace
+    load_ignore_rules(g_project->root_path);
+    g_scan_root_length = strlen(g_project->root_path);
     g_is_indexing = 1;
     scan_dir(g_project->root_path);
     g_is_indexing = 0;
+    g_ignore_rules = NULL;
+    g_ignore_rule_count = 0;
 
     g_workspace_indexed = 1;
     g_built_total = g_arena.total_alloc;
@@ -236,6 +257,129 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
 }
 
 // Default error handler for indexing phase
+// `*` and `?` match within a path component, as in .gitignore.
+static int glob_match(const char *pattern, const char *text)
+{
+    while (*pattern)
+    {
+        if (*pattern == '*')
+        {
+            pattern++;
+            for (;;)
+            {
+                if (glob_match(pattern, text))
+                {
+                    return 1;
+                }
+                if (!*text || *text == '/')
+                {
+                    return 0;
+                }
+                text++;
+            }
+        }
+        if (!*text || (*pattern == '?' ? *text == '/' : *pattern != *text))
+        {
+            return 0;
+        }
+        pattern++;
+        text++;
+    }
+    return !*text;
+}
+
+// Reads the root .gitignore. Supports the common subset: blank lines and `#` comments, names
+// that match at any depth (`build/`, `*.dSYM/`), paths anchored to the root (`/repo`,
+// `docs/plans/`), a trailing `/` for directories only, `*`, `?` and a leading `**/`.
+// Negations (`!`) and other uses of `**` are ignored.
+static void load_ignore_rules(const char *root_path)
+{
+    g_ignore_rules = NULL;
+    g_ignore_rule_count = 0;
+    char path[MAX_PATH_LEN];
+    snprintf(path, sizeof(path), "%s/.gitignore", root_path);
+    struct stat st;
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+    {
+        return;
+    }
+    char *text = load_file(path, NULL, g_project->ctx->config);
+    if (!text)
+    {
+        return;
+    }
+
+    int capacity = 1;
+    for (const char *c = text; *c; c++)
+    {
+        capacity += *c == '\n';
+    }
+    g_ignore_rules = xcalloc((size_t)capacity, sizeof(IgnoreRule));
+
+    char *line = text;
+    while (line && *line)
+    {
+        char *next = strchr(line, '\n');
+        if (next)
+        {
+            *next++ = '\0';
+        }
+        size_t length = strlen(line);
+        while (length > 0 && isspace((unsigned char)line[length - 1]))
+        {
+            line[--length] = '\0';
+        }
+
+        char *pattern = line;
+        IgnoreRule rule = {0};
+        if (length > 0 && pattern[length - 1] == '/')
+        {
+            rule.directory_only = 1;
+            pattern[--length] = '\0';
+        }
+        if (strncmp(pattern, "**/", 3) == 0)
+        {
+            pattern += 3;
+        }
+        else if (pattern[0] == '/')
+        {
+            rule.anchored = 1;
+            pattern++;
+        }
+        else if (strchr(pattern, '/'))
+        {
+            rule.anchored = 1;
+        }
+
+        if (pattern[0] && pattern[0] != '#' && pattern[0] != '!' && !strstr(pattern, "**"))
+        {
+            rule.pattern = pattern;
+            g_ignore_rules[g_ignore_rule_count++] = rule;
+        }
+        line = next;
+    }
+    fprintf(stderr, "zls: .gitignore: %d patterns\n", g_ignore_rule_count);
+}
+
+// Whether the root .gitignore ignores `path` (`name` is its last component).
+static int is_ignored(const char *path, const char *name, int is_directory)
+{
+    const char *relative = strlen(path) > g_scan_root_length ? path + g_scan_root_length + 1 : name;
+    for (int i = 0; i < g_ignore_rule_count; i++)
+    {
+        const IgnoreRule *rule = &g_ignore_rules[i];
+        if (rule->directory_only && !is_directory)
+        {
+            continue;
+        }
+        if (glob_match(rule->pattern, rule->anchored ? relative : name))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void scan_file(const char *path)
 {
     // Skip if not .zc
@@ -297,6 +441,14 @@ static void scan_dir(const char *dir_path)
         struct stat st;
         if (stat(path, &st) == 0)
         {
+            if (is_ignored(path, dir->d_name, S_ISDIR(st.st_mode)))
+            {
+                if (S_ISDIR(st.st_mode))
+                {
+                    fprintf(stderr, "zls: skipping %s (.gitignore)\n", path);
+                }
+                continue;
+            }
             if (S_ISDIR(st.st_mode))
             {
                 scan_dir(path);
