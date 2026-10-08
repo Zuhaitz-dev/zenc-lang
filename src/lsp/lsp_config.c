@@ -18,7 +18,11 @@ typedef struct
                          LSPProject *project);
 } ConfigKey;
 
-// Log a problem to stderr and tell the client about it.
+// Set after the first load. An arena rebuild loads the file again, and the client has already
+// been told about its problems.
+static int g_reported = 0;
+
+// Log a problem to stderr and, on the first load, tell the client about it.
 static void config_warn(const char *fmt, ...) ZEN_FORMAT_PRINTF(1, 2);
 
 static void config_warn(const char *fmt, ...)
@@ -30,6 +34,10 @@ static void config_warn(const char *fmt, ...)
     va_end(args);
 
     fprintf(stderr, "zls: %s\n", msg);
+    if (g_reported)
+    {
+        return;
+    }
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
@@ -159,7 +167,7 @@ static int line_of(const char *source, const char *at)
     return line;
 }
 
-void lsp_config_load(const char *root_path, CompilerConfig *cfg, LSPProject *project)
+static void load_config(const char *root_path, CompilerConfig *cfg, LSPProject *project)
 {
     char path[MAX_PATH_LEN];
     snprintf(path, sizeof(path), "%s/" CONFIG_FILE_NAME, root_path);
@@ -225,4 +233,10 @@ void lsp_config_load(const char *root_path, CompilerConfig *cfg, LSPProject *pro
 
     fprintf(stderr, "zls: " CONFIG_FILE_NAME ": %s\n", summary[0] ? summary : "nothing to apply");
     cJSON_Delete(json);
+}
+
+void lsp_config_load(const char *root_path, CompilerConfig *cfg, LSPProject *project)
+{
+    load_config(root_path, cfg, project);
+    g_reported = 1;
 }
