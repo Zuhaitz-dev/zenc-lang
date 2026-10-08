@@ -542,8 +542,13 @@ test: $(TARGET) $(PLUGINS)
 	./tests/scripts/run_repl_tests.sh
 	./tests/scripts/run_cli_tests.sh
 	./tests/scripts/run_diagnostic_output_tests.sh
+	./tests/scripts/run_check_clean.sh
 	$(MAKE) test-unit
 	$(MAKE) test-misra
+
+# Files that the full typechecker (`zc check`) must accept with no errors.
+test-check: $(TARGET)
+	./tests/scripts/run_check_clean.sh
 
 test-misra: $(TARGET)
 	./tests/scripts/run_misra_tests.sh
