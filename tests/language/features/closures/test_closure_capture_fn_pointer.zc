@@ -1,0 +1,54 @@
+// language/features/closures: test_closure_capture_fn_pointer
+//
+// A closure can capture raw function pointers (`fn*`), whether their type is
+// written directly or through an alias, and call them.
+alias UnaryFn = fn*(int) -> int;
+alias Closure = fn(int) -> int;
+
+fn doubler(x: int) -> int {
+    return x * 2;
+}
+
+fn add_one(x: int) -> int {
+    return x + 1;
+}
+
+fn compose(f: UnaryFn, g: UnaryFn) -> Closure {
+    return fn(x: int) -> int {
+        return f(g(x));
+    };
+}
+
+fn apply_twice(f: fn*(int) -> int) -> Closure {
+    return fn(x: int) -> int {
+        return f(f(x));
+    };
+}
+
+test "closure captures aliased function pointers" {
+    let composed = compose(doubler, add_one);
+    assert(composed(3) == 8, "doubler(add_one(3))");
+}
+
+test "closure captures a function pointer written inline" {
+    let twice = apply_twice(add_one);
+    assert(twice(5) == 7, "add_one(add_one(5))");
+}
+
+test "local function pointer captured by a closure" {
+    let f: UnaryFn = doubler;
+    let call = fn(x: int) -> int {
+        return f(x) + 1;
+    };
+    assert(call(4) == 9, "doubler(4) + 1");
+}
+
+test "function pointer captured by reference" {
+    let f: UnaryFn = doubler;
+    let call = fn [&f] (x: int) -> int {
+        return f(x);
+    };
+    assert(call(3) == 6, "calls doubler");
+    f = add_one;
+    assert(call(3) == 4, "sees the reassigned pointer");
+}

@@ -377,7 +377,17 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                     tstr = xstrdup(node->lambda.captured_types[i]);
                 }
 
-                EMIT(ctx, "*(%s*)(&_z_ctx_%d->%s) = ", tstr, lid, node->lambda.captured_vars[i]);
+                const char *cap_name = node->lambda.captured_vars[i];
+                if (strstr(tstr, "(*"))
+                {
+                    // A function pointer type cannot be spelled as a cast target by
+                    // appending '*'; assign the field directly.
+                    EMIT(ctx, "_z_ctx_%d->%s = ", lid, cap_name);
+                }
+                else
+                {
+                    EMIT(ctx, "*(%s*)(&_z_ctx_%d->%s) = ", tstr, lid, cap_name);
+                }
                 zfree(tstr);
 
                 ASTNode *var_node = ast_create(NODE_EXPR_VAR);

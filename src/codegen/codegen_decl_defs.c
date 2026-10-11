@@ -368,6 +368,25 @@ static void collect_lambda_return_types(ParserContext *ctx, ASTNode *node, char 
 // When the lambda's return type was not propagated from a call signature (e.g.
 // lambdas inside f-string interpolations, which skip the normal type-check pass),
 // infer it from the body's return statements.
+// Emits one field of a closure context struct. A function pointer type needs the
+// field name inside its declarator (`int32_t (*f)(int32_t)`), which
+// emit_var_decl_type does.
+static void emit_lambda_ctx_field(ParserContext *ctx, const char *tstr, const char *name,
+                                  int by_ref)
+{
+    if (strstr(tstr, "(*"))
+    {
+        size_t decl_sz = strlen(name) + 2;
+        char *decl_name = xmalloc(decl_sz);
+        snprintf(decl_name, decl_sz, "%s%s", by_ref ? "*" : "", name);
+        emit_var_decl_type(ctx, tstr, decl_name);
+        EMIT(ctx, ";\n");
+        zfree(decl_name);
+        return;
+    }
+    EMIT(ctx, by_ref ? "%s* %s;\n" : "%s %s;\n", tstr, name);
+}
+
 static void infer_lambda_return_type(ParserContext *ctx, ASTNode *node)
 {
     if (node->type_info && node->type_info->inner && node->type_info->inner->kind != TYPE_UNKNOWN)
@@ -428,7 +447,7 @@ void emit_lambda_defs(ParserContext *ctx)
                     {
                         tstr = xstrdup(node->lambda.captured_types[i]);
                     }
-                    EMIT(ctx, "%s* %s;\n", tstr, node->lambda.captured_vars[i]);
+                    emit_lambda_ctx_field(ctx, tstr, node->lambda.captured_vars[i], 1);
                     zfree(tstr);
                 }
                 else
@@ -442,7 +461,7 @@ void emit_lambda_defs(ParserContext *ctx)
                     {
                         tstr = xstrdup(node->lambda.captured_types[i]);
                     }
-                    EMIT(ctx, "%s %s;\n", tstr, node->lambda.captured_vars[i]);
+                    emit_lambda_ctx_field(ctx, tstr, node->lambda.captured_vars[i], 0);
                     zfree(tstr);
 
                     char *tname = node->lambda.captured_types[i];
