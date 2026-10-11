@@ -55,9 +55,11 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                 }
                 else
                 {
-                    // Simple enum: direct comparison via raw C (no .tag)
+                    // Simple enum: compare the values as integers. A plain `==` would
+                    // call this very `eq`, and a `raw` block hides the `return` from
+                    // the return-path check.
                     snprintf(body, sizeof(body),
-                             "raw { return *self == *other; }"); /* TODO: check buffer size */
+                             "return (int)*self == (int)*other;"); /* TODO: check buffer size */
                 }
             }
             else
