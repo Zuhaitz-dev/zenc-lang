@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// compiler/diagnostics: an interpolation must hold a single expression.
+// `{x y}` used to print `x` and silently drop `y`.
+
+fn main() {
+    let x = 1;
+    let y = 2;
+    println "{x y}";
+}

@@ -1,0 +1,32 @@
+// fstrings: every interpolation holds exactly one expression; these shapes
+// must keep working once leftover tokens are rejected.
+
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+impl Point {
+    fn sum(self) -> int {
+        return self.x + self.y;
+    }
+}
+
+enum Color { Red, Green }
+
+test "interpolations with a single expression" {
+    let x = 3;
+    let y = 4;
+    let p = Point { x: 1, y: 2 };
+    let arr: int[3] = [7, 8, 9];
+    let s = "{x + y}|{add(x, y)}|{p.sum()}|{arr[1]}|{x:03d}|{(int)Color::Green}|{{lit}}";
+    assert(strcmp(s, "7|7|3|8|003|1|{{lit}}") == 0, "single expressions");
+    let m = """
+a {x} {{b}}
+""";
+    assert(strstr(m, "a 3 {{b}}") != NULL, "multiline interpolation");
+}
