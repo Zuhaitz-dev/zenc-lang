@@ -2740,11 +2740,17 @@ static int check_module_header(const ModuleHeader *entry, void *data)
     libc_free(path);
     string_list_add(&check->warned, header->name);
 
+    // Three paths may not fit: a message cut at the buffer size still points at the problem.
     char message[MAX_PATH_LEN * 2];
-    snprintf(message, sizeof(message),
-             "C header '%s' (imported by %s) is only found through %s, but zc build only "
-             "applies the directives of the file it compiles: add that directive here.",
-             header->name, file_label(entry->module_path), found_by);
+    int written = snprintf(message, sizeof(message),
+                           "C header '%s' (imported by %s) is only found through %s, but zc "
+                           "build only applies the directives of the file it compiles: add "
+                           "that directive here.",
+                           header->name, file_label(entry->module_path), found_by);
+    if (written < 0)
+    {
+        return 0;
+    }
     cJSON *diagnostic = cJSON_CreateObject();
     cJSON_AddItemToObject(
         diagnostic, "range",
