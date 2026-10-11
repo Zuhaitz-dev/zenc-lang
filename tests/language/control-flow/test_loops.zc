@@ -73,8 +73,6 @@ test "test_loops" {
     
 }
 
-}
-
 fn print_nums(list: [int]) {
     let i = 0;
     while (i < list.len) {

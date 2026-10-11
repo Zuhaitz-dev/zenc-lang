@@ -5,9 +5,7 @@ extern struct sockaddr;
 extern let af_inet: int;
 extern let NULL: void*;
 
-namespace ws2 {
-    extern fn WSAStringToAddressA(addr_str: string, af: int, p: void*, sa: void*, size: void*);
-}
+extern fn WSAStringToAddressA(addr_str: string, af: int, p: void*, sa: void*, size: void*);
 
 impl sockaddr {
    fn init (self, addr_str: string) {

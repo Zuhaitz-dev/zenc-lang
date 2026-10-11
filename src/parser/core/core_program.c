@@ -12,6 +12,18 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+// Anything the top-level loop does not recognise is an error: skipping it
+// silently made declarations vanish (`const X: T = v;`, `extern let x: T;`).
+static void report_unexpected_toplevel(Token t)
+{
+    const char *hints[] = {"Top-level declarations start with fn, struct, enum, union, "
+                           "trait, impl, let, def, alias, import, extern, raw, test...",
+                           NULL};
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Unexpected '%.*s' at top level", (int)t.len, t.start);
+    zpanic_with_hints(t, msg, hints);
+}
+
 ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
 {
     ASTNode *h = 0, *tl = 0;
@@ -375,7 +387,9 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
             }
             else
             {
-                lexer_next(l);
+                report_unexpected_toplevel(t);
+                lexer_next(l); // fault-tolerant (LSP): resync on the next declaration
+                continue;
             }
         }
         else if (t.kind == TOK_OPAQUE)
@@ -435,9 +449,15 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
         {
             s = parse_test(ctx, l);
         }
+        else if (t.kind == TOK_SEMICOLON)
+        {
+            lexer_next(l); // a stray `;` between declarations is harmless
+        }
         else
         {
-            lexer_next(l);
+            report_unexpected_toplevel(t);
+            lexer_next(l); // fault-tolerant (LSP): resync on the next declaration
+            continue;
         }
 
         if (s && s->kind == NODE_FUNCTION)
