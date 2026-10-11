@@ -1,0 +1,71 @@
+// stdlib/collections: `? "prompt" (args)` prints the prompt without a newline
+// and scans a line from stdin; a `string` argument receives a newly allocated
+// copy of one whitespace-separated word (portable, no glibc `%ms`).
+
+raw {
+#include <stdio.h>
+#include <string.h>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+static int zt_saved_stdout = -1;
+
+static void zt_write_file(const char *path, const char *text) {
+    FILE *f = fopen(path, "w");
+    if (f) { fputs(text, f); fclose(f); }
+}
+
+static void zt_stdin_from(const char *path) {
+    if (!freopen(path, "r", stdin)) { perror("freopen"); }
+}
+
+static void zt_stdout_to(const char *path) {
+    fflush(stdout);
+    zt_saved_stdout = dup(fileno(stdout));
+    FILE *f = fopen(path, "w");
+    if (f) { dup2(fileno(f), fileno(stdout)); fclose(f); }
+}
+
+static void zt_stdout_restore(void) {
+    fflush(stdout);
+    if (zt_saved_stdout >= 0) { dup2(zt_saved_stdout, fileno(stdout)); close(zt_saved_stdout); }
+}
+
+static int zt_file_equals(const char *path, const char *expected) {
+    char buf[256] = {0};
+    FILE *f = fopen(path, "r");
+    if (!f) { return 0; }
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    return strcmp(buf, expected) == 0;
+}
+}
+
+test "prompt_scan_input" {
+    let input_path = "tests/_prompt_scan_input.txt";
+    let output_path = "tests/_prompt_scan_output.txt";
+    zt_write_file(input_path, "Ada 36\nsecond line\n");
+    zt_stdin_from(input_path);
+
+    let name: string = NULL;
+    let age: int = 0;
+    zt_stdout_to(output_path);
+    let read = ? "Name and age? " (name, age);
+    let word: string = NULL;
+    ? "Next? " (word);
+    zt_stdout_restore();
+
+    expect_eq(read, 2, "both values scanned");
+    expect(name != NULL && strcmp(name, "Ada") == 0, "string argument gets the word");
+    expect_eq(age, 36, "int argument");
+    expect(word != NULL && strcmp(word, "second") == 0, "next line, first word");
+    expect(zt_file_equals(output_path, "Name and age? Next? ") != 0, "prompts without newline");
+
+    free(name);
+    free(word);
+    remove(input_path);
+    remove(output_path);
+}

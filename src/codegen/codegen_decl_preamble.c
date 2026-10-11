@@ -238,11 +238,21 @@ void emit_preamble(ParserContext *ctx)
                 "if(len "
                 "== 0 && c == EOF) { z_free(line); return NULL; } line[len] = 0; return line; }\n");
         }
+        // Scans one line with `fmt`; every argument is a pointer. A `%ms` (one word
+        // into a new string, a glibc-only conversion) is done portably: `%s` into a
+        // buffer as long as the line, handed to the `char**` argument on success.
         EMIT(ctx, "%s",
              "static __attribute__((unused)) int _z_scan_helper(const char *fmt, ...) { char *l = "
-             "_z_readln_raw(); if(!l) "
-             "return 0; va_list ap; va_start(ap, fmt); int r = vsscanf(l, fmt, ap); va_end(ap); "
-             "z_free(l); return r; }\n");
+             "_z_readln_raw(); if(!l) return 0; void *a[16] = {0}; void *p[16] = {0}; char "
+             "*own[16] = {0}; void **pa = a; void **pp = p; char **po = own; char *f = "
+             "(char*)z_malloc(strlen(fmt) + 1); if(!f) { z_free(l); return 0; } char *w = f; "
+             "va_list ap; va_start(ap, fmt); for(const char *c = fmt; *c; c++) { *w++ = *c; "
+             "if(*c == '%' && pa < a + 16) { *pa = va_arg(ap, void*); *pp = *pa; if(c[1] == 'm' "
+             "&& c[2] == 's') { *po = (char*)z_malloc(strlen(l) + 1); *pp = *po; c++; } pa++; "
+             "pp++; po++; } } va_end(ap); *w = 0; int r = sscanf(l, f, p[0], p[1], p[2], p[3], "
+             "p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]); "
+             "for(char **o = own; o < po; o++) { if(*o) { if(o - own < r) { *(char**)a[o - own] "
+             "= *o; } else { z_free(*o); } } } z_free(f); z_free(l); return r; }\n");
 
         // REPL helpers: suppress/restore stdout.
         EMIT(ctx, "%s", "static int _z_orig_stdout = -1;\n");
