@@ -722,7 +722,20 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(user_var_decl);
 
                 enter_scope(ctx);
-                add_symbol(ctx, var_name, u_type, NULL, 0);
+                // Give the symbol a parsed type as well, so a variable initialised from
+                // it (`let t = s;`) inherits the element type instead of "unknown".
+                Type *u_type_info = NULL;
+                if (u_type && !strchr(u_type, '<'))
+                {
+                    Lexer type_lex;
+                    lexer_init(&type_lex, u_type, ctx->config, ctx->current_filename);
+                    Type *parsed = parse_type_formal(ctx, &type_lex);
+                    if (parsed != NULL)
+                    {
+                        u_type_info = parsed;
+                    }
+                }
+                add_symbol(ctx, var_name, u_type, u_type_info, 0);
                 if (enum_idx_name)
                 {
                     add_symbol(ctx, enum_idx_name, "int", type_new(TYPE_INT), 0);
