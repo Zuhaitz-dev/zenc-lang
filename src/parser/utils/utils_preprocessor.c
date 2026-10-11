@@ -495,7 +495,7 @@ void try_parse_macro_const(ParserContext *ctx, const char *content)
             if (sym)
             {
                 sym->is_const_value = 1;
-                sym->const_int_val = (int)val;
+                sym->const_int_val = val;
                 sym->is_def = 1;
             }
         }
