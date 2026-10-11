@@ -1,0 +1,4 @@
+import "./_shared.zc"
+fn right_answer() -> int {
+    return shared_answer() + 1;
+}

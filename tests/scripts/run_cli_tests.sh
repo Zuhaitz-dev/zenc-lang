@@ -193,6 +193,33 @@ fn main() {
     println \"y\";
 }"
 
+# --- Diagnostics: errors reported by Zen C, not by the C compiler ------------
+
+# Builds a program that must fail with a Zen C error matching $3 (and never
+# reach the C compiler).
+diag_check() {
+    local name="$1"
+    local code="$2"
+    local pattern="$3"
+    printf '%s\n' "$code" > "$workdir/diag.zc"
+    local out
+    out=$("$ZC" build "$workdir/diag.zc" -o "$workdir/diag_out" 2>&1)
+    if echo "$out" | grep -q "$pattern" && ! echo "$out" | grep -q "C compilation failed"; then
+        check "$name" 1
+    else
+        check "$name" 0
+    fi
+}
+
+diag_check "redefined function is a Zen C error" 'fn twice() -> int { return 1; }
+fn twice() -> int { return 2; }
+fn main() { println "{twice()}"; }' "Redefinition of function 'twice'"
+
+diag_check "redefined method is a Zen C error" 'struct Counter { value: int; }
+impl Counter { fn get(self) -> int { return 1; } }
+impl Counter { fn get(self) -> int { return 2; } }
+fn main() { let c = Counter { value: 0 }; println "{c.get()}"; }' "Redefinition of method 'Counter::get'"
+
 echo "----------------------------------------"
 echo "Results (CLI):"
 echo "-> Passed:  $PASSED"

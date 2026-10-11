@@ -576,6 +576,14 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t);
 int validate_types(ParserContext *ctx);
 
 /**
+ * @brief Reports functions and methods defined twice under the same C name.
+ *
+ * Prototypes, externs, generic templates, `@cfg` definitions and definitions
+ * inside a preprocessor `#if` block are not counted. Returns 0 on error.
+ */
+int validate_function_definitions(ParserContext *ctx, ASTNode *root);
+
+/**
  * @brief Traverses all parsed structs and propagates `has_drop` from fields to their parent
  * structs.
  */
