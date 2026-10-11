@@ -633,8 +633,109 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// Struct with Drop held by an argument that references a temporary the call owns.
+static char *owned_temp_drop_type(ParserContext *ctx, ASTNode *arg)
+{
+    if (arg->kind != NODE_EXPR_UNARY || !arg->unary.owns_temp || arg->unary.temp_id > 0)
+    {
+        return NULL;
+    }
+    ASTNode *operand = arg->unary.operand;
+    char *tname = NULL;
+    if (operand->type_info && operand->type_info->kind == TYPE_STRUCT && operand->type_info->name)
+    {
+        tname = operand->type_info->name;
+    }
+    else
+    {
+        tname = infer_type(ctx, operand);
+    }
+    if (!tname || strchr(tname, '*'))
+    {
+        return NULL;
+    }
+    if (strncmp(tname, "struct ", 7) == 0)
+    {
+        tname += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, tname);
+    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
+    {
+        return tname;
+    }
+    return NULL;
+}
+
+// Emits a call that borrows temporaries with Drop (e.g. `a + make()` on an overloaded
+// operator): each temporary gets a name, and is dropped once the call has returned.
+static int emit_call_dropping_temporaries(ParserContext *ctx, ASTNode *node)
+{
+    int has_temp = 0;
+    ASTNode *arg = node->call.args;
+    while (arg)
+    {
+        if (owned_temp_drop_type(ctx, arg))
+        {
+            has_temp = 1;
+        }
+        arg = arg->next;
+    }
+    if (!has_temp || !node->type_info)
+    {
+        return 0;
+    }
+
+    int returns_value = node->type_info->kind != TYPE_VOID;
+    EMIT(ctx, "({ ");
+    arg = node->call.args;
+    while (arg)
+    {
+        char *drop_type = owned_temp_drop_type(ctx, arg);
+        if (drop_type)
+        {
+            int id = ctx->cg.tmp_counter++;
+            EMIT(ctx, "%s _z_temp_%d = ", drop_type, id);
+            codegen_expression(ctx, arg->unary.operand);
+            EMIT(ctx, "; ");
+            arg->unary.temp_id = id + 1;
+        }
+        arg = arg->next;
+    }
+
+    int result_id = ctx->cg.tmp_counter++;
+    if (returns_value)
+    {
+        EMIT(ctx, "ZC_AUTO _z_result_%d = ", result_id);
+    }
+    handle_expr_call(ctx, node);
+    EMIT(ctx, "; ");
+
+    arg = node->call.args;
+    while (arg)
+    {
+        if (arg->kind == NODE_EXPR_UNARY && arg->unary.temp_id > 0)
+        {
+            int id = arg->unary.temp_id - 1;
+            arg->unary.temp_id = 0;
+            EMIT(ctx, "%s__Drop__glue(&_z_temp_%d); ", owned_temp_drop_type(ctx, arg), id);
+        }
+        arg = arg->next;
+    }
+    if (returns_value)
+    {
+        EMIT(ctx, "_z_result_%d; ", result_id);
+    }
+    EMIT(ctx, "})");
+    return 1;
+}
+
 void handle_expr_call(ParserContext *ctx, ASTNode *node)
 {
+    if (emit_call_dropping_temporaries(ctx, node))
+    {
+        return;
+    }
+
     emit_source_mapping(ctx, node);
 
     if (node->call.callee->kind == NODE_EXPR_MEMBER)

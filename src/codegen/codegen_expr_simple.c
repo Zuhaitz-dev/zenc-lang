@@ -58,7 +58,12 @@ void handle_typeof(ParserContext *ctx, ASTNode *node)
 
 void handle_expr_unary(ParserContext *ctx, ASTNode *node)
 {
-    if (node->unary.op && strcmp(node->unary.op, "&_rval") == 0)
+    if (node->unary.temp_id > 0)
+    {
+        // A temporary that the enclosing call materialised (see handle_expr_call).
+        EMIT(ctx, "(&_z_temp_%d)", node->unary.temp_id - 1);
+    }
+    else if (node->unary.op && strcmp(node->unary.op, "&_rval") == 0)
     {
         if (ctx->config->use_cpp)
         {
