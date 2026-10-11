@@ -1678,7 +1678,12 @@ static char *read_file(const char *path)
     if (fseek(file, 0, SEEK_END) == 0)
     {
         long size = ftell(file);
-        if (size >= 0 && fseek(file, 0, SEEK_SET) == 0)
+        if (size < 0)
+        {
+            fclose(file);
+            return NULL;
+        }
+        if (fseek(file, 0, SEEK_SET) == 0)
         {
             text = libc_malloc((size_t)size + 1);
             if (text)
