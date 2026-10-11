@@ -702,13 +702,14 @@ static int emit_call_dropping_temporaries(ParserContext *ctx, ASTNode *node)
         arg = arg->next;
     }
 
+    // ZC_AUTO_INIT, not ZC_AUTO: tcc has no __auto_type, so there it is __typeof__.
     int result_id = ctx->cg.tmp_counter++;
     if (returns_value)
     {
-        EMIT(ctx, "ZC_AUTO _z_result_%d = ", result_id);
+        EMIT(ctx, "ZC_AUTO_INIT(_z_result_%d, ", result_id);
     }
     handle_expr_call(ctx, node);
-    EMIT(ctx, "; ");
+    EMIT(ctx, "%s", returns_value ? "); " : "; ");
 
     arg = node->call.args;
     while (arg)
