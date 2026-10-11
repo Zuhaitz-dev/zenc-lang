@@ -420,6 +420,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             sprintf(stmt_code, "%s;", code); /* safe */
             zfree(code);
             n->raw_stmt.content = stmt_code;
+            take_fstring_exprs(ctx, n);
             return n;
         }
     }

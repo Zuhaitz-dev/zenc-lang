@@ -106,6 +106,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             n->raw_stmt.content = stmt_code;
             n->raw_stmt.used_symbols = used_syms;
             n->raw_stmt.used_symbol_count = used_count;
+            take_fstring_exprs(ctx, n);
             zfree(inner);
             return n;
         }
@@ -731,6 +732,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             n->raw_stmt.content = stmt_code;
             n->raw_stmt.used_symbols = used_syms;
             n->raw_stmt.used_symbol_count = used_count;
+            take_fstring_exprs(ctx, n);
             return n;
         }
     }

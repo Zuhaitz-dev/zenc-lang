@@ -556,6 +556,8 @@ struct ASTNode
             char *content;
             char **used_symbols;
             int used_symbol_count;
+            struct ASTNode **interp_exprs; ///< Parsed `{...}` expressions of an f-string.
+            int interp_expr_count;
         } raw_stmt;
 
         struct

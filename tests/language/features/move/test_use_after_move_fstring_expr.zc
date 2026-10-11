@@ -1,0 +1,15 @@
+// EXPECT: FAIL
+// features/move: a moved value used in an interpolated string expression
+
+import "std/string.zc"
+
+fn show(text: string) {
+    println "{text}"
+}
+
+fn main() {
+    let s1 = String::new("abc")
+    let s2 = s1
+    show("value: {s1.c_str()}")
+    println "{s2.c_str()}"
+}

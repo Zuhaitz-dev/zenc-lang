@@ -473,6 +473,10 @@ struct ParserContext
     int silent_warnings;    ///< Suppress warnings (e.g., during codegen interpolation).
     char *last_doc_comment; ///< Last seen doc-comment (for association).
 
+    // `{...}` expressions parsed by the last process_printf_sugar call (take_fstring_exprs).
+    ASTNode **last_fstring_exprs;
+    int last_fstring_expr_count;
+
     // Flow Analysis (Move Semantics)
     struct MoveState *move_state;
 
@@ -787,6 +791,8 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
 char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *content, int newline,
                            const char *target, char ***used_syms, int *count, int check_symbols,
                            int is_raw, int is_expr);
+/** @brief Moves the expressions of the last process_printf_sugar call into a NODE_RAW_STMT. */
+void take_fstring_exprs(ParserContext *ctx, ASTNode *node);
 
 /**
  * @brief Checks if a token is a reserved keyword.
