@@ -1,0 +1,29 @@
+// language/features/fstrings: test_assert_message_interpolation
+//
+// The message of `expect`/`assert` is an interpolated string like any other:
+// `{...}` parts are evaluated when the check fails (and only then).
+// `expect` does not stop the program, so a failed one lets us check here that
+// its message was really evaluated.
+
+let calls = 0;
+
+fn note(value: int) -> int {
+    calls = calls + value;
+    return value;
+}
+
+fn main() -> int {
+    let n = 1000;
+    expect(n == 1000, "never shown: {note(100)}");
+    if calls != 0 {
+        println "message of a passing check was evaluated";
+        return 1;
+    }
+
+    expect(n != 1000, "{n} not expected, note {note(7)}");
+    if calls != 7 {
+        println "message of a failed check was not interpolated (calls = {calls})";
+        return 1;
+    }
+    return 0;
+}
