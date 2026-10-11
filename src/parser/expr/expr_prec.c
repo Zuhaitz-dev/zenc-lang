@@ -1925,7 +1925,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
 
             // Handle Generic Method Call: object.method<T>
-            if (lexer_peek(l).kind == TOK_LANGLE)
+            if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
             {
                 Lexer lookahead = *l;
                 lexer_next(&lookahead);

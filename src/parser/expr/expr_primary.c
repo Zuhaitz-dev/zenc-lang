@@ -1022,7 +1022,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 changed = 1;
             }
 
-            if (lexer_peek(l).kind == TOK_LANGLE)
+            if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
             {
                 Lexer lookahead = *l;
                 lexer_next(&lookahead);
