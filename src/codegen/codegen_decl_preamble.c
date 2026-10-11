@@ -241,6 +241,14 @@ void emit_preamble(ParserContext *ctx)
         // Scans one line with `fmt`; every argument is a pointer. A `%ms` (one word
         // into a new string, a glibc-only conversion) is done portably: `%s` into a
         // buffer as long as the line, handed to the `char**` argument on success.
+        // The format passed to sscanf is built at run time, so -Wformat-nonliteral
+        // is silenced around it (builds with -Werror, such as the APE one, fail).
+        // It could be avoided by doing the `%ms` conversion at compile time: the
+        // parser knows each argument's type, so the call site could read the line
+        // and call sscanf with a literal format and a buffer per string.
+        EMIT(ctx, "%s",
+             "#if defined(__GNUC__) && !defined(__TINYC__)\n#pragma GCC diagnostic push\n"
+             "#pragma GCC diagnostic ignored \"-Wformat-nonliteral\"\n#endif\n");
         EMIT(ctx, "%s",
              "static __attribute__((unused)) int _z_scan_helper(const char *fmt, ...) { char *l = "
              "_z_readln_raw(); if(!l) return 0; void *a[16] = {0}; void *p[16] = {0}; char "
@@ -253,6 +261,8 @@ void emit_preamble(ParserContext *ctx)
              "p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]); "
              "for(char **o = own; o < po; o++) { if(*o) { if(o - own < r) { *(char**)a[o - own] "
              "= *o; } else { z_free(*o); } } } z_free(f); z_free(l); return r; }\n");
+        EMIT(ctx, "%s",
+             "#if defined(__GNUC__) && !defined(__TINYC__)\n#pragma GCC diagnostic pop\n#endif\n");
 
         // REPL helpers: suppress/restore stdout.
         EMIT(ctx, "%s", "static int _z_orig_stdout = -1;\n");
