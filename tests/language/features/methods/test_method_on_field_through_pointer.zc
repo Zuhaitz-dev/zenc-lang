@@ -1,0 +1,59 @@
+// language/features/methods: test_method_on_field_through_pointer
+//
+// A method called on a struct field reached through a pointer
+// (`p.inner.get()` with `p: Outer*`) must resolve to the field type's method,
+// whether the pointer comes from a variable, a parameter or a `for` loop over
+// a Vec of pointers.
+import "std/vec.zc"
+
+struct Inner {
+    val: int;
+}
+
+impl Inner {
+    fn get(self) -> int {
+        return self.val;
+    }
+
+    fn bump(self) {
+        self.val = self.val + 1;
+    }
+}
+
+struct Outer {
+    inner: Inner;
+}
+
+struct Wrapper {
+    outer: Outer;
+}
+
+fn read_through_param(o: Outer*) -> int {
+    return o.inner.get();
+}
+
+test "method on a field of a pointer variable" {
+    let outer = Outer { inner: Inner { val: 10 } };
+    let p: Outer* = &outer;
+    assert(p.inner.get() == 10, "p.inner.get()");
+    p.inner.bump();
+    assert(outer.inner.val == 11, "bump mutates through the pointer");
+    assert(read_through_param(&outer) == 11, "pointer parameter");
+}
+
+test "method on a field of a loop variable over Vec of pointers" {
+    let outer = Outer { inner: Inner { val: 3 } };
+    let items = Vec<Outer*>::new();
+    items.push(&outer);
+    let total = 0;
+    for o in items {
+        total = total + o.inner.get();
+    }
+    assert(total == 3, "o.inner.get() in a for loop");
+}
+
+test "method on a nested field through a pointer" {
+    let w = Wrapper { outer: Outer { inner: Inner { val: 7 } } };
+    let wp: Wrapper* = &w;
+    assert(wp.outer.inner.get() == 7, "wp.outer.inner.get()");
+}
