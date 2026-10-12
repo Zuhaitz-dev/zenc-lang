@@ -897,6 +897,7 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
             ASTNode *nv = ast_create(NODE_ENUM_VARIANT);
             nv->variant.name = xstrdup(v->variant.name);
             nv->variant.tag_id = v->variant.tag_id;
+            nv->variant.payload_count = v->variant.payload_count;
             const char *subst_arg = unmangled_arg ? unmangled_arg : arg;
             nv->variant.payload = replace_type_formal(
                 ctx, v->variant.payload, t->struct_node->enm.generic_param, subst_arg, NULL, NULL);
@@ -1136,6 +1137,7 @@ void instantiate_generic_multi(ParserContext *ctx, const char *tpl, char **args,
             ASTNode *nv = ast_create(NODE_ENUM_VARIANT);
             nv->variant.name = xstrdup(v->variant.name);
             nv->variant.tag_id = v->variant.tag_id;
+            nv->variant.payload_count = v->variant.payload_count;
 
             // Use multi-parameter substitution for payload
             Type *payload = v->variant.payload;

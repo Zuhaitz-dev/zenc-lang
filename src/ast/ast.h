@@ -310,6 +310,7 @@ struct ASTNode
         {
             char *name;
             Type *payload;
+            int payload_count; ///< Values the variant carries; several make a tuple payload.
             int tag_id;
         } variant;
 

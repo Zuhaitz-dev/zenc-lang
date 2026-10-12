@@ -171,6 +171,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             va->variant.name = vname;
             va->variant.tag_id = v++;      // Use tag_id instead of value
             va->variant.payload = payload; // Store Type*
+            va->variant.payload_count = tuple_count ? tuple_count : (payload ? 1 : 0);
 
             // Register Variant (Mangled name to avoid collisions: Result_Ok)
             size_t mangled_sz = strlen(ename) + strlen(vname) + 3;
