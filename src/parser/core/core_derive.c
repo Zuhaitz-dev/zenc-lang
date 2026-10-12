@@ -46,6 +46,29 @@ static int type_has_clone_method(ParserContext *ctx, const char *type_name)
     return 0;
 }
 
+// The traits `generate_derive_impls` knows how to derive.
+static const char *const DERIVABLE_TRAITS[] = {"Clone",    "Copy",   "Debug", "Eq",
+                                               "FromJson", "ToJson", NULL};
+
+void check_derivable_trait(Token t, const char *name)
+{
+    char list[MAX_SHORT_MSG_LEN] = "Derivable traits:";
+    for (const char *const *trait = DERIVABLE_TRAITS; *trait; trait++)
+    {
+        if (strcmp(*trait, name) == 0)
+        {
+            return;
+        }
+        size_t used = strlen(list);
+        snprintf(list + used, sizeof(list) - used, "%s %s", trait == DERIVABLE_TRAITS ? "" : ",",
+                 *trait);
+    }
+    const char *hints[] = {list, NULL};
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Unknown trait '%s' in @derive", name);
+    zpanic_with_hints(t, msg, hints);
+}
+
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count)
 {
     ASTNode *head = NULL, *tail = NULL;

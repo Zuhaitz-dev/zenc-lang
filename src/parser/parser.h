@@ -937,6 +937,8 @@ void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
 void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);
 
 // core/ declarations
+// Rejects a name `@derive` does not know, listing the ones it does.
+void check_derivable_trait(Token t, const char *name);
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count);
 
 // decl/ declarations

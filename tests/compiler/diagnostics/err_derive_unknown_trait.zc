@@ -1,0 +1,12 @@
+// EXPECT: FAIL
+// compiler/diagnostics: @derive only knows a fixed set of traits; a name that
+// is not one of them (here a typo for Copy) is an error, not silently ignored.
+@derive(Cpy)
+struct Point {
+    x: int;
+}
+
+fn main() {
+    let p = Point { x: 1 };
+    println "{p.x}";
+}
