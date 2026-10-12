@@ -156,6 +156,15 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
         return 1;
     }
 
+    // Two opaque aliases are the same type only if they are the same alias, even
+    // in the module that defines both: there each converts to its underlying
+    // type, not to the other.
+    if (a_is_opaque && b_is_opaque)
+    {
+        RECURSION_EXIT(ctx);
+        return a->name && b->name && strcmp(a->name, b->name) == 0;
+    }
+
     if (a_is_opaque)
     {
         if (a->alias.alias_defined_in_file && ctx->current_filename &&
