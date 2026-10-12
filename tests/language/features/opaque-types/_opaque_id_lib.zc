@@ -1,5 +1,6 @@
 // language/features/opaque-types: _opaque_id_lib  --  helper module
 opaque alias UserId = u32;
+opaque alias ItemId = u32;
 
 impl UserId {
     fn of(raw: u32) -> UserId {
@@ -13,4 +14,19 @@ impl UserId {
     fn same(self, other: UserId) -> bool {
         return *self == other;
     }
+}
+
+impl ItemId {
+    fn of(raw: u32) -> ItemId {
+        return raw;
+    }
+}
+
+fn user_number(user: UserId) -> u32 {
+    return user;
+}
+
+// Inside the defining module the alias and its underlying type convert freely.
+fn first_user_number() -> u32 {
+    return user_number(1);
 }

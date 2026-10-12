@@ -292,6 +292,40 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
     }
 }
 
+// Kinds the type check of `let` lets through whatever the other side is.
+static int skips_value_check(Type *t)
+{
+    return t->kind == TYPE_POINTER || t->kind == TYPE_FUNCTION || t->kind == TYPE_STRUCT ||
+           t->kind == TYPE_ARRAY;
+}
+
+void check_opaque_alias_argument(ParserContext *ctx, Type *expected, ASTNode *arg)
+{
+    Type *got = arg ? arg->type_info : NULL;
+    if (!expected || !got || expected->kind == TYPE_GENERIC || got->kind == TYPE_GENERIC)
+    {
+        return;
+    }
+    int expected_opaque = expected->kind == TYPE_ALIAS && expected->alias.is_opaque_alias;
+    int got_opaque = got->kind == TYPE_ALIAS && got->alias.is_opaque_alias;
+    if (!expected_opaque && !got_opaque)
+    {
+        return;
+    }
+    if (skips_value_check(expected) || skips_value_check(got))
+    {
+        return;
+    }
+    if (type_eq(expected, got) || check_opaque_alias_compat(ctx, expected, got))
+    {
+        return;
+    }
+    char *want = type_to_string(expected);
+    char *have = type_to_string(got);
+    zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
+    return;
+}
+
 CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
 {
     CallArgs res = {NULL, NULL, NULL, 0, 0};
@@ -351,6 +385,10 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
                 if (expected && expected->name && is_trait(expected->name))
                 {
                     arg = transform_to_trait_object(ctx, expected->name, arg);
+                }
+                else if (!res.has_named)
+                {
+                    check_opaque_alias_argument(ctx, expected, arg);
                 }
             }
 
