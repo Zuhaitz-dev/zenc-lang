@@ -795,7 +795,8 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     }
 
     Lexer i;
-    lexer_init(&i, src, ctx->config, ctx->current_filename);
+    // The imported file's own path: tokens carry it into diagnostics and #line.
+    lexer_init(&i, src, ctx->config, fn);
 
     char *prev_module_prefix = ctx->imports.current_module_prefix;
     char *temp_module_prefix = NULL;
