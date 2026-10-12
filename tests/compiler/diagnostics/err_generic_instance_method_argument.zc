@@ -1,0 +1,11 @@
+// EXPECT: FAIL
+// compiler/diagnostics: the argument of a method is checked like that of a free
+// function: a `Vec<UserId>` does not take an OrderId.
+import "std/vec.zc"
+import "../../language/generics/_generic_ids.zc"
+
+fn main() {
+    let users = Vec<UserId>::new();
+    users.push(OrderId::of(7));
+    println "{users.length()}";
+}

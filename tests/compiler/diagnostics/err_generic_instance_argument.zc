@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// compiler/diagnostics: two instances of one generic with different arguments
+// are different types: an OrderId (Id<OrderKind>) is not a UserId (Id<UserKind>).
+import "../../language/generics/_generic_ids.zc"
+
+fn main() {
+    let order = OrderId::of(7);
+    println "{user_number(order)}";
+}

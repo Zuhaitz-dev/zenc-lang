@@ -15,7 +15,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
 // Method calls parse their arguments inline instead of through parse_call_args,
 // so they need the same signature-driven fix-ups free-function calls get: the
-// check of opaque alias arguments, default values for the trailing parameters
+// check of argument types, default values for the trailing parameters
 // that were not given, and the implicit cast of `&value` to a trait object
 // where the parameter is a trait.
 // `head` already includes the receiver when the method takes `self`, so it is
@@ -28,7 +28,7 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
         Type **expected = sig->arg_types;
         for (int i = 0; arg && i < sig->total_args; i++, arg = arg->next, expected++)
         {
-            check_opaque_alias_argument(ctx, *expected, arg);
+            check_argument_type(ctx, *expected, arg);
         }
     }
     if (sig->defaults && sig->arg_types)

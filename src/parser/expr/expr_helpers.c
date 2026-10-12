@@ -308,13 +308,90 @@ static int skips_value_check(Type *t)
            t->kind == TYPE_ARRAY;
 }
 
-void check_opaque_alias_argument(ParserContext *ctx, Type *expected, ASTNode *arg)
+// The struct or enum a type names once non-opaque aliases are followed
+// (`Handle__PropKind` for `alias PropId = Handle<PropKind>;`), or NULL.
+static const char *aggregate_type_name(ParserContext *ctx, Type *t)
+{
+    if (!t || (t->kind != TYPE_STRUCT && t->kind != TYPE_ENUM) || !t->name)
+    {
+        return NULL;
+    }
+    const char *name = t->name;
+    TypeAlias *alias = find_type_alias_node(ctx, name);
+    for (int depth = 0; alias && !alias->is_opaque && depth < 16; depth++)
+    {
+        Type *target = alias->type_info;
+        if (!target || (target->kind != TYPE_STRUCT && target->kind != TYPE_ENUM) || !target->name)
+        {
+            return NULL;
+        }
+        name = target->name;
+        alias = find_type_alias_node(ctx, name);
+    }
+    return name;
+}
+
+static Instantiation *find_instantiation(ParserContext *ctx, const char *name)
+{
+    Instantiation *inst = ctx->instantiations;
+    while (inst)
+    {
+        if (strcmp(inst->name, name) == 0)
+        {
+            return inst;
+        }
+        inst = inst->next;
+    }
+    return NULL;
+}
+
+// Two instances of one generic with different arguments (`Handle<A>` and
+// `Handle<B>`) are different types even when their fields are the same, also
+// behind pointers (where C only warns, and `-w` hides it).
+static void check_generic_instance_argument(ParserContext *ctx, Type *expected, ASTNode *arg)
+{
+    Type *want_type = expected;
+    Type *have_type = arg->type_info;
+    int depth = 0;
+    while (want_type && have_type && want_type->kind == TYPE_POINTER &&
+           have_type->kind == TYPE_POINTER && depth < 8)
+    {
+        want_type = want_type->inner;
+        have_type = have_type->inner;
+        depth++;
+    }
+    const char *want_struct = aggregate_type_name(ctx, want_type);
+    const char *have_struct = aggregate_type_name(ctx, have_type);
+    if (!want_struct || !have_struct || strcmp(want_struct, have_struct) == 0)
+    {
+        return;
+    }
+    Instantiation *want_inst = find_instantiation(ctx, want_struct);
+    Instantiation *have_inst = find_instantiation(ctx, have_struct);
+    if (!want_inst || !have_inst || strcmp(want_inst->template_name, have_inst->template_name) != 0)
+    {
+        return;
+    }
+    static const char STARS[] = "********";
+    const char *stars = STARS + (8 - depth);
+    char want[MAX_SHORT_MSG_LEN];
+    char have[MAX_SHORT_MSG_LEN];
+    snprintf(want, sizeof(want), "%s<%s>%s", want_inst->template_name, want_inst->unmangled_arg,
+             stars);
+    snprintf(have, sizeof(have), "%s<%s>%s", have_inst->template_name, have_inst->unmangled_arg,
+             stars);
+    zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
+    return;
+}
+
+void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg)
 {
     Type *got = arg ? arg->type_info : NULL;
     if (!expected || !got || expected->kind == TYPE_GENERIC || got->kind == TYPE_GENERIC)
     {
         return;
     }
+    check_generic_instance_argument(ctx, expected, arg);
     int expected_opaque = expected->kind == TYPE_ALIAS && expected->alias.is_opaque_alias;
     int got_opaque = got->kind == TYPE_ALIAS && got->alias.is_opaque_alias;
     if (!expected_opaque && !got_opaque)
@@ -397,7 +474,7 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
                 }
                 else if (!res.has_named)
                 {
-                    check_opaque_alias_argument(ctx, expected, arg);
+                    check_argument_type(ctx, expected, arg);
                 }
             }
 

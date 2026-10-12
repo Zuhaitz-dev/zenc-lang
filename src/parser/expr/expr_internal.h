@@ -25,12 +25,15 @@ int tokens_could_be_generic_args(Lexer *l);
 void check_move_usage(ParserContext *ctx, ASTNode *node, Token t);
 CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig);
 /**
- * An opaque alias is a distinct type outside the file that defines it: rejects
- * an argument of another type where one is expected (another alias, or the
- * underlying type), or an alias where its underlying type is expected, as
- * `let` does.
+ * Rejects an argument whose type cannot stand for the parameter's, where the C
+ * compiler would not notice or would only report it in the generated code:
+ * - an opaque alias is a distinct type outside the file that defines it:
+ *   another alias where one is expected, or the underlying type, or an alias
+ *   where its underlying type is expected, as `let` does;
+ * - two instances of one generic with different arguments (`Handle<A>` for
+ *   `Handle<B>`).
  */
-void check_opaque_alias_argument(ParserContext *ctx, Type *expected, ASTNode *arg);
+void check_argument_type(ParserContext *ctx, Type *expected, ASTNode *arg);
 void check_format_string(ASTNode *call, Token t);
 
 // From expr_entry.c

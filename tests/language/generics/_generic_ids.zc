@@ -1,0 +1,30 @@
+// language/generics: _generic_ids  --  helper module
+// One generic identifier with a phantom kind: `UserId` and `OrderId` share the
+// code and the layout but are different types.
+@derive(Copy)
+struct Id<K> {
+    value: u32;
+}
+
+impl Id<K> {
+    fn of(raw: u32) -> Id<K> {
+        return Id<K> { value: raw };
+    }
+
+    fn same(self, other: Id<K>) -> bool {
+        return self.value == other.value;
+    }
+}
+
+struct UserKind {}
+struct OrderKind {}
+alias UserId = Id<UserKind>;
+alias OrderId = Id<OrderKind>;
+
+fn user_number(user: UserId) -> u32 {
+    return user.value;
+}
+
+fn user_number_at(user: UserId*) -> u32 {
+    return user.value;
+}
