@@ -1,0 +1,46 @@
+// language/generics: test_derive_generic
+// @derive on a generic struct or enum generates generic impls, so every instance
+// gets the methods (before, `impl Tagged { ... }` left them undefined).
+@derive(Eq, Clone)
+struct Tagged<K> {
+    value: u32;
+}
+
+@derive(Debug)
+struct Labelled<K> {
+    value: u32;
+}
+
+@derive(Eq)
+enum Choice<T> {
+    Empty,
+    One(T),
+}
+
+struct Red {}
+alias RedTag = Tagged<Red>;
+
+test "derived eq on a generic struct" {
+    let a = RedTag { value: 1 };
+    let b = RedTag { value: 1 };
+    let c = RedTag { value: 2 };
+    assert(a == b, "==");
+    assert(a != c, "!= without a neq method");
+    assert(!(a != b), "!= of equal values");
+    assert(a.eq(&b), "eq");
+}
+
+test "derived clone and to_string on a generic struct" {
+    let a = RedTag { value: 3 };
+    let copy = a.clone();
+    assert(copy == a, "clone");
+    let labelled = Labelled<Red> { value: 1 };
+    assert(strcmp(labelled.to_string(), "Labelled {{ ... }}") == 0, "to_string");
+}
+
+test "derived eq on a generic enum" {
+    let one = Choice<int>::One(1);
+    let empty = Choice<int>::Empty();
+    assert(one != empty, "different variants");
+    assert(one == Choice<int>::One(1), "same variant");
+}

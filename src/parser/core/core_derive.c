@@ -69,10 +69,41 @@ void check_derivable_trait(Token t, const char *name)
     zpanic_with_hints(t, msg, hints);
 }
 
+// The type the derived impls are written for: `Name`, or `Name<K, V>` for a
+// generic struct or enum, so that they are generic impls whose methods every
+// instance gets (`impl Name { ... }` on a generic left them undefined).
+static char *derive_self_type(ASTNode *strct)
+{
+    const char *name = strct->kind == NODE_ENUM ? strct->enm.name : strct->strct.name;
+    char params[MAX_SHORT_MSG_LEN] = "";
+    if (strct->kind == NODE_STRUCT && strct->strct.is_template)
+    {
+        char **param = strct->strct.generic_params;
+        for (int i = 0; i < strct->strct.generic_param_count; i++, param++)
+        {
+            size_t used = strlen(params);
+            snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
+        }
+    }
+    else if (strct->kind == NODE_ENUM && strct->enm.is_template && strct->enm.generic_param)
+    {
+        snprintf(params, sizeof(params), "%s", strct->enm.generic_param);
+    }
+    if (!params[0])
+    {
+        return xstrdup(name);
+    }
+    size_t size = strlen(name) + strlen(params) + 3;
+    char *self_type = xmalloc(size);
+    snprintf(self_type, size, "%s<%s>", name, params);
+    return self_type;
+}
+
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count)
 {
     ASTNode *head = NULL, *tail = NULL;
     char *name = strct->strct.name;
+    char *self_type = derive_self_type(strct);
 
     for (int i = 0; i < count; i++)
     {
@@ -85,8 +116,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             if (strct->kind != NODE_STRUCT)
             {
                 code = xmalloc(code_size);
-                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { return self; } }", name,
-                         name);
+                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { return self; } }",
+                         self_type, self_type);
             }
             else
             {
@@ -94,7 +125,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                 // struct that derives or implements it) is cloned, so the copy owns
                 // its own resources; anything else is copied.
                 char body[4096];
-                int written = snprintf(body, sizeof(body), "return %s { ", name);
+                int written = snprintf(body, sizeof(body), "return %s { ", self_type);
                 size_t used = written > 0 ? (size_t)written : 0;
                 for (ASTNode *f = strct->strct.fields; f; f = f->next)
                 {
@@ -115,10 +146,10 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     used += (size_t)written;
                 }
                 snprintf(body + used, sizeof(body) - used, "};");
-                code_size = strlen(body) + strlen(name) * 2 + 64;
+                code_size = strlen(body) + strlen(self_type) * 2 + 64;
                 code = xmalloc(code_size);
-                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { %s } }", name, name,
-                         body);
+                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { %s } }", self_type,
+                         self_type, body);
             }
         }
         else if (0 == strcmp(trait, "Eq"))
@@ -238,8 +269,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             }
             code = xmalloc(4096 + 1024);
             // Updated signature: other is a pointer T*
-            sprintf(code, "impl %s { fn eq(self, other: %s*) -> bool { %s } }", name, name,
-                    body); /* safe */
+            sprintf(code, "impl %s { fn eq(self, other: %s*) -> bool { %s } }", self_type,
+                    self_type, body); /* safe */
         }
         else if (0 == strcmp(trait, "Debug"))
         {
@@ -248,7 +279,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             sprintf(
                 code,
                 "impl %s { fn to_string(self) -> char* { return \"%s {{ ... }}\"; } }", /* safe */
-                name, name);
+                self_type, name);
         }
         else if (0 == strcmp(trait, "Copy"))
         {
@@ -377,9 +408,9 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 
             // Build struct initialization
             strncat(body, "return Result<", sizeof(body) - strlen(body) - 1);
-            strncat(body, name, sizeof(body) - strlen(body) - 1);
+            strncat(body, self_type, sizeof(body) - strlen(body) - 1);
             strncat(body, ">::Ok(", sizeof(body) - strlen(body) - 1);
-            strncat(body, name, sizeof(body) - strlen(body) - 1);
+            strncat(body, self_type, sizeof(body) - strlen(body) - 1);
             strncat(body, " { ", sizeof(body) - strlen(body) - 1);
 
             f = strct->strct.fields;
@@ -420,8 +451,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 
             code = xmalloc(8192 + 1024);
             sprintf(code, "impl %s { fn from_json(j: JsonValue*) -> Result<%s> { %s } }",
-                    name, /* safe */
-                    name, body);
+                    self_type, /* safe */
+                    self_type, body);
         }
         else if (0 == strcmp(trait, "ToJson"))
         {
@@ -519,7 +550,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             strncat(body, "return _obj;", sizeof(body) - strlen(body) - 1);
 
             code = xmalloc(8192 + 1024);
-            sprintf(code, "impl %s { fn to_json(self) -> JsonValue { %s } }", name,
+            sprintf(code, "impl %s { fn to_json(self) -> JsonValue { %s } }", self_type,
                     body); /* safe */
         }
 
