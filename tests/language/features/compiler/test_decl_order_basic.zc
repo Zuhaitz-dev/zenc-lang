@@ -1,0 +1,156 @@
+// language/features/compiler: uses of declarations that come later in the file
+
+fn build_point() -> int {
+    let p = Point { x: 1, y: 2 };
+    return p.sum();
+}
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+impl Point {
+    fn sum(self) -> int {
+        return self.x + self.y;
+    }
+}
+
+// Scenario 2: the type comes from the signature (c: Counter), not from a literal
+fn twice(c: Counter) -> int {
+    return c.get() * 2;
+}
+
+struct Counter {
+    n: int;
+}
+
+impl Counter {
+    fn get(self) -> int {
+        return self.n;
+    }
+}
+
+
+// Scenario 3: method on a field.
+struct Outer {
+    inner: Inner;
+}
+
+impl Outer {
+    fn value(self) -> int {
+        return self.inner.get();
+    }
+}
+
+struct Inner {
+    v: int;
+}
+
+impl Inner {
+    fn get(self) -> int {
+        return self.v;
+    }
+}
+
+// Scenario 4: method from function return
+fn use_parcel() -> int {
+    let b = make_parcel();
+    return b.get();
+}
+
+struct Parcel {
+    v: int;
+}
+
+fn make_parcel() -> Parcel {
+    return Parcel { v: 7 };
+}
+
+impl Parcel {
+    fn get(self) -> int {
+        return self.v;
+    }
+}
+
+//Scenario 5: alias
+fn use_alias() -> int {
+    let n: Number = 3;
+    return n;
+}
+
+alias Number = int;
+
+//Scenario 5: def
+fn use_def() -> int {
+    return LIMIT;
+}
+
+def LIMIT = 6;
+
+//Scenario 6: impl Drop
+let drops: int = 0;
+
+fn create_and_release() {
+    let r = Resource { id: 1 };
+}
+
+struct Resource {
+    id: int;
+}
+
+impl Drop for Resource {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+//Scenario 7: enum variant
+fn pick_empty() -> Slot {
+    return Slot::Empty;
+}
+
+enum Slot {
+    Filled(int),
+    Empty,
+}
+
+test "struct literal and method declared later" {
+    assert(build_point() == 3, "1 + 2 should be 3");
+}
+
+test "method on a parameter whose impl is declared later" {
+    assert(twice(Counter { n: 5 }) == 10, "5 * 2 should be 10");
+}
+
+test "method on a field whose type is declared later" {
+    let o = Outer { inner: Inner { v: 4 } };
+    assert(o.value() == 4, "inner value should be 4");
+}
+
+test "method on the result of a function declared later" {
+    assert(use_parcel() == 7, "parcel value should be 7");
+}
+
+test "alias declared later" {
+    assert(use_alias() == 3, "alias value should be 3");
+}
+
+test "def constant declared later" {
+    assert(use_def() == 6, "LIMIT should be 6");
+}
+
+test "drop impl declared later" {
+    create_and_release();
+    assert(drops == 1, "drop should run once");
+}
+
+test "enum variant declared later" {
+    let s = pick_empty();
+    match s {
+        Slot::Empty => {}
+        _ => {
+            assert(false, "should be Empty");
+        }
+    }
+}

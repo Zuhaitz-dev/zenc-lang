@@ -1,0 +1,24 @@
+// language/features/compiler: an overloaded operator whose impl is declared later in the file
+
+struct Vec2 {
+    x: int;
+    y: int;
+}
+
+fn add_vectors() -> int {
+    let a = Vec2 { x: 1, y: 2 };
+    let b = Vec2 { x: 3, y: 4 };
+    let c = a + b;
+    return c.x + c.y;
+}
+
+// Declared after `add_vectors`, which already uses `+`
+impl Vec2 {
+    fn add(self, other: Vec2) -> Vec2 {
+        return Vec2 { x: self.x + other.x, y: self.y + other.y };
+    }
+}
+
+test "overloaded operator, impl declared later" {
+    assert(add_vectors() == 10, "(1+3) + (2+4) should be 10");
+}

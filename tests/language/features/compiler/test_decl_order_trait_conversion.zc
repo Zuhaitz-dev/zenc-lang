@@ -1,0 +1,38 @@
+// language/features/compiler: implicit trait conversions whose impl is declared later in the file
+trait Shape {
+    fn area(self) -> int;
+}
+
+fn total() -> int {
+    let s = Square { side: 3 };
+    return area_of(&s);
+}
+
+fn total_from_let() -> int {
+    let s = Square { side: 4 };
+    let shape: Shape = &s;
+    return shape.area();
+}
+
+// Everything below is declared after `total`, which already needs it.
+fn area_of(s: Shape) -> int {
+    return s.area();
+}
+
+struct Square {
+    side: int;
+}
+
+impl Shape for Square {
+    fn area(self) -> int {
+        return self.side * self.side;
+    }
+}
+
+test "trait argument whose impl is declared later" {
+    assert(total() == 9, "area of a 3x3 square should be 9");
+}
+
+test "trait conversion in a let, impl declared later" {
+    assert(total_from_let() == 16, "area of a 4x4 square should be 16");
+}
