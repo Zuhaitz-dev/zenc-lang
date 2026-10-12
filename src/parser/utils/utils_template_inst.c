@@ -13,7 +13,8 @@
 
 int is_unmangle_primitive(const char *base);
 char *unmangle_ptr_suffix(const char *s);
-Type *replace_type_formal(Type *t, const char *p, const char *c, const char *os, const char *ns);
+Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
+                          const char *ns);
 ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const char *c,
                             const char *os, const char *ns);
 
@@ -590,7 +591,7 @@ static ASTNode *copy_fields_replacing(ParserContext *ctx, ASTNode *fields, const
     n->field.type = replace_type_str(fields->field.type, param, concrete, NULL, NULL);
 
     // Replace formal types (Deep Copy)
-    n->type_info = replace_type_formal(fields->type_info, param, concrete, NULL, NULL);
+    n->type_info = replace_type_formal(ctx, fields->type_info, param, concrete, NULL, NULL);
 
     if (n->field.type && strchr(n->field.type, '_'))
     {
@@ -1034,7 +1035,7 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
             nv->variant.tag_id = v->variant.tag_id;
             const char *subst_arg = unmangled_arg ? unmangled_arg : arg;
             nv->variant.payload = replace_type_formal(
-                v->variant.payload, t->struct_node->enm.generic_param, subst_arg, NULL, NULL);
+                ctx, v->variant.payload, t->struct_node->enm.generic_param, subst_arg, NULL, NULL);
 
             register_enum_constructor(ctx, m, nv->variant.name, nv->variant.tag_id,
                                       nv->variant.payload, token, i->enm.is_export);
@@ -1278,7 +1279,7 @@ void instantiate_generic_multi(ParserContext *ctx, const char *tpl, char **args,
             if (payload)
             {
                 nv->variant.payload = replace_type_formal(
-                    payload, t->struct_node->enm.generic_param, c_args, NULL, NULL);
+                    ctx, payload, t->struct_node->enm.generic_param, c_args, NULL, NULL);
             }
 
             register_enum_constructor(ctx, m, nv->variant.name, nv->variant.tag_id,

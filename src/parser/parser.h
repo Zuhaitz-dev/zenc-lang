@@ -855,7 +855,8 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults,
                              ASTNode ***default_values, int *count, Type ***arg_types,
                              char ***param_names, int *is_varargs, char ***ctype_overrides);
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
-Type *type_from_string_helper(const char *c);
+Type *type_from_string_helper(ParserContext *ctx, const char *c);
+Type *type_from_name(ParserContext *ctx, const char *name);
 FuncSig *find_func(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,

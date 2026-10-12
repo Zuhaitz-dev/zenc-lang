@@ -12,6 +12,44 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+// The type an opaque alias name stands for: a TYPE_ALIAS wrapping its underlying type.
+static Type *opaque_alias_type(ParserContext *ctx, TypeAlias *alias_node)
+{
+    Lexer tmp;
+    lexer_init(&tmp, alias_node->original_type, ctx->config, ctx->current_filename);
+    Type *underlying = parse_type_formal(ctx, &tmp);
+    if (!underlying)
+    {
+        return NULL;
+    }
+    Type *wrapper = type_new(TYPE_ALIAS);
+    wrapper->name = xstrdup(alias_node->alias);
+    wrapper->inner = underlying;
+    wrapper->alias.is_opaque_alias = 1;
+    wrapper->alias.alias_defined_in_file =
+        alias_node->defined_in_file ? xstrdup(alias_node->defined_in_file) : NULL;
+    return wrapper;
+}
+
+// The type for a non-primitive type name that is not parsed from source (the
+// receiver of a method, a generic argument): the opaque alias of that name if
+// there is one, a struct otherwise.
+Type *type_from_name(ParserContext *ctx, const char *name)
+{
+    TypeAlias *alias_node = ctx ? find_type_alias_node(ctx, name) : NULL;
+    if (alias_node && alias_node->is_opaque)
+    {
+        Type *wrapper = opaque_alias_type(ctx, alias_node);
+        if (wrapper)
+        {
+            return wrapper;
+        }
+    }
+    Type *t = type_new(TYPE_STRUCT);
+    t->name = xstrdup(name);
+    return t;
+}
+
 Type *parse_type_base(ParserContext *ctx, Lexer *l)
 {
     RECURSION_GUARD(ctx, l, type_new(TYPE_UNKNOWN));
@@ -45,27 +83,15 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         if (alias_node)
         {
             zfree(name);
-            Lexer tmp;
-            lexer_init(&tmp, alias_node->original_type, ctx->config, ctx->current_filename);
-
             if (alias_node->is_opaque)
             {
-                Type *underlying = parse_type_formal(ctx, &tmp);
-                if (!underlying)
-                {
-                    RECURSION_EXIT(ctx);
-                    return NULL;
-                }
-                Type *wrapper = type_new(TYPE_ALIAS);
-                wrapper->name = xstrdup(alias_node->alias);
-                wrapper->inner = underlying;
-                wrapper->alias.is_opaque_alias = 1;
-                wrapper->alias.alias_defined_in_file =
-                    alias_node->defined_in_file ? xstrdup(alias_node->defined_in_file) : NULL;
+                Type *wrapper = opaque_alias_type(ctx, alias_node);
                 RECURSION_EXIT(ctx);
                 return wrapper;
             }
 
+            Lexer tmp;
+            lexer_init(&tmp, alias_node->original_type, ctx->config, ctx->current_filename);
             Type *t_res = parse_type_formal(ctx, &tmp);
             if (!t_res)
             {

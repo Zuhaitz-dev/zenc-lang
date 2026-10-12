@@ -35,15 +35,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             self_node->var_ref.name = xstrdup("self");
             self_node->token = dot_tok;
 
-            Type *inner_type = type_new(TYPE_STRUCT);
-            if (ctx->current_impl_struct)
-            {
-                inner_type->name = xstrdup(ctx->current_impl_struct);
-            }
-            else
-            {
-                inner_type->name = xstrdup("Self");
-            }
+            Type *inner_type =
+                type_from_name(ctx, ctx->current_impl_struct ? ctx->current_impl_struct : "Self");
             self_node->type_info = type_new_ptr(inner_type);
             if (ctx->current_impl_struct)
             {

@@ -637,7 +637,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (node->cast.expr && node->cast.expr->type_info && node->cast.target_type)
         {
             Type *source_type = resolve_alias(node->cast.expr->type_info);
-            Type *target_type = type_from_string_helper(node->cast.target_type);
+            Type *target_type = type_from_string_helper(tc->pctx, node->cast.target_type);
 
             if (tc->pctx->config->misra_mode && target_type)
             {
