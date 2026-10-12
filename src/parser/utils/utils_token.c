@@ -366,6 +366,30 @@ char *consume_until_semicolon(Lexer *l)
     return xstrdup("");
 }
 
+int skip_braced_block(Lexer *l)
+{
+    Token open = lexer_next(l); // the `{`
+    int depth = 1;
+    while (depth > 0)
+    {
+        Token t = lexer_next(l);
+        if (t.kind == TOK_EOF)
+        {
+            zpanic_at(open, "Unclosed '{': the file ends before its '}'");
+            return 0;
+        }
+        if (t.kind == TOK_LBRACE)
+        {
+            depth++;
+        }
+        else if (t.kind == TOK_RBRACE)
+        {
+            depth--;
+        }
+    }
+    return 1;
+}
+
 const char *normalize_type_name(const char *name)
 {
     if (!name)
