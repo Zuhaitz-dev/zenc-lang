@@ -275,11 +275,11 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
 
             Token t;
             Token prev = {0};
-            while ((t = lexer_next(&lex)).type != TOK_EOF)
+            while ((t = lexer_next(&lex)).kind != TOK_EOF)
             {
-                if (t.type == TOK_IDENT)
+                if (t.kind == TOK_IDENT)
                 {
-                    if (prev.type == TOK_OP && prev.len == 1 && prev.start[0] == '.')
+                    if (prev.kind == TOK_OP && prev.len == 1 && prev.start[0] == '.')
                     {
                         prev = t;
                         continue;
@@ -335,8 +335,8 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
         int is_simple_type = 0;
         if (expr_node)
         {
-            if (expr_node->type == NODE_EXPR_VAR || expr_node->type == NODE_EXPR_MEMBER ||
-                expr_node->type == NODE_EXPR_INDEX)
+            if (expr_node->kind == NODE_EXPR_VAR || expr_node->kind == NODE_EXPR_MEMBER ||
+                expr_node->kind == NODE_EXPR_INDEX)
             {
                 is_temporary = 0;
             }
@@ -490,7 +490,7 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
                     zfree(inner_name);
 
                     ASTNode *def = find_struct_def(ctx, slice_name);
-                    if (def && def->type == NODE_STRUCT)
+                    if (def && def->kind == NODE_STRUCT)
                     {
                         int has_data = 0;
                         int has_len = 0;
@@ -565,7 +565,7 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
                 else if (base && base->kind == TYPE_STRUCT && base->name)
                 {
                     ASTNode *def = find_struct_def(ctx, base->name);
-                    if (def && def->type == NODE_STRUCT)
+                    if (def && def->kind == NODE_STRUCT)
                     {
                         int has_data = 0;
                         int has_len = 0;
@@ -897,13 +897,13 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
 ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name)
 {
     Token start_tok = lexer_peek(l);
-    if (lexer_peek(l).type != TOK_OP || lexer_peek(l).start[0] != '!')
+    if (lexer_peek(l).kind != TOK_OP || lexer_peek(l).start[0] != '!')
     {
         return NULL;
     }
     lexer_next(l);
 
-    if (lexer_peek(l).type != TOK_LBRACE)
+    if (lexer_peek(l).kind != TOK_LBRACE)
     {
         zpanic_at(lexer_peek(l), "Expected { after macro invocation");
         return NULL;
@@ -917,17 +917,17 @@ ASTNode *parse_macro_call(ParserContext *ctx, Lexer *l, char *macro_name)
     while (depth > 0)
     {
         Token t = lexer_peek(l);
-        if (t.type == TOK_EOF)
+        if (t.kind == TOK_EOF)
         {
             zpanic_at(t, "Unexpected EOF in macro block");
             return NULL;
         }
 
-        if (t.type == TOK_LBRACE)
+        if (t.kind == TOK_LBRACE)
         {
             depth++;
         }
-        if (t.type == TOK_RBRACE)
+        if (t.kind == TOK_RBRACE)
         {
             depth--;
         }
@@ -1054,20 +1054,20 @@ ASTNode *parse_comptime_body(ParserContext *ctx, Lexer *l)
     while (depth > 0)
     {
         Token t = lexer_next(l);
-        if (t.type == TOK_EOF)
+        if (t.kind == TOK_EOF)
         {
             zpanic_at(t, "Unexpected EOF in comptime block");
             return NULL;
         }
-        if (t.type == TOK_STRING || t.type == TOK_FSTRING || t.type == TOK_RAW_STRING)
+        if (t.kind == TOK_STRING || t.kind == TOK_FSTRING || t.kind == TOK_RAW_STRING)
         {
             continue;
         }
-        if (t.type == TOK_LBRACE)
+        if (t.kind == TOK_LBRACE)
         {
             depth++;
         }
-        if (t.type == TOK_RBRACE)
+        if (t.kind == TOK_RBRACE)
         {
             depth--;
         }
@@ -1102,7 +1102,7 @@ ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tok)
     (void)ctx;
 
     Token tk = lexer_next(l);
-    if (tk.type != TOK_IDENT)
+    if (tk.kind != TOK_IDENT)
     {
         zpanic_at(tk, "Expected plugin name after 'plugin' keyword");
         return NULL;
@@ -1119,13 +1119,13 @@ ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tok)
     while (1)
     {
         Token t = lexer_peek(l);
-        if (t.type == TOK_EOF)
+        if (t.kind == TOK_EOF)
         {
             zpanic_at(t, "Unexpected EOF in plugin block, expected 'end'");
             break;
         }
 
-        if (t.type == TOK_IDENT && t.len == 3 && strncmp(t.start, "end", 3) == 0)
+        if (t.kind == TOK_IDENT && t.len == 3 && strncmp(t.start, "end", 3) == 0)
         {
             lexer_next(l);
             break;
@@ -1147,7 +1147,7 @@ ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tok)
     n->plugin_stmt.plugin_name = plugin_name;
     n->plugin_stmt.body = body;
 
-    if (lexer_peek(l).type == TOK_SEMICOLON)
+    if (lexer_peek(l).kind == TOK_SEMICOLON)
     {
         lexer_next(l);
     }

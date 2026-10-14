@@ -1,0 +1,47 @@
+// language/features/methods: method calls use the method's signature for the
+// same fix-ups free-function calls get: default arguments and the implicit
+// cast of `&value` to a trait parameter.
+trait Charge {
+    fn cost_of(self) -> int;
+}
+
+struct Fee { amount: int; }
+
+impl Charge for Fee {
+    fn cost_of(self) -> int { return self.amount; }
+}
+
+enum Rate { Normal = 0, Double }
+
+struct Counter { base: int; }
+
+impl Counter {
+    fn add(self, amount: int, extra: int = 5) -> int {
+        return self.base + amount + extra;
+    }
+
+    fn scaled(self, amount: int, rate: Rate = Rate::Normal()) -> int {
+        if rate == Rate::Double() { return amount * 2; }
+        return amount;
+    }
+
+    fn pay(self, charged: Charge) -> int {
+        return self.base + charged.cost_of();
+    }
+}
+
+test "method default arguments" {
+    let counter = Counter { base: 1 };
+    assert(counter.add(1) == 7, "default extra");
+    assert(counter.add(1, 0) == 2, "explicit extra");
+    assert(counter.scaled(3) == 3, "default enum");
+    assert(counter.scaled(3, Rate::Double()) == 6, "explicit enum");
+}
+
+test "method trait parameter takes &value" {
+    let counter = Counter { base: 1 };
+    let fee = Fee { amount: 2 };
+    assert(counter.pay(&fee) == 3, "implicit trait cast");
+    let charge: Charge = &fee;
+    assert(counter.pay(charge) == 3, "trait value");
+}

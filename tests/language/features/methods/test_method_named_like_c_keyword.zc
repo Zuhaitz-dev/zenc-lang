@@ -1,0 +1,13 @@
+// language/features/methods: methods are emitted with their type as prefix
+// (`Config__default`), so a method may be named like a C keyword.
+struct Config { level: int; }
+
+impl Config {
+    fn default() -> Config { return Config { level: 1 }; }
+    fn long(self) -> int { return self.level * 1000; }
+}
+
+test "methods named like C keywords" {
+    let config = Config::default();
+    assert(config.long() == 1000, "default and long are valid method names");
+}

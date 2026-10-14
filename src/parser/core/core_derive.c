@@ -33,7 +33,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             char body[4096];
             body[0] = 0;
 
-            if (strct->type == NODE_ENUM)
+            if (strct->kind == NODE_ENUM)
             {
                 // Check if enum has payloads
                 int has_payload = 0;
@@ -67,7 +67,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                 strncat(body, "return ", sizeof(body) - strlen(body) - 1);
                 while (f)
                 {
-                    if (f->type == NODE_FIELD)
+                    if (f->kind == NODE_FIELD)
                     {
                         char *fn = f->field.name;
                         char *ft = f->field.type;
@@ -92,7 +92,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                         // Only look up struct def for non-pointer types
                         ASTNode *fdef = is_ptr ? NULL : find_struct_def(ctx, ft);
 
-                        if (!is_ptr && fdef && fdef->type == NODE_ENUM)
+                        if (!is_ptr && fdef && fdef->kind == NODE_ENUM)
                         {
                             // Check if enum is simple (no payloads)
                             int ep = 0;
@@ -118,7 +118,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                                          fn); /* TODO: check buffer size */
                             }
                         }
-                        else if (!is_ptr && fdef && fdef->type == NODE_STRUCT)
+                        else if (!is_ptr && fdef && fdef->kind == NODE_STRUCT)
                         {
                             // Struct field: use __eq function
                             snprintf(cmp, sizeof(cmp), "%s__eq(&self.%s, &other.%s)", ft, fn,
@@ -165,7 +165,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
         {
             // Generate from_json(j: JsonValue*) -> Result<StructName>
             // Only works for structs (not enums)
-            if (strct->type != NODE_STRUCT)
+            if (strct->kind != NODE_STRUCT)
             {
                 zwarn_at(strct->token, "@derive(FromJson) only works on structs");
                 continue;
@@ -182,7 +182,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             ASTNode *f = strct->strct.fields;
             while (f)
             {
-                if (f->type == NODE_FIELD)
+                if (f->kind == NODE_FIELD)
                 {
                     char *fn = f->field.name;
                     char *ft = f->field.type;
@@ -291,7 +291,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             int first = 1;
             while (f)
             {
-                if (f->type == NODE_FIELD)
+                if (f->kind == NODE_FIELD)
                 {
                     if (!first)
                     {
@@ -332,7 +332,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
         {
             // Generate to_json(self) -> JsonValue
             // Only works for structs (not enums)
-            if (strct->type != NODE_STRUCT)
+            if (strct->kind != NODE_STRUCT)
             {
                 zwarn_at(strct->token, "@derive(ToJson) only works on structs");
                 continue;
@@ -344,7 +344,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             ASTNode *f = strct->strct.fields;
             while (f)
             {
-                if (f->type == NODE_FIELD)
+                if (f->kind == NODE_FIELD)
                 {
                     char *fn = f->field.name;
                     char *ft = f->field.type;

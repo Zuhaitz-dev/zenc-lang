@@ -1,0 +1,22 @@
+// language/features/enums: a no-payload variant of a generic enum instance,
+// written without (), must call its constructor like a plain enum's does.
+enum Maybe<T> { Nothing, Just(T) }
+
+fn is_nothing(m: Maybe<int>) -> bool {
+    match m {
+        Maybe::Nothing => { return true; },
+        _ => { return false; },
+    }
+    return false;
+}
+
+fn nothing() -> Maybe<int> {
+    return Maybe<int>::Nothing;
+}
+
+test "generic enum variant written without ()" {
+    let n: Maybe<int> = Maybe<int>::Nothing;
+    assert(is_nothing(n), "Maybe<int>::Nothing must be Nothing");
+    assert(is_nothing(nothing()), "returned Maybe<int>::Nothing must be Nothing");
+    assert(!is_nothing(Maybe<int>::Just(3)), "Just(3) is not Nothing");
+}

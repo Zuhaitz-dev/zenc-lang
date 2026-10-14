@@ -1,0 +1,12 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a concrete struct cannot take the name of a generic one
+// (here std's Box<T> from std/mem.zc): their impls would mix, and the generic's
+// Drop would call a `Box__free` that does not exist.
+import "std/mem.zc"
+
+struct Box { id: int; }
+
+fn main() {
+    let b = Box { id: 1 };
+    println "{b.id}";
+}

@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a C keyword cannot name a variable: names are emitted
+// unchanged into the generated C, which would not compile.
+
+fn main() {
+    let double = 2;
+    println "{double}";
+}

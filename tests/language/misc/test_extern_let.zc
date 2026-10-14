@@ -1,0 +1,22 @@
+// extern let: a global defined in C, typed for Zen C, with nothing emitted
+struct Point { x: int; y: int; }
+impl Point {
+    fn sum(self) -> int { return self.x + self.y; }
+}
+
+raw {
+    int c_counter = 41;
+    double c_ratio = 0.5;
+    Point c_origin = { 3, 4 };
+}
+
+extern let c_counter: int;
+extern let c_ratio: f64, c_origin: Point;
+
+test "extern let" {
+    let n = c_counter + 1;
+    expect_eq(n, 42, "an extern int");
+    let r = c_ratio * 2.0;
+    expect(r == 1.0, "an extern f64");
+    expect_eq(c_origin.sum(), 7, "a method call on an extern struct");
+}

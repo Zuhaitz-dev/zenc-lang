@@ -1,0 +1,23 @@
+// language/features/fstrings: a variable that comes from a method of an enum
+// keeps its type inside an interpolation, so `{found.unwrap()}` is a method
+// call and not a field access.
+import "std/option.zc"
+
+enum Value { Nothing, Hour(int) }
+
+impl Value {
+    fn as_hour(self) -> Option<int> {
+        match *self {
+            Value::Hour(hour) => { return Option<int>::Some(hour); },
+            _ => { return Option<int>::None(); },
+        }
+        return Option<int>::None();
+    }
+}
+
+test "interpolating a method call on a value returned by an enum method" {
+    let value = Value::Hour(7);
+    let found = value.as_hour();
+    let text = f"{found.unwrap()} {found.is_some()}";
+    assert(strcmp(text, "7 true") == 0, "interpolated method calls");
+}

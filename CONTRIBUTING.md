@@ -35,14 +35,26 @@ concern, applied everywhere. When changing compiler code, follow these.
 
 - Use `xmalloc` / `xcalloc` / `xrealloc` / `xstrdup` (arena allocation);
   `zfree` is a no-op (arena memory is reclaimed all at once).
-- Never call libc `free` on arena memory. Use libc `malloc`/`free` only for
-  short-lived buffers from a libc API (`realpath`, cJSON's allocator).
+- `arena.h` macro-redirects bare `malloc` / `realloc` / `calloc` to the arena,
+  so a bare `free()` on a redirected pointer is an **invalid free**. Frees on
+  arena memory are `zfree` (no-op).
+- Use the explicit `libc_malloc` / `libc_free` / `libc_realloc` escape hatches
+  for short-lived buffers that should be heap-managed (e.g. `realpath` results,
+  cJSON's allocator), and pair them correctly.
 
 ### Recursion safety
 
 - Guard unbounded recursion with `RECURSION_GUARD` / `RECURSION_GUARD_TOKEN`.
 - Recursive type/AST walkers that aren't parser-bounded carry a depth
   parameter (see `sync_type_linkage_depth`).
+
+### Field naming
+
+- Discriminant fields use `kind` (`ASTNode.kind`, `Token.kind`, `Type.kind`,
+  `CValue.kind`, the literal union's `kind`). `field.type` is a type-name
+  string, not a discriminant.
+- Count fields use `<X>_count` (`arg_count`, `binding_count`,
+  `capture_count`, `output_count`, `generic_param_count`).
 
 ### Dead code
 

@@ -18,7 +18,7 @@ These instructions are **MANDATORY** for all code generation and review tasks in
     *   Use `type_new(TYPE_KIND)` helper.
     *   `type_to_string(t)` and `type_to_c_string(t)` return arena-allocated strings. Do not worry about freeing them.
 *   **Traversal**:
-    *   The compiler uses **Recursive Descent** with **Switch Statements** on `node->type`.
+    *   The compiler uses **Recursive Descent** with **Switch Statements** on `node->kind`.
     *   Do NOT introduce Visitor patterns or callback tables unless consistent with existing code.
 
 ## 3. Parser Patterns
@@ -26,7 +26,7 @@ These instructions are **MANDATORY** for all code generation and review tasks in
     *   **Signature Rule**: `ReturnType func_name(ParserContext *ctx, ...)`
 *   **Token Consumption**:
     *   Use `expect(lexer, TOKEN_TYPE, "error message")` for mandatory tokens.
-    *   For optional tokens, check `l->token.type` and assume `lexer_next(l)` is used to advance (verify specific helper availability).
+    *   For optional tokens, check `l->token.kind` and assume `lexer_next(l)` is used to advance (verify specific helper availability).
 *   **Error Handling**:
     *   **Fatal / syntax**: `zpanic_at(token, "…")`. Exits immediately (or delegates to the LSP handler in fault-tolerant mode). "Expected …" errors use this.
     *   **Warning**: `zwarn_at(token, "…")`.

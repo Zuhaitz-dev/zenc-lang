@@ -32,7 +32,7 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
 
     lexer_next(l);
     Token t = lexer_next(l);
-    if (t.type != TOK_STRING && t.type != TOK_RAW_STRING)
+    if (t.kind != TOK_STRING && t.kind != TOK_RAW_STRING)
     {
         zpanic_at(t, "Test name must be a string literal");
         return NULL;
@@ -51,7 +51,7 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
 ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
 {
     Token tk = lexer_next(l);
-    if (lexer_peek(l).type == TOK_LPAREN)
+    if (lexer_peek(l).kind == TOK_LPAREN)
     {
         lexer_next(l);
     }
@@ -60,18 +60,18 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
 
     char *msg = NULL;
     int is_literal = 0;
-    if (lexer_peek(l).type == TOK_COMMA)
+    if (lexer_peek(l).kind == TOK_COMMA)
     {
         lexer_next(l);
         Token st = lexer_next(l);
-        if (st.type == TOK_STRING)
+        if (st.kind == TOK_STRING)
         {
             is_literal = 1;
             msg = xmalloc(st.len + 1);
             strncpy(msg, st.start, st.len);
             msg[st.len] = 0;
         }
-        else if (st.type == TOK_IDENT)
+        else if (st.kind == TOK_IDENT)
         {
             is_literal = 0;
             msg = xmalloc(st.len + 1);
@@ -85,11 +85,11 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
         }
     }
 
-    if (lexer_peek(l).type == TOK_RPAREN)
+    if (lexer_peek(l).kind == TOK_RPAREN)
     {
         lexer_next(l);
     }
-    if (lexer_peek(l).type == TOK_SEMICOLON)
+    if (lexer_peek(l).kind == TOK_SEMICOLON)
     {
         lexer_next(l);
     }
@@ -105,7 +105,7 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
 ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
 {
     Token tk = lexer_next(l);
-    if (lexer_peek(l).type == TOK_LPAREN)
+    if (lexer_peek(l).kind == TOK_LPAREN)
     {
         lexer_next(l);
     }
@@ -114,18 +114,18 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
 
     char *msg = NULL;
     int is_literal = 0;
-    if (lexer_peek(l).type == TOK_COMMA)
+    if (lexer_peek(l).kind == TOK_COMMA)
     {
         lexer_next(l);
         Token st = lexer_next(l);
-        if (st.type == TOK_STRING)
+        if (st.kind == TOK_STRING)
         {
             is_literal = 1;
             msg = xmalloc(st.len + 1);
             strncpy(msg, st.start, st.len);
             msg[st.len] = 0;
         }
-        else if (st.type == TOK_IDENT)
+        else if (st.kind == TOK_IDENT)
         {
             is_literal = 0;
             msg = xmalloc(st.len + 1);
@@ -139,11 +139,11 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
         }
     }
 
-    if (lexer_peek(l).type == TOK_RPAREN)
+    if (lexer_peek(l).kind == TOK_RPAREN)
     {
         lexer_next(l);
     }
-    if (lexer_peek(l).type == TOK_SEMICOLON)
+    if (lexer_peek(l).kind == TOK_SEMICOLON)
     {
         lexer_next(l);
     }
@@ -172,7 +172,7 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
     int handled = 0;
 
     if (curr_func_ret && strncmp(curr_func_ret, "Tuple__", 7) == 0 &&
-        lexer_peek(l).type == TOK_LPAREN)
+        lexer_peek(l).kind == TOK_LPAREN)
     {
 
         int is_tuple_lit = 0;
@@ -183,20 +183,20 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
         while (1)
         {
             Token t = lexer_next(&temp_l);
-            if (t.type == TOK_EOF)
+            if (t.kind == TOK_EOF)
             {
                 break;
             }
-            if (t.type == TOK_SEMICOLON)
+            if (t.kind == TOK_SEMICOLON)
             {
                 break;
             }
 
-            if (t.type == TOK_LPAREN)
+            if (t.kind == TOK_LPAREN)
             {
                 depth++;
             }
-            if (t.type == TOK_RPAREN)
+            if (t.kind == TOK_RPAREN)
             {
                 depth--;
                 if (depth == 0)
@@ -205,7 +205,7 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
                 }
             }
 
-            if (depth == 1 && t.type == TOK_COMMA)
+            if (depth == 1 && t.kind == TOK_COMMA)
             {
                 is_tuple_lit = 1;
                 break;
@@ -215,14 +215,17 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
         if (is_tuple_lit)
         {
             n->ret.value = parse_tuple_expression(ctx, l, curr_func_ret, NULL);
-            n->ret.value->token = return_token;
+            if (n->ret.value)
+            {
+                n->ret.value->token = return_token;
+            }
             handled = 1;
         }
     }
 
     if (!handled)
     {
-        if (lexer_peek(l).type == TOK_SEMICOLON)
+        if (lexer_peek(l).kind == TOK_SEMICOLON)
         {
             n->ret.value = NULL;
         }
@@ -232,7 +235,7 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
         }
     }
 
-    if (lexer_peek(l).type == TOK_SEMICOLON)
+    if (lexer_peek(l).kind == TOK_SEMICOLON)
     {
         lexer_next(l);
     }

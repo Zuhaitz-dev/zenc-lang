@@ -1,0 +1,53 @@
+// language/features/enums: types are emitted in C before what uses them, whatever
+// the declaration order: a plain enum or an opaque alias carried by a tagged
+// enum, a tuple holding a struct, and a Vec of a plain enum built inside the
+// enum's own impl.
+import "std/vec.zc"
+
+enum Motive { Unknown = 0, Money, Jealousy }
+opaque alias Weight = int;
+
+fn weight_of(raw: int) -> Weight { return raw; }
+fn raw_weight(w: Weight) -> int { return w; }
+
+enum Value { Nothing, Motive(Motive), Weight(Weight) }
+
+struct Item { value: int; }
+
+fn make_item(v: int) -> (Item, int) {
+    return (Item { value: v }, v * 2);
+}
+
+enum Kind { None = 0, One, Two }
+
+impl Kind {
+    fn all() -> Vec<Kind> {
+        let out = Vec<Kind>::new();
+        out.push(Kind::One);
+        out.push(Kind::Two);
+        return out;
+    }
+}
+
+test "a plain enum and an opaque alias as payloads" {
+    let motive = Value::Motive(Motive::Jealousy);
+    match motive {
+        Value::Motive(m) => assert(m == Motive::Jealousy, "plain enum payload"),
+        _ => assert(false, "expected a motive"),
+    }
+    let weight = Value::Weight(weight_of(7));
+    match weight {
+        Value::Weight(w) => assert(raw_weight(w) == 7, "opaque alias payload"),
+        _ => assert(false, "expected a weight"),
+    }
+}
+
+test "a tuple holding a struct" {
+    let (item, twice) = make_item(3);
+    assert(item.value == 3 && twice == 6, "tuple with a struct");
+}
+
+test "a Vec of the enum built in its own impl" {
+    let kinds = Kind::all();
+    assert(kinds.length() == 2, "two kinds");
+}

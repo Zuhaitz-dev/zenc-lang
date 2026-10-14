@@ -25,7 +25,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
     ASTNode *expr = parse_expression(ctx, l);
 
     Token t_brace = lexer_next(l);
-    if (t_brace.type != TOK_LBRACE)
+    if (t_brace.kind != TOK_LBRACE)
     {
         zpanic_at(t_brace, "Expected '{' in match");
         if (ctx->is_fault_tolerant)
@@ -43,25 +43,25 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
     while (1)
     {
         skip_comments(l);
-        if (lexer_peek(l).type == TOK_RBRACE)
+        if (lexer_peek(l).kind == TOK_RBRACE)
         {
             break;
         }
-        if (lexer_peek(l).type == TOK_EOF)
+        if (lexer_peek(l).kind == TOK_EOF)
         {
             zpanic_at(lexer_peek(l), "Unexpected end of file in match body");
             break;
         }
-        if (lexer_peek(l).type == TOK_COMMA)
+        if (lexer_peek(l).kind == TOK_COMMA)
         {
             lexer_next(l);
         }
         skip_comments(l);
-        if (lexer_peek(l).type == TOK_RBRACE)
+        if (lexer_peek(l).kind == TOK_RBRACE)
         {
             break;
         }
-        if (lexer_peek(l).type == TOK_EOF)
+        if (lexer_peek(l).kind == TOK_EOF)
         {
             zpanic_at(lexer_peek(l), "Unexpected end of file in match body");
             break;
@@ -81,7 +81,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
             {
                 skip_comments(l);
                 Token pk = lexer_peek(l);
-                if (pk.type == TOK_DCOLON)
+                if (pk.kind == TOK_DCOLON)
                 {
                     lexer_next(l); // eat ::
                     Token suffix = lexer_next(l);
@@ -90,22 +90,22 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                     zfree(p_str);
                     p_str = tmp;
                 }
-                else if (pk.type == TOK_LANGLE)
+                else if (pk.kind == TOK_LANGLE)
                 {
                     lexer_next(l); // eat <
                     int depth = 1;
                     while (depth > 0)
                     {
                         Token t = lexer_next(l);
-                        if (t.type == TOK_LANGLE)
+                        if (t.kind == TOK_LANGLE)
                         {
                             depth++;
                         }
-                        else if (t.type == TOK_RANGLE)
+                        else if (t.kind == TOK_RANGLE)
                         {
                             depth--;
                         }
-                        else if (t.type == TOK_EOF)
+                        else if (t.kind == TOK_EOF)
                         {
                             break;
                         }
@@ -117,10 +117,10 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                 }
             }
 
-            if (lexer_peek(l).type == TOK_DOTDOT || lexer_peek(l).type == TOK_DOTDOT_EQ ||
-                lexer_peek(l).type == TOK_DOTDOT_LT)
+            if (lexer_peek(l).kind == TOK_DOTDOT || lexer_peek(l).kind == TOK_DOTDOT_EQ ||
+                lexer_peek(l).kind == TOK_DOTDOT_LT)
             {
-                int is_inclusive = (lexer_peek(l).type == TOK_DOTDOT_EQ);
+                int is_inclusive = (lexer_peek(l).kind == TOK_DOTDOT_EQ);
                 lexer_next(l); // eat operator
                 Token end_tok = lexer_next(l);
                 char *end_str = token_strdup(end_tok);
@@ -150,10 +150,10 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 
             Token next = lexer_peek(l);
             skip_comments(l);
-            int is_or = (next.type == TOK_OR) ||
-                        (next.type == TOK_OP && next.len == 2 && next.start[0] == '|' &&
+            int is_or = (next.kind == TOK_OR) ||
+                        (next.kind == TOK_OP && next.len == 2 && next.start[0] == '|' &&
                          next.start[1] == '|') ||
-                        (next.type == TOK_COMMA);
+                        (next.kind == TOK_COMMA);
             if (is_or)
             {
                 lexer_next(l); // eat ||, 'or', or comma
@@ -176,19 +176,19 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 
         skip_comments(l);
         if (!is_default && pattern_count == 1 &&
-            (lexer_peek(l).type == TOK_LPAREN || lexer_peek(l).type == TOK_LBRACE))
+            (lexer_peek(l).kind == TOK_LPAREN || lexer_peek(l).kind == TOK_LBRACE))
         {
-            int is_brace = (lexer_peek(l).type == TOK_LBRACE);
+            int is_brace = (lexer_peek(l).kind == TOK_LBRACE);
             lexer_next(l);
 
             bindings = xcalloc(8, sizeof(char *));
             binding_refs = xcalloc(8, sizeof(int));
             int binding_cap = 8;
 
-            while (lexer_peek(l).type != TOK_RPAREN && lexer_peek(l).type != TOK_RBRACE)
+            while (lexer_peek(l).kind != TOK_RPAREN && lexer_peek(l).kind != TOK_RBRACE)
             {
                 int is_r = 0;
-                if (lexer_peek(l).type == TOK_IDENT && lexer_peek(l).len == 3 &&
+                if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 3 &&
                     strncmp(lexer_peek(l).start, "ref", 3) == 0)
                 {
                     lexer_next(l); // eat 'ref'
@@ -196,7 +196,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                 }
 
                 Token b = lexer_next(l);
-                if (b.type != TOK_IDENT)
+                if (b.kind != TOK_IDENT)
                 {
                     zpanic_at(b, "Expected variable name in pattern");
                     break;
@@ -209,11 +209,11 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                     binding_refs = xrealloc(binding_refs, sizeof(int) * (size_t)(binding_cap));
                 }
 
-                if (is_brace && lexer_peek(l).type == TOK_COLON)
+                if (is_brace && lexer_peek(l).kind == TOK_COLON)
                 {
                     lexer_next(l); // eat :
                     Token val = lexer_next(l);
-                    if (val.type == TOK_IDENT)
+                    if (val.kind == TOK_IDENT)
                     {
                         bindings[binding_count] = token_strdup(val);
                     }
@@ -233,7 +233,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                     binding_count++;
                 }
 
-                if (lexer_peek(l).type == TOK_COMMA)
+                if (lexer_peek(l).kind == TOK_COMMA)
                 {
                     lexer_next(l);
                     continue;
@@ -242,12 +242,12 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
             }
 
             Token end = lexer_next(l);
-            if (is_brace && end.type != TOK_RBRACE)
+            if (is_brace && end.kind != TOK_RBRACE)
             {
                 zpanic_at(end, "Expected }");
                 return NULL;
             }
-            else if (!is_brace && end.type != TOK_RPAREN)
+            else if (!is_brace && end.kind != TOK_RPAREN)
             {
                 zpanic_at(end, "Expected )");
                 return NULL;
@@ -256,24 +256,24 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
         }
 
         ASTNode *guard = NULL;
-        if (lexer_peek(l).type == TOK_IDENT && strncmp(lexer_peek(l).start, "if", 2) == 0)
+        if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "if", 2) == 0)
         {
             lexer_next(l);
             guard = parse_expression(ctx, l);
         }
 
-        if (lexer_next(l).type != TOK_ARROW)
+        if (lexer_next(l).kind != TOK_ARROW)
         {
             zpanic_at(lexer_peek(l), "Expected => after match pattern");
             return NULL;
             if (ctx->is_fault_tolerant)
             {
-                while (lexer_peek(l).type != TOK_RBRACE && lexer_peek(l).type != TOK_COMMA &&
-                       lexer_peek(l).type != TOK_EOF)
+                while (lexer_peek(l).kind != TOK_RBRACE && lexer_peek(l).kind != TOK_COMMA &&
+                       lexer_peek(l).kind != TOK_EOF)
                 {
                     lexer_next(l);
                 }
-                if (lexer_peek(l).type == TOK_COMMA)
+                if (lexer_peek(l).kind == TOK_COMMA)
                 {
                     lexer_next(l);
                 }
@@ -294,7 +294,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
             if (vreg)
             {
                 enum_def = find_struct_def(ctx, vreg->enum_name);
-                if (enum_def && enum_def->type == NODE_ENUM)
+                if (enum_def && enum_def->kind == NODE_ENUM)
                 {
                     ASTNode *v = enum_def->enm.variants;
                     while (v)
@@ -341,7 +341,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                         }
                         gt = gt->next;
                     }
-                    if (gt && gt->struct_node && gt->struct_node->type == NODE_STRUCT &&
+                    if (gt && gt->struct_node && gt->struct_node->kind == NODE_STRUCT &&
                         gt->struct_node->strct.generic_param_count > 0)
                     {
                         const char *base = gt->name;
@@ -364,9 +364,8 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                         }
                         GenericFuncTemplate *ft = find_func_template(ctx, ctor);
                         zfree(ctor);
-                        if (ft && ft->func_node && ft->func_node->type == NODE_FUNCTION &&
-                            ft->func_node->func.arg_count >= 1 &&
-                            ft->func_node->func.arg_types[0] &&
+                        if (ft && ft->func_node && ft->func_node->kind == NODE_FUNCTION &&
+                            ft->func_node->func.count >= 1 && ft->func_node->func.arg_types[0] &&
                             ft->func_node->func.arg_types[0]->name)
                         {
                             const char *gparam = gt->struct_node->strct.generic_params[0];
@@ -528,25 +527,25 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 
         ASTNode *body = NULL;
         Token pk = lexer_peek(l);
-        if (pk.type == TOK_LBRACE)
+        if (pk.kind == TOK_LBRACE)
         {
             body = parse_block(ctx, l);
         }
-        else if (pk.type == TOK_EXPECT ||
-                 (pk.type == TOK_IDENT && strncmp(pk.start, "expect", 6) == 0))
+        else if (pk.kind == TOK_EXPECT ||
+                 (pk.kind == TOK_IDENT && strncmp(pk.start, "expect", 6) == 0))
         {
             body = parse_expect(ctx, l);
         }
-        else if (pk.type == TOK_ASSERT ||
-                 (pk.type == TOK_IDENT && strncmp(pk.start, "assert", 6) == 0))
+        else if (pk.kind == TOK_ASSERT ||
+                 (pk.kind == TOK_IDENT && strncmp(pk.start, "assert", 6) == 0))
         {
             body = parse_assert(ctx, l);
         }
-        else if (pk.type == TOK_IDENT && strncmp(pk.start, "return", 6) == 0)
+        else if (pk.kind == TOK_IDENT && strncmp(pk.start, "return", 6) == 0)
         {
             body = parse_return(ctx, l);
         }
-        else if (ctx->is_fault_tolerant && (pk.type == TOK_RBRACE || pk.type == TOK_COMMA))
+        else if (ctx->is_fault_tolerant && (pk.kind == TOK_RBRACE || pk.kind == TOK_COMMA))
         {
             body = ast_create(NODE_BLOCK);
             body->token = pk;

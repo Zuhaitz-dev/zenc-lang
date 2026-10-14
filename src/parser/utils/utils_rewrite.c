@@ -15,7 +15,7 @@ char *parse_condition_raw(ParserContext *ctx, Lexer *l)
 {
     (void)ctx; // suppress unused parameter warning
     Token t = lexer_peek(l);
-    if (t.type == TOK_LPAREN)
+    if (t.kind == TOK_LPAREN)
     {
         Token op = lexer_next(l);
         const char *s = op.start;
@@ -23,16 +23,16 @@ char *parse_condition_raw(ParserContext *ctx, Lexer *l)
         while (d > 0)
         {
             t = lexer_next(l);
-            if (t.type == TOK_EOF)
+            if (t.kind == TOK_EOF)
             {
                 zpanic_at(t, "Unterminated condition");
                 return NULL;
             }
-            if (t.type == TOK_LPAREN)
+            if (t.kind == TOK_LPAREN)
             {
                 d++;
             }
-            if (t.type == TOK_RPAREN)
+            if (t.kind == TOK_RPAREN)
             {
                 d--;
             }
@@ -50,7 +50,7 @@ char *parse_condition_raw(ParserContext *ctx, Lexer *l)
         while (1)
         {
             t = lexer_peek(l);
-            if (t.type == TOK_LBRACE || t.type == TOK_EOF)
+            if (t.kind == TOK_LBRACE || t.kind == TOK_EOF)
             {
                 break;
             }
@@ -88,7 +88,7 @@ static MixinResolution resolve_mixin_method(ParserContext *ctx, const char *stru
     if (!find_func(ctx, target_func))
     {
         ASTNode *mixin_def = find_struct_def(ctx, struct_name);
-        if (mixin_def && mixin_def->type == NODE_STRUCT && mixin_def->strct.used_structs)
+        if (mixin_def && mixin_def->kind == NODE_STRUCT && mixin_def->strct.used_structs)
         {
             for (int k = 0; k < mixin_def->strct.used_struct_count; k++)
             {
@@ -220,7 +220,7 @@ char *rewrite_expr_methods(ParserContext *ctx, char *raw)
 
             ASTNode *def = find_struct_def(ctx, base_t);
             int is_field = 0;
-            if (def && (def->type == NODE_STRUCT))
+            if (def && (def->kind == NODE_STRUCT))
             {
                 ASTNode *f = def->strct.fields;
                 while (f)
@@ -392,7 +392,7 @@ char *rewrite_expr_methods(ParserContext *ctx, char *raw)
             else
             {
                 ASTNode *sdef = find_struct_def(ctx, acc);
-                if (sdef && sdef->type == NODE_ENUM)
+                if (sdef && sdef->kind == NODE_ENUM)
                 {
                     // For Enums, check if it's a variant
                     int is_variant = 0;
@@ -567,7 +567,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                              char ***names_out, int *is_varargs_out, char ***ctype_overrides_out)
 {
     Token t = lexer_next(l);
-    if (t.type != TOK_LPAREN)
+    if (t.kind != TOK_LPAREN)
     {
         zpanic_at(t, "Expected '(' in function args");
         return NULL;
@@ -586,11 +586,11 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
 
     // Initial 16 entries already zeroed by xcalloc
 
-    if (lexer_peek(l).type != TOK_RPAREN)
+    if (lexer_peek(l).kind != TOK_RPAREN)
     {
         while (1)
         {
-            if (lexer_peek(l).type == TOK_EOF)
+            if (lexer_peek(l).kind == TOK_EOF)
             {
                 break;
             }
@@ -614,19 +614,19 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
 
             // Check for @ctype("...") before parameter
             char *ctype_override = NULL;
-            if (lexer_peek(l).type == TOK_AT)
+            if (lexer_peek(l).kind == TOK_AT)
             {
                 lexer_next(l); // eat @
                 Token attr = lexer_next(l);
-                if (attr.type == TOK_IDENT && attr.len == 5 && strncmp(attr.start, "ctype", 5) == 0)
+                if (attr.kind == TOK_IDENT && attr.len == 5 && strncmp(attr.start, "ctype", 5) == 0)
                 {
-                    if (lexer_next(l).type != TOK_LPAREN)
+                    if (lexer_next(l).kind != TOK_LPAREN)
                     {
                         zpanic_at(lexer_peek(l), "Expected ( after @ctype");
                         return NULL;
                     }
                     Token ctype_tok = lexer_next(l);
-                    if (ctype_tok.type != TOK_STRING)
+                    if (ctype_tok.kind != TOK_STRING)
                     {
                         zpanic_at(ctype_tok, "@ctype requires a string argument");
                         return NULL;
@@ -635,7 +635,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                     ctype_override = xmalloc(ctype_tok.len - 1);
                     strncpy(ctype_override, ctype_tok.start + 1, ctype_tok.len - 2);
                     ctype_override[ctype_tok.len - 2] = 0;
-                    if (lexer_next(l).type != TOK_RPAREN)
+                    if (lexer_next(l).kind != TOK_RPAREN)
                     {
                         zpanic_at(lexer_peek(l), "Expected ) after @ctype string");
                         return NULL;
@@ -723,15 +723,15 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
             }
             else
             {
-                if (param_tok.type != TOK_IDENT)
+                if (param_tok.kind != TOK_IDENT)
                 {
                     zpanic_at(lexer_peek(l), "Expected arg name");
                     return NULL;
                 }
-                check_identifier(ctx, param_tok);
+                check_identifier(param_tok);
                 char *name = token_strdup(param_tok);
                 names[count] = name; // Store name
-                if (lexer_next(l).type != TOK_COLON)
+                if (lexer_next(l).kind != TOK_COLON)
                 {
                     zpanic_at(lexer_peek(l), "Expected ':'");
                     return NULL;
@@ -801,7 +801,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 ctype_overrides[count] = ctype_override;
                 count++;
 
-                if (lexer_peek(l).type == TOK_OP && is_token(lexer_peek(l), "="))
+                if (lexer_peek(l).kind == TOK_OP && is_token(lexer_peek(l), "="))
                 {
                     lexer_next(l); // consume =
 
@@ -813,11 +813,11 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                     defaults[count - 1] = ast_to_string(def_node);
                 }
             }
-            if (lexer_peek(l).type == TOK_COMMA)
+            if (lexer_peek(l).kind == TOK_COMMA)
             {
                 lexer_next(l);
                 // Check if next is ...
-                if (lexer_peek(l).type == TOK_ELLIPSIS)
+                if (lexer_peek(l).kind == TOK_ELLIPSIS)
                 {
                     lexer_next(l);
                     if (is_varargs_out)
@@ -838,7 +838,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
             }
         }
     }
-    if (lexer_next(l).type != TOK_RPAREN)
+    if (lexer_next(l).kind != TOK_RPAREN)
     {
         zpanic_at(lexer_peek(l), "Expected ')' after args");
         return NULL;
@@ -909,7 +909,7 @@ const char *get_closest_type_hint(ParserContext *ctx, const char *name)
     StructRef *er = ctx->parsed_enums_list;
     while (er)
     {
-        if (er->node && er->node->type == NODE_ENUM)
+        if (er->node && er->node->kind == NODE_ENUM)
         {
             int dist = levenshtein(name, er->node->enm.name);
             if (dist < best_dist)

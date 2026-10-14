@@ -187,7 +187,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     register_symbol_to_lsp(ctx, sym);
 
     Type *ft = type_new(TYPE_FUNCTION);
-    ft->arg_count = count;
+    ft->count = count;
     ft->args = arg_types;
     ft->inner = ret_type;
     ft->is_raw = 1;
@@ -320,7 +320,7 @@ void register_enum_variant(ParserContext *ctx, const char *vname, const char *en
 {
     if (ctx->config->mode_lsp)
     {
-        EnumVariantReg *existing = find_enum_variant(ctx, vname);
+        EnumVariantReg *existing = find_enum_variant_of(ctx, ename, vname);
         if (existing)
         {
             existing->tag_id = tag;
@@ -376,6 +376,29 @@ EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
     if (ename)
     {
         zfree(ename);
+    }
+    return NULL;
+}
+
+// Several enums may share a variant name (`Slot::None`, `Attribute::None`), so
+// a lookup that knows the enum must filter by it instead of taking the first
+// variant with that name.
+EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
+                                     const char *variant_name)
+{
+    if (!enum_name || !variant_name)
+    {
+        return NULL;
+    }
+    EnumVariantReg *r = ctx->enum_variants;
+    while (r)
+    {
+        if (r->variant_name && r->enum_name && strcmp(r->variant_name, variant_name) == 0 &&
+            strcmp(r->enum_name, enum_name) == 0)
+        {
+            return r;
+        }
+        r = r->next;
     }
     return NULL;
 }

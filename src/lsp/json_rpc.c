@@ -107,8 +107,9 @@ void handle_request(const char *json_str)
             "{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{"
             "\"serverInfo\":{\"name\":\"ZenC LS\",\"version\": \"1.0.0\"},"
             "\"capabilities\":{\"textDocumentSync\":{\"openClose\":true,\"change\":1},"
-            "\"definitionProvider\":true,\"hoverProvider\":true,"
+            "\"definitionProvider\":true,\"declarationProvider\":true,\"hoverProvider\":true,"
             "\"referencesProvider\":true,\"documentSymbolProvider\":true,"
+            "\"workspaceSymbolProvider\":true,"
             "\"renameProvider\":true,\"codeActionProvider\":true,"
             "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
             "\"completionProvider\":{"
@@ -169,11 +170,15 @@ void handle_request(const char *json_str)
                 if (uri && uri->valuestring && text && text->valuestring)
                 {
                     lsp_check_file(uri->valuestring, text->valuestring, id);
+                    lsp_project_track_document(uri->valuestring, text->valuestring);
                 }
             }
         }
     }
-    else if (strcmp(method, "textDocument/definition") == 0)
+    // Declarations and definitions are not told apart: go to declaration answers like go to
+    // definition.
+    else if (strcmp(method, "textDocument/definition") == 0 ||
+             strcmp(method, "textDocument/declaration") == 0)
     {
         char *uri = NULL;
         int line = 0, col = 0;
@@ -216,6 +221,11 @@ void handle_request(const char *json_str)
             lsp_document_symbol(uri, id);
             zfree(uri);
         }
+    }
+    else if (strcmp(method, "workspace/symbol") == 0)
+    {
+        cJSON *query = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "params"), "query");
+        lsp_workspace_symbol(cJSON_IsString(query) ? query->valuestring : "", id);
     }
     else if (strcmp(method, "textDocument/references") == 0)
     {
@@ -387,6 +397,26 @@ void handle_request(const char *json_str)
     {
         // For notification, no ID. Just exit.
         exit(0);
+    }
+    else if (id_item)
+    {
+        // A request the server does not implement still needs an answer, or the client waits
+        // for it forever. Unknown notifications (no id) are ignored.
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddStringToObject(response, "jsonrpc", "2.0");
+        cJSON_AddItemToObject(response, "id", cJSON_Duplicate(id_item, 1));
+        cJSON *error = cJSON_CreateObject();
+        cJSON_AddNumberToObject(error, "code", -32601); // MethodNotFound
+        char message[256];
+        snprintf(message, sizeof(message), "Method not found: %s", method);
+        cJSON_AddStringToObject(error, "message", message);
+        cJSON_AddItemToObject(response, "error", error);
+
+        char *str = cJSON_PrintUnformatted(response);
+        fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
+        fflush(stdout);
+        zfree(str);
+        cJSON_Delete(response);
     }
 
     cJSON_Delete(json);

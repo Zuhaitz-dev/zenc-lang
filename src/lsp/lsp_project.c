@@ -10,6 +10,22 @@
 
 LSPProject *g_project = NULL;
 
+/**
+ * @brief Latest text of a document the client has opened.
+ *
+ * Lives in the libc heap, not in the arena, so it survives lsp_project_rebuild().
+ */
+typedef struct TrackedDocument
+{
+    char *uri;
+    char *source;
+    struct TrackedDocument *next;
+} TrackedDocument;
+
+static TrackedDocument *g_tracked_documents = NULL;
+static size_t g_built_total = 0;
+static int g_workspace_indexed = 0;
+
 static void scan_dir(const char *dir_path);
 void lsp_default_on_error(void *data, Token t, const char *msg);
 
@@ -89,6 +105,113 @@ void lsp_project_index_workspace(void)
     g_is_indexing = 1;
     scan_dir(g_project->root_path);
     g_is_indexing = 0;
+
+    g_workspace_indexed = 1;
+    g_built_total = g_compiler.arena.total_alloc;
+}
+
+static char *libc_strdup(const char *s)
+{
+    size_t len = strlen(s) + 1;
+    char *copy = libc_malloc(len);
+    if (copy)
+    {
+        memcpy(copy, s, len);
+    }
+    return copy;
+}
+
+void lsp_project_track_document(const char *uri, const char *src)
+{
+    char *source = libc_strdup(src);
+    if (!source)
+    {
+        return;
+    }
+
+    TrackedDocument *document = g_tracked_documents;
+    while (document && strcmp(document->uri, uri) != 0)
+    {
+        document = document->next;
+    }
+
+    if (!document)
+    {
+        document = libc_malloc(sizeof(TrackedDocument));
+        char *uri_copy = libc_strdup(uri);
+        if (!document || !uri_copy)
+        {
+            libc_free(document);
+            libc_free(uri_copy);
+            libc_free(source);
+            return;
+        }
+        document->uri = uri_copy;
+        document->source = NULL;
+        document->next = g_tracked_documents;
+        g_tracked_documents = document;
+    }
+
+    libc_free(document->source);
+    document->source = source;
+}
+
+size_t lsp_project_built_total(void)
+{
+    return g_built_total;
+}
+
+void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
+{
+    if (!g_project)
+    {
+        return;
+    }
+
+    // Everything needed to rebuild must be copied out of the arena before rewinding it.
+    char *root_path = libc_strdup(g_project->root_path ? g_project->root_path : ".");
+    if (!root_path)
+    {
+        return;
+    }
+    if (g_project->ctx && g_project->ctx->cg.hoist_out)
+    {
+        fclose(g_project->ctx->cg.hoist_out);
+    }
+
+    zarena_restore(&g_compiler.arena, base);
+#if ZARENA_ASAN_REDZONE
+    // Under ASan, a stale pointer into the rewound region becomes a reported error
+    // instead of silently reading whatever the rebuild writes there.
+    for (zarena_block *block = base.block; block; block = block->next)
+    {
+        size_t start = block == base.block ? base.used : 0;
+        __asan_poison_memory_region(block->data + start, block->capacity - start);
+    }
+#endif
+
+    // The compiler state saved with the mark only points below it. Globals that may
+    // point above it are reset.
+    zarena arena = g_compiler.arena;
+    g_compiler = *base_compiler;
+    g_compiler.arena = arena;
+    g_project = NULL;
+    curr_func_ret = NULL;
+    clear_registered_traits();
+
+    lsp_project_init(root_path);
+    libc_free(root_path);
+    if (g_workspace_indexed)
+    {
+        lsp_project_index_workspace();
+    }
+    for (TrackedDocument *document = g_tracked_documents; document; document = document->next)
+    {
+        lsp_project_update_file(document->uri, document->source);
+    }
+
+    g_built_total = g_compiler.arena.total_alloc;
+    fprintf(stderr, "zls: project rebuilt, arena in use: %zu KB\n", g_built_total / 1024);
 }
 
 // Default error handler for indexing phase
@@ -298,38 +421,38 @@ DefinitionResult lsp_project_find_definition(const char *name)
             LSPRange *r = pf->index->head;
             while (r)
             {
-                if (r->type == RANGE_DEFINITION && r->node)
+                if (r->kind == RANGE_DEFINITION && r->node)
                 {
                     char *found_name = NULL;
-                    if (r->node->type == NODE_FUNCTION)
+                    if (r->node->kind == NODE_FUNCTION)
                     {
                         found_name = r->node->func.name;
                     }
-                    else if (r->node->type == NODE_VAR_DECL)
+                    else if (r->node->kind == NODE_VAR_DECL)
                     {
                         found_name = r->node->var_decl.name;
                     }
-                    else if (r->node->type == NODE_CONST)
+                    else if (r->node->kind == NODE_CONST)
                     {
                         found_name = r->node->var_decl.name;
                     }
-                    else if (r->node->type == NODE_STRUCT)
+                    else if (r->node->kind == NODE_STRUCT)
                     {
                         found_name = r->node->strct.name;
                     }
-                    else if (r->node->type == NODE_ENUM)
+                    else if (r->node->kind == NODE_ENUM)
                     {
                         found_name = r->node->enm.name;
                     }
-                    else if (r->node->type == NODE_ENUM_VARIANT)
+                    else if (r->node->kind == NODE_ENUM_VARIANT)
                     {
                         found_name = r->node->variant.name;
                     }
-                    else if (r->node->type == NODE_TRAIT)
+                    else if (r->node->kind == NODE_TRAIT)
                     {
                         found_name = r->node->trait.name;
                     }
-                    else if (r->node->type == NODE_TYPE_ALIAS)
+                    else if (r->node->kind == NODE_TYPE_ALIAS)
                     {
                         found_name = r->node->type_alias.alias;
                     }
@@ -375,44 +498,44 @@ ReferenceResult *lsp_project_find_references(const char *name)
 
                 if (r->node)
                 {
-                    if (r->node->type == NODE_FUNCTION)
+                    if (r->node->kind == NODE_FUNCTION)
                     {
                         scan_name = r->node->func.name;
                     }
-                    else if (r->node->type == NODE_VAR_DECL)
+                    else if (r->node->kind == NODE_VAR_DECL)
                     {
                         scan_name = r->node->var_decl.name;
                     }
-                    else if (r->node->type == NODE_CONST)
+                    else if (r->node->kind == NODE_CONST)
                     {
                         scan_name = r->node->var_decl.name;
                     }
-                    else if (r->node->type == NODE_STRUCT)
+                    else if (r->node->kind == NODE_STRUCT)
                     {
                         scan_name = r->node->strct.name;
                     }
-                    else if (r->node->type == NODE_ENUM)
+                    else if (r->node->kind == NODE_ENUM)
                     {
                         scan_name = r->node->enm.name;
                     }
-                    else if (r->node->type == NODE_ENUM_VARIANT)
+                    else if (r->node->kind == NODE_ENUM_VARIANT)
                     {
                         scan_name = r->node->variant.name;
                     }
-                    else if (r->node->type == NODE_TRAIT)
+                    else if (r->node->kind == NODE_TRAIT)
                     {
                         scan_name = r->node->trait.name;
                     }
-                    else if (r->node->type == NODE_TYPE_ALIAS)
+                    else if (r->node->kind == NODE_TYPE_ALIAS)
                     {
                         scan_name = r->node->type_alias.alias;
                     }
-                    else if (r->node->type == NODE_EXPR_VAR)
+                    else if (r->node->kind == NODE_EXPR_VAR)
                     {
                         scan_name = r->node->var_ref.name;
                     }
-                    else if (r->node->type == NODE_EXPR_CALL && r->node->call.callee &&
-                             r->node->call.callee->type == NODE_EXPR_VAR)
+                    else if (r->node->kind == NODE_EXPR_CALL && r->node->call.callee &&
+                             r->node->call.callee->kind == NODE_EXPR_VAR)
                     {
                         scan_name = r->node->call.callee->var_ref.name;
                     }

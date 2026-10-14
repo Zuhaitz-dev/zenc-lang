@@ -1,0 +1,18 @@
+// comptime: escapes in string literals are processed before emitting code
+comptime {
+    // Without a real newline, the declaration would end up inside the comment.
+    code("// generated\nlet after_comment: int = 7;\n");
+    // \" and \\ reach the generated code as " and \.
+    code("let quoted: string = \"a\\tb\";\n");
+    // Hex and octal escapes.
+    code("let hex_char: char = '\x41';\n");
+    code("let oct_char: char = '\102';\n");
+}
+
+test "comptime string escapes" {
+    expect_eq(after_comment, 7, "the newline should end the comment");
+    expect_eq(strlen(quoted), 3, "\\t inside the emitted string should be one tab");
+    expect_eq(quoted[1], '\t', "the second character should be a tab");
+    expect_eq(hex_char, 'A', "\\x41 should be A");
+    expect_eq(oct_char, 'B', "\\102 should be B");
+}

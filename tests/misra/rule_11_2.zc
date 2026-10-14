@@ -5,5 +5,5 @@ extern struct IncompleteStruct;
 
 fn main() {
     let ptr: IncompleteStruct*;
-    let _casted: int* = ptr as int*; // EXPECT: MISRA Rule 11.2
+    let _casted: int* = (int*)ptr; // EXPECT: MISRA Rule 11.2
 }

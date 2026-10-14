@@ -246,5 +246,12 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
         return struct_name;
     }
 
+    // Enums have methods too (`impl Value { fn as_hour(self) ... }`).
+    if (t->kind == TYPE_ENUM && t->name)
+    {
+        *is_ptr_out = 0;
+        return t->name;
+    }
+
     return NULL;
 }

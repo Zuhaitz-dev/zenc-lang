@@ -1,0 +1,9 @@
+// language/modules: two modules with the same file name in different folders,
+// each imported with its own alias, keep their functions apart.
+import "./test_modules/net/_helpers.zc" as net_helpers;
+import "./test_modules/fs/_helpers.zc" as fs_helpers;
+
+test "same file name, different folders" {
+    assert(net_helpers::describe() == 1, "net helpers");
+    assert(fs_helpers::describe() == 2, "fs helpers");
+}

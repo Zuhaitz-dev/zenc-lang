@@ -255,6 +255,51 @@ static void test_hover()
     free(resp);
 }
 
+static void expect_signature_hover(int id, int line, int character, const char *expected)
+{
+    char req[512];
+    snprintf(req, sizeof(req),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/hover\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_hover_sig.zc\"}, "
+             "\"position\": {\"line\": %d, \"character\": %d}}}",
+             id, line, character);
+    send_request(req);
+    char *resp = wait_for_response(id);
+    if (!resp || !strstr(resp, expected))
+    {
+        printf("Expected hover \"%s\", got: %s\n", expected, resp ? resp : "(no response)");
+        fail("Hover must show the function signature as written");
+    }
+    free(resp);
+}
+
+static void test_hover_signature(void)
+{
+    printf("Running test_hover_signature...\n");
+    // Line 0: struct Box { v: int; }
+    // Line 1: impl Box {
+    // Line 2:     fn get(self) -> int { return self.v; }
+    // Line 3: }
+    // Line 4: fn scale(value: int,
+    // Line 5:     factor: f64) -> int
+    // Line 6: {
+    // Line 7:     return value;
+    // Line 8: }
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hover_sig.zc\", "
+                 "\"languageId\": \"zenc\", \"version\": 1, \"text\": "
+                 "\"struct Box { v: int; }\\nimpl Box {\\n    fn get(self) -> int { return "
+                 "self.v; }\\n}\\nfn scale(value: int,\\n    factor: f64) -> int\\n{\\n    "
+                 "return value;\\n}\\n\"}}}");
+    usleep(100000);
+
+    // Zen C type names, not the C ones (int32_t, double), on one line.
+    expect_signature_hover(4, 4, 3, "fn scale(value: int, factor: f64) -> int");
+    // The method's own name, not the mangled one (Box__get).
+    expect_signature_hover(5, 2, 7, "fn get(self) -> int");
+    printf("PASS: test_hover_signature\n");
+}
+
 static void test_definition_partial_code()
 {
     printf("Running test_definition_partial_code...\n");
@@ -478,6 +523,137 @@ static void test_code_action()
         printf("WARN: test_code_action: %s\n", resp ? resp : "no response");
     }
     free(resp);
+}
+
+static void on_unanswered_request(int signal_number)
+{
+    (void)signal_number;
+    const char message[] = "TEST FAIL: no answer to an unknown request\n";
+    write(STDERR_FILENO, message, sizeof(message) - 1);
+    _exit(1);
+}
+
+static void test_unknown_method(void)
+{
+    printf("Running test_unknown_method...\n");
+    // An unknown notification gets no answer; the unknown request after it gets an error
+    // instead of leaving the client waiting (the alarm turns a hang into a failure).
+    signal(SIGALRM, on_unanswered_request);
+    alarm(5);
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"$/unknownNotification\", \"params\": {}}");
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 900, \"method\": \"textDocument/unknownRequest\", "
+                 "\"params\": {}}");
+    char *response = wait_for_response(900);
+    alarm(0);
+    if (!response || !strstr(response, "-32601"))
+    {
+        fail("An unknown request must get a MethodNotFound error");
+    }
+    free(response);
+    printf("PASS: test_unknown_method\n");
+}
+
+static void test_declaration(void)
+{
+    printf("Running test_declaration...\n");
+    // test_definition opened /tmp/test_def.zc, where `target()` on line 2 is defined on line 0.
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 61, \"method\": \"textDocument/declaration\", "
+                 "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_def.zc\"}, "
+                 "\"position\": {\"line\": 2, \"character\": 6}}}");
+    char *resp = wait_for_response(61);
+    if (!resp || !strstr(resp, "\"line\":0"))
+    {
+        fail("Go to declaration must find target() on line 0");
+    }
+    free(resp);
+    printf("PASS: test_declaration\n");
+}
+
+// The symbols named like `query` must include `expected` with that kind (and container).
+static void expect_workspace_symbol(int id, const char *query, const char *expected, int kind,
+                                    const char *container)
+{
+    char json[256];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"workspace/symbol\", "
+             "\"params\": {\"query\": \"%s\"}}",
+             id, query);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    cJSON *results = cJSON_GetObjectItem(parsed, "result");
+    int found = 0;
+    for (int i = 0; i < cJSON_GetArraySize(results); i++)
+    {
+        cJSON *item = cJSON_GetArrayItem(results, i);
+        cJSON *name = cJSON_GetObjectItem(item, "name");
+        cJSON *item_kind = cJSON_GetObjectItem(item, "kind");
+        cJSON *item_container = cJSON_GetObjectItem(item, "containerName");
+        cJSON *uri = cJSON_GetObjectItem(cJSON_GetObjectItem(item, "location"), "uri");
+        if (cJSON_IsString(name) && strcmp(name->valuestring, expected) == 0 &&
+            cJSON_IsNumber(item_kind) && item_kind->valueint == kind && cJSON_IsString(uri) &&
+            strstr(uri->valuestring, "test_ws_symbol.zc") &&
+            (!container || (cJSON_IsString(item_container) &&
+                            strcmp(item_container->valuestring, container) == 0)))
+        {
+            found = 1;
+        }
+    }
+    if (!found)
+    {
+        printf("workspace/symbol '%s' without %s: %s\n", query, expected,
+               results ? cJSON_PrintUnformatted(results) : "no result");
+        fail("Missing workspace symbol");
+    }
+    cJSON_Delete(parsed);
+}
+
+static void test_workspace_symbol(void)
+{
+    printf("Running test_workspace_symbol...\n");
+    const char *code = "struct WsShape {\n"
+                       "    w: int;\n"
+                       "}\n"
+                       "\n"
+                       "impl WsShape {\n"
+                       "    fn ws_area(self) -> int {\n"
+                       "        return self.w;\n"
+                       "    }\n"
+                       "}\n"
+                       "\n"
+                       "trait WsDrawable {\n"
+                       "    fn ws_draw(self);\n"
+                       "}\n"
+                       "\n"
+                       "fn ws_symbol_target() -> int {\n"
+                       "    return 1;\n"
+                       "}\n";
+    int fd = open("/tmp/test_ws_symbol.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0)
+    {
+        write(fd, code, strlen(code));
+        close(fd);
+    }
+    cJSON *message = cJSON_CreateObject();
+    cJSON_AddStringToObject(message, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(message, "method", "textDocument/didOpen");
+    cJSON *document =
+        cJSON_AddObjectToObject(cJSON_AddObjectToObject(message, "params"), "textDocument");
+    cJSON_AddStringToObject(document, "uri", "file:///tmp/test_ws_symbol.zc");
+    cJSON_AddStringToObject(document, "languageId", "zenc");
+    cJSON_AddNumberToObject(document, "version", 1);
+    cJSON_AddStringToObject(document, "text", code);
+    char *json = cJSON_PrintUnformatted(message);
+    send_request(json);
+    free(json);
+    cJSON_Delete(message);
+
+    expect_workspace_symbol(910, "ws_symbol", "ws_symbol_target", 12, NULL);
+    expect_workspace_symbol(911, "WSSHAPE", "WsShape", 23, NULL);
+    expect_workspace_symbol(912, "wsarea", "ws_area", 6, "WsShape");
+    expect_workspace_symbol(913, "drawable", "WsDrawable", 11, NULL);
+    printf("PASS: test_workspace_symbol\n");
 }
 
 static void test_shutdown()
@@ -907,11 +1083,13 @@ int main()
     start_lsp_server();
     test_initialize();
     test_hover();
+    test_hover_signature();
     test_completion();
     test_struct_completion();
     test_diagnostics();
     test_semantic_tokens();
     test_definition();
+    test_declaration();
     test_references();
     test_rename();
     test_outline();
@@ -923,6 +1101,8 @@ int main()
     test_empty_source();
     test_did_change();
     test_code_action();
+    test_unknown_method();
+    test_workspace_symbol();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);

@@ -33,6 +33,9 @@ for test_file in "$TEST_DIR"/*.zc; do
     # Run compiler with --misra
     output=$($ZC build "$test_file" --misra -o /dev/null 2>&1)
     exit_code=$?
+    # Only the diagnostic lines count: the echoed source line carries the
+    # "// EXPECT: ..." comment itself, which would always match.
+    diagnostics=$(printf '%s\n' "$output" | grep -E '^(error|warning):')
     
     file_failed=0
     missing_rules=""
@@ -47,7 +50,7 @@ for test_file in "$TEST_DIR"/*.zc; do
         while IFS= read -r rule; do
             [ -z "$rule" ] && continue
             # Literal substring match (case avoids =~ quoting pitfalls)
-            case "$output" in
+            case "$diagnostics" in
                 *"$rule"*) ;;
                 *)
                     file_failed=1

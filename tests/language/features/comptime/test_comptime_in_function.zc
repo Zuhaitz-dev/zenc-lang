@@ -1,0 +1,13 @@
+// comptime inside a function body emits statements, not top-level declarations
+fn bump(n: int) -> int {
+    let x = n;
+    comptime {
+        code("x += 1;\n");
+        code("println \"generated statement ran\";\n");
+    }
+    return x;
+}
+
+test "comptime inside a function" {
+    expect_eq(bump(41), 42, "the generated statement should run");
+}

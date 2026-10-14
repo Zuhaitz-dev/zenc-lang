@@ -20,7 +20,7 @@ fn main() -> i32 {
 
     let r = Rect {
         top_left: Point { x: 0, y: 0 },
-        bottom_right: Point { x: 10, y: 10, x: 5 }, // EXPECT: MISRA Rule 9.4 (Nested)
+        bottom_right: Point { x: 10, y: 10, x: 5 }, // nested; EXPECT: MISRA Rule 9.4
     };
 
     return 0;

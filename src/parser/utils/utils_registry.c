@@ -75,11 +75,11 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     r->next = ctx->parsed_structs_list;
     ctx->parsed_structs_list = r;
 
-    if (node->type == NODE_STRUCT && node->strct.name)
+    if (node->kind == NODE_STRUCT && node->strct.name)
     {
         struct_hash_insert(ctx, node->strct.name, node);
     }
-    else if (node->type == NODE_ENUM && node->enm.name)
+    else if (node->kind == NODE_ENUM && node->enm.name)
     {
         struct_hash_insert(ctx, node->enm.name, node);
     }
@@ -393,12 +393,12 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
     if (!sym_existing)
     {
         sym = symbol_add(ctx->global_scope, name,
-                         (node && node->type == NODE_ENUM) ? SYM_ENUM : SYM_STRUCT);
+                         (node && node->kind == NODE_ENUM) ? SYM_ENUM : SYM_STRUCT);
     }
     else
     {
         sym = sym_existing;
-        sym->kind = (node && node->type == NODE_ENUM) ? SYM_ENUM : SYM_STRUCT;
+        sym->kind = (node && node->kind == NODE_ENUM) ? SYM_ENUM : SYM_STRUCT;
     }
 
     sym->data.node = node;
@@ -406,11 +406,11 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
     if (node)
     {
         sym->decl_token = node->token;
-        if (node->type == NODE_STRUCT)
+        if (node->kind == NODE_STRUCT)
         {
             sym->is_export = node->strct.is_export;
         }
-        else if (node->type == NODE_ENUM)
+        else if (node->kind == NODE_ENUM)
         {
             sym->is_export = node->enm.is_export;
         }
@@ -453,11 +453,11 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
         ASTNode *s = ctx->cg.global_user_structs;
         while (s)
         {
-            if ((s->type == NODE_STRUCT || s->type == NODE_ENUM) &&
-                (s->type == NODE_STRUCT ? s->strct.name : s->enm.name)[0] == name[0] &&
-                strcmp((s->type == NODE_STRUCT ? s->strct.name : s->enm.name), name) == 0)
+            if ((s->kind == NODE_STRUCT || s->kind == NODE_ENUM) &&
+                (s->kind == NODE_STRUCT ? s->strct.name : s->enm.name)[0] == name[0] &&
+                strcmp((s->kind == NODE_STRUCT ? s->strct.name : s->enm.name), name) == 0)
             {
-                if (!(s->type == NODE_STRUCT && s->strct.is_incomplete))
+                if (!(s->kind == NODE_STRUCT && s->strct.is_incomplete))
                 {
                     CACHE_RESULT(s);
                 }
@@ -479,9 +479,9 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
     ASTNode *s = ctx->instantiated_structs;
     while (s)
     {
-        if ((s->type == NODE_STRUCT || s->type == NODE_ENUM) &&
-            (s->type == NODE_STRUCT ? s->strct.name : s->enm.name)[0] == name[0] &&
-            strcmp((s->type == NODE_STRUCT ? s->strct.name : s->enm.name), name) == 0)
+        if ((s->kind == NODE_STRUCT || s->kind == NODE_ENUM) &&
+            (s->kind == NODE_STRUCT ? s->strct.name : s->enm.name)[0] == name[0] &&
+            strcmp((s->kind == NODE_STRUCT ? s->strct.name : s->enm.name), name) == 0)
         {
             CACHE_RESULT(s);
         }
@@ -491,12 +491,12 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
     StructRef *r = ctx->parsed_structs_list;
     while (r)
     {
-        if (r->node->type == NODE_STRUCT && r->node->strct.name[0] == name[0] &&
+        if (r->node->kind == NODE_STRUCT && r->node->strct.name[0] == name[0] &&
             strcmp(r->node->strct.name, name) == 0)
         {
             CACHE_RESULT(r->node);
         }
-        if (r->node->type == NODE_ENUM && r->node->enm.name[0] == name[0] &&
+        if (r->node->kind == NODE_ENUM && r->node->enm.name[0] == name[0] &&
             strcmp(r->node->enm.name, name) == 0)
         {
             CACHE_RESULT(r->node);
@@ -528,7 +528,7 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
     StructRef *e = ctx->parsed_enums_list;
     while (e)
     {
-        if (e->node->type == NODE_ENUM && e->node->enm.name[0] == name[0] &&
+        if (e->node->kind == NODE_ENUM && e->node->enm.name[0] == name[0] &&
             strcmp(e->node->enm.name, name) == 0)
         {
             CACHE_RESULT(e->node);
@@ -551,7 +551,7 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name)
     StructRef *r = ctx->parsed_globals_list;
     while (r)
     {
-        if (r->node && r->node->type == NODE_TRAIT && r->node->trait.name[0] == name[0] &&
+        if (r->node && r->node->kind == NODE_TRAIT && r->node->trait.name[0] == name[0] &&
             strcmp(r->node->trait.name, name) == 0)
         {
             return r->node;
@@ -567,7 +567,7 @@ ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
     while (i)
     {
         if (i->name[0] == name[0] && strcmp(i->name, name) == 0 && i->struct_node &&
-            i->struct_node->type == NODE_STRUCT && !i->struct_node->strct.is_template)
+            i->struct_node->kind == NODE_STRUCT && !i->struct_node->strct.is_template)
         {
             return i->struct_node;
         }
@@ -577,7 +577,7 @@ ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
     ASTNode *s = ctx->instantiated_structs;
     while (s)
     {
-        if (s->type == NODE_STRUCT && !s->strct.is_template && s->strct.name[0] == name[0] &&
+        if (s->kind == NODE_STRUCT && !s->strct.is_template && s->strct.name[0] == name[0] &&
             strcmp(s->strct.name, name) == 0)
         {
             return s;
@@ -588,7 +588,7 @@ ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
     StructRef *r = ctx->parsed_structs_list;
     while (r)
     {
-        if (r->node->type == NODE_STRUCT && !r->node->strct.is_template &&
+        if (r->node->kind == NODE_STRUCT && !r->node->strct.is_template &&
             r->node->strct.name[0] == name[0] && strcmp(r->node->strct.name, name) == 0)
         {
             return r->node;
@@ -599,7 +599,7 @@ ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
     StructDef *d = ctx->struct_defs;
     while (d)
     {
-        if (d->node && d->node->type == NODE_STRUCT && !d->node->strct.is_template &&
+        if (d->node && d->node->kind == NODE_STRUCT && !d->node->strct.is_template &&
             d->name[0] == name[0] && strcmp(d->name, name) == 0)
         {
             return d->node;
@@ -690,6 +690,75 @@ void re_export_wildcard_symbols(ParserContext *ctx, const char *module_base)
     zfree(prefix);
 }
 
+// Both separators, whatever the platform, as extract_module_name accepts them.
+static int is_path_sep(char c)
+{
+    return c == '/' || c == '\\';
+}
+
+// The symbol prefix of a module imported with `as`, selectively or as `*`.
+// Normally its file name (`helpers.zc` → `helpers`); when another file already
+// owns that prefix (`net/helpers.zc` and `fs/helpers.zc`), the parent
+// directory is prepended (`fs_helpers`), then a counter if still taken.
+// The same path always gets the same prefix within a build.
+char *module_prefix_for(ParserContext *ctx, const char *path)
+{
+    const char **known = zmap_get(&ctx->imports.module_prefixes, path);
+    if (known)
+    {
+        return xstrdup(*known);
+    }
+
+    char *prefix = extract_module_name(path);
+    const char **owner = zmap_get(&ctx->imports.prefix_owners, prefix);
+    if (owner && strcmp(*owner, path) != 0)
+    {
+        // `<parent dir>_<file>`: `end` is the last separator, `start` the one before it.
+        const char *end = NULL;
+        for (const char *c = path; *c; c++)
+        {
+            if (is_path_sep(*c))
+            {
+                end = c;
+            }
+        }
+        const char *start = end ? end : path;
+        while (start > path && !is_path_sep(start[-1]))
+        {
+            start--;
+        }
+        size_t dir_len = end ? (size_t)(end - start) : 0;
+        size_t cap = dir_len + strlen(prefix) + 16;
+        char *qualified = xmalloc(cap);
+        snprintf(qualified, cap, "%.*s_%s", (int)dir_len, start, prefix);
+        for (char *c = qualified; *c; c++)
+        {
+            if (!isalnum((unsigned char)*c))
+            {
+                *c = '_';
+            }
+        }
+        int counter = 2;
+        char *candidate = xstrdup(qualified);
+        while ((owner = zmap_get(&ctx->imports.prefix_owners, candidate)) &&
+               strcmp(*owner, path) != 0)
+        {
+            zfree(candidate);
+            candidate = xmalloc(cap);
+            snprintf(candidate, cap, "%s%d", qualified, counter++);
+        }
+        zfree(qualified);
+        zfree(prefix);
+        prefix = candidate;
+    }
+
+    char *stored_path = xstrdup(path);
+    char *stored_prefix = xstrdup(prefix);
+    zmap_put(&ctx->imports.module_prefixes, stored_path, stored_prefix);
+    zmap_put(&ctx->imports.prefix_owners, stored_prefix, stored_path);
+    return prefix;
+}
+
 char *extract_module_name(const char *path)
 {
     const char *slash = (char *)strrchr(path, '/');
@@ -729,7 +798,9 @@ int is_file_imported(ParserContext *ctx, const char *path)
 
 void mark_file_imported(ParserContext *ctx, const char *path)
 {
-    zmap_put(&ctx->imports.imported_files, path, path);
+    // Duplicate into the arena so the map key outlives callers that free the
+    // original (e.g. driver.c stores realpath() results which it libc_frees).
+    zmap_put(&ctx->imports.imported_files, xstrdup(path), xstrdup(path));
 }
 
 void register_impl(ParserContext *ctx, const char *trait, const char *strct)
@@ -802,13 +873,13 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
         ASTNode *n = ctx->current_impl_methods;
         while (n)
         {
-            if (n->type == NODE_FUNCTION && n->func.name[0] == name[0] &&
+            if (n->kind == NODE_FUNCTION && n->func.name[0] == name[0] &&
                 strcmp(n->func.name, name) == 0)
             {
                 FuncSig *sig = xmalloc(sizeof(FuncSig));
                 sig->name = n->func.name;
                 sig->decl_token = n->token;
-                sig->total_args = n->func.arg_count;
+                sig->total_args = n->func.count;
                 sig->defaults = n->func.defaults;
                 sig->arg_types = n->func.arg_types;
                 sig->ret_type = n->func.ret_type_info;

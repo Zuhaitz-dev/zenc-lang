@@ -16,14 +16,14 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 {
     lexer_next(l);
     Token n = lexer_next(l);
-    check_identifier(ctx, n);
+    check_identifier(n);
 
     char *gp = NULL;
-    if (lexer_peek(l).type == TOK_LANGLE)
+    if (lexer_peek(l).kind == TOK_LANGLE)
     {
         lexer_next(l); // eat <
         Token g = lexer_next(l);
-        check_identifier(ctx, g);
+        check_identifier(g);
         gp = token_strdup(g);
         lexer_next(l); // eat >
         register_generic(ctx, gp);
@@ -39,37 +39,40 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     {
         skip_comments(l);
         Token t = lexer_peek(l);
-        if (t.type == TOK_RBRACE)
+        if (t.kind == TOK_RBRACE)
         {
             lexer_next(l);
             break;
         }
-        if (t.type == TOK_COMMA)
+        if (t.kind == TOK_COMMA)
         {
             lexer_next(l);
             continue;
         }
-        if (t.type == TOK_EOF)
+        if (t.kind == TOK_EOF)
         {
             zpanic_at(t, "Unexpected end of file in enum body");
             break;
         }
 
-        if (t.type == TOK_IDENT)
+        if (t.kind == TOK_IDENT)
         {
             Token vt = lexer_next(l);
-            check_identifier(ctx, vt);
+            check_reserved_keyword(vt);
             char *vname = token_strdup(vt);
 
             Type *payload = NULL;
             Type **tuple_types = NULL;
             int tuple_count = 0;
-            if (lexer_peek(l).type == TOK_LPAREN)
+            if (lexer_peek(l).kind == TOK_LPAREN)
             {
+                // A variant with a payload names a field of the generated union, so it
+                // cannot be a C keyword; a payload-less one is only emitted as `Enum__name`.
+                check_c_identifier(vt);
                 lexer_next(l);
                 Type *first_t = parse_type_obj(ctx, l);
 
-                if (lexer_peek(l).type == TOK_COMMA)
+                if (lexer_peek(l).kind == TOK_COMMA)
                 {
                     // Multi-arg variant -> Tuple
                     char sig[MAX_MANGLED_NAME_LEN];
@@ -88,7 +91,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                     int tuple_cap = 32;
                     tuple_types[tuple_count++] = first_t;
 
-                    while (lexer_peek(l).type == TOK_COMMA)
+                    while (lexer_peek(l).kind == TOK_COMMA)
                     {
                         lexer_next(l); // eat ,
                         strcat(sig, "__");
@@ -134,7 +137,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                     payload = first_t;
                 }
 
-                if (lexer_next(l).type != TOK_RPAREN)
+                if (lexer_next(l).kind != TOK_RPAREN)
                 {
                     zpanic_at(lexer_peek(l), "Expected )");
                     return NULL;
@@ -196,7 +199,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
             zfree(mangled);
 
             // Handle explicit assignment: Ok = 5
-            if (lexer_peek(l).type == TOK_OP && *lexer_peek(l).start == '=')
+            if (lexer_peek(l).kind == TOK_OP && *lexer_peek(l).start == '=')
             {
                 lexer_next(l);
                 va->variant.tag_id = (int)strtol(lexer_next(l).start, NULL, 10);

@@ -33,7 +33,7 @@ static void sync_type_linkage_depth(ParserContext *ctx, Type *t, int depth)
     {
         sync_type_linkage_depth(ctx, t->inner, depth + 1);
     }
-    for (int i = 0; i < t->arg_count; i++)
+    for (int i = 0; t->args && i < t->count; i++)
     {
         sync_type_linkage_depth(ctx, t->args[i], depth + 1);
     }
@@ -58,7 +58,7 @@ static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, i
         sync_type_linkage(ctx, node->type_info);
     }
 
-    switch (node->type)
+    switch (node->kind)
     {
     case NODE_FUNCTION:
         if (node->func.ret_type_info)
@@ -67,7 +67,7 @@ static void sync_link_names_recursive_depth(ParserContext *ctx, ASTNode *node, i
         }
         if (node->func.arg_types)
         {
-            for (int i = 0; i < node->func.arg_count; i++)
+            for (int i = 0; i < node->func.count; i++)
             {
                 sync_type_linkage(ctx, node->func.arg_types[i]);
             }

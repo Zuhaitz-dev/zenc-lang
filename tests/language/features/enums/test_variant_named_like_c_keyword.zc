@@ -1,0 +1,9 @@
+// language/features/enums: a variant without payload is emitted with its enum
+// as prefix (`Mode__default`), so it may be named like a C keyword.
+enum Mode { default, long }
+
+test "payload-less variants named like C keywords" {
+    let mode = Mode::default();
+    assert(mode == Mode::default(), "default is a valid variant name");
+    assert(mode != Mode::long(), "long is a valid variant name");
+}

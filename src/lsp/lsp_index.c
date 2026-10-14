@@ -2,6 +2,7 @@
 #include "../constants.h"
 
 #include "lsp_index.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,7 +53,7 @@ void lsp_index_add_def(LSPIndex *idx, Token t, const char *hover, ASTNode *node)
         return;
     }
     LSPRange *r = calloc(1, sizeof(LSPRange));
-    r->type = RANGE_DEFINITION;
+    r->kind = RANGE_DEFINITION;
     r->start_line = t.line - 1;
     r->start_col = t.col - 1;
     r->end_line = t.line - 1;
@@ -67,12 +68,12 @@ void lsp_index_add_def(LSPIndex *idx, Token t, const char *hover, ASTNode *node)
 }
 static void lsp_index_add_plugin(LSPIndex *idx, ASTNode *node)
 {
-    if (!node || node->type != NODE_PLUGIN)
+    if (!node || node->kind != NODE_PLUGIN)
     {
         return;
     }
     LSPRange *r = calloc(1, sizeof(LSPRange));
-    r->type = RANGE_DEFINITION; // DEFINITION range works for hover
+    r->kind = RANGE_DEFINITION; // DEFINITION range works for hover
     r->start_line = node->plugin_stmt.start_line - 1;
     r->start_col = node->plugin_stmt.start_col - 1;
     r->end_line = node->plugin_stmt.end_line - 1;
@@ -92,7 +93,7 @@ void lsp_index_add_ref(LSPIndex *idx, Token t, Token def_t, ASTNode *node)
         return;
     }
     LSPRange *r = calloc(1, sizeof(LSPRange));
-    r->type = RANGE_REFERENCE;
+    r->kind = RANGE_REFERENCE;
     r->start_line = t.line - 1;
     r->start_col = t.col - 1;
     r->end_line = t.line - 1;
@@ -133,6 +134,90 @@ LSPRange *lsp_find_at(LSPIndex *idx, int line, int col)
     return best;
 }
 
+// The declaration as written, from the name up to the body: the parsed types are in their C
+// form (int32_t for int, double for f64) and method names are mangled (Rect__area).
+static int function_signature(ASTNode *node, char *out, size_t size)
+{
+    const char *p = node->token.start;
+    if (!p || node->token.kind != TOK_IDENT)
+    {
+        return 0;
+    }
+    size_t used = (size_t)snprintf(out, size, "%sfn ", node->func.is_async ? "async " : "");
+    int depth = 0;
+    int pending_space = 0;
+    char quote = 0;
+    for (; *p && used + 2 < size; p++)
+    {
+        if (quote)
+        {
+            if (*p == '\\' && p[1])
+            {
+                out[used++] = *p++;
+            }
+            else if (*p == quote)
+            {
+                quote = 0;
+            }
+            out[used++] = *p;
+            continue;
+        }
+        if (*p == '/' && p[1] == '/')
+        {
+            while (p[1] && p[1] != '\n')
+            {
+                p++;
+            }
+            pending_space = 1;
+            continue;
+        }
+        if (*p == '/' && p[1] == '*')
+        {
+            p += 2;
+            while (*p && !(*p == '*' && p[1] == '/'))
+            {
+                p++;
+            }
+            if (!*p)
+            {
+                break;
+            }
+            p++;
+            pending_space = 1;
+            continue;
+        }
+        if (depth == 0 && (*p == '{' || *p == ';'))
+        {
+            break;
+        }
+        if (isspace((unsigned char)*p))
+        {
+            pending_space = 1;
+            continue;
+        }
+        if (pending_space && out[used - 1] != '(' && *p != ')' && *p != ',')
+        {
+            out[used++] = ' ';
+        }
+        pending_space = 0;
+        if (*p == '(' || *p == '[')
+        {
+            depth++;
+        }
+        else if (*p == ')' || *p == ']')
+        {
+            depth--;
+        }
+        else if (*p == '"' || *p == '\'')
+        {
+            quote = *p;
+        }
+        out[used++] = *p;
+    }
+    out[used] = 0;
+    return 1;
+}
+
 // Walker.
 
 static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
@@ -145,18 +230,21 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
     while (node)
     {
         // Definition logic.
-        if (node->type == NODE_FUNCTION)
+        if (node->kind == NODE_FUNCTION)
         {
-            char hover[MAX_SHORT_MSG_LEN];
-            const char *name = node->func.name ? node->func.name : "unknown";
-            const char *ret = node->func.ret_type ? node->func.ret_type : "void";
-            snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
+            char hover[MAX_SHORT_MSG_LEN * 4];
+            if (!function_signature(node, hover, sizeof(hover)))
+            {
+                const char *name = node->func.name ? node->func.name : "unknown";
+                const char *ret = node->func.ret_type ? node->func.ret_type : "void";
+                snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
+            }
             lsp_index_add_def(idx, node->token, hover, node);
 
             // Recurse body.
             lsp_walk_node(idx, node->func.body, depth + 1);
         }
-        else if (node->type == NODE_VAR_DECL)
+        else if (node->kind == NODE_VAR_DECL)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
@@ -165,7 +253,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
 
             lsp_walk_node(idx, node->var_decl.init_expr, depth + 1);
         }
-        else if (node->type == NODE_CONST)
+        else if (node->kind == NODE_CONST)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
@@ -174,7 +262,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
 
             lsp_walk_node(idx, node->var_decl.init_expr, depth + 1);
         }
-        else if (node->type == NODE_STRUCT)
+        else if (node->kind == NODE_STRUCT)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->strct.name ? node->strct.name : "unknown";
@@ -185,7 +273,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             ASTNode *field = node->strct.fields;
             while (field)
             {
-                if (field->type == NODE_FIELD)
+                if (field->kind == NODE_FIELD)
                 {
                     char fh[MAX_SHORT_MSG_LEN];
                     const char *fname = field->field.name ? field->field.name : "unknown";
@@ -196,7 +284,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 field = field->next;
             }
         }
-        else if (node->type == NODE_ENUM)
+        else if (node->kind == NODE_ENUM)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->enm.name ? node->enm.name : "unknown";
@@ -206,7 +294,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             ASTNode *variant = node->enm.variants;
             while (variant)
             {
-                if (variant->type == NODE_ENUM_VARIANT)
+                if (variant->kind == NODE_ENUM_VARIANT)
                 {
                     char vh[MAX_SHORT_MSG_LEN];
                     const char *vname = variant->variant.name ? variant->variant.name : "unknown";
@@ -216,7 +304,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 variant = variant->next;
             }
         }
-        else if (node->type == NODE_TYPE_ALIAS)
+        else if (node->kind == NODE_TYPE_ALIAS)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *alias = node->type_alias.alias ? node->type_alias.alias : "unknown";
@@ -225,14 +313,14 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             snprintf(hover, sizeof(hover), "alias %s = %s", alias, orig);
             lsp_index_add_def(idx, node->token, hover, node);
         }
-        else if (node->type == NODE_TRAIT)
+        else if (node->kind == NODE_TRAIT)
         {
             char hover[MAX_SHORT_MSG_LEN];
             const char *name = node->trait.name ? node->trait.name : "unknown";
             snprintf(hover, sizeof(hover), "trait %s", name);
             lsp_index_add_def(idx, node->token, hover, node);
         }
-        else if (node->type == NODE_PLUGIN)
+        else if (node->kind == NODE_PLUGIN)
         {
             lsp_index_add_plugin(idx, node);
         }
@@ -244,7 +332,7 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
         }
 
         // General recursion for children.
-        switch (node->type)
+        switch (node->kind)
         {
         case NODE_ROOT:
             lsp_walk_node(idx, node->root.children, depth + 1);

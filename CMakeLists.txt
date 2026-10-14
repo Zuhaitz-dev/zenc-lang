@@ -31,7 +31,7 @@ endif()
 if(NOT DEFINED CMAKE_INSTALL_FULL_DATADIR)
     set(CMAKE_INSTALL_FULL_DATADIR "${CMAKE_INSTALL_PREFIX}/share")
 endif()
-set(ZEN_SHARE_DIR "${CMAKE_INSTALL_FULL_DATADIR}/zc")
+set(ZEN_SHARE_DIR "${CMAKE_INSTALL_FULL_DATADIR}/zenc")
 
 # Provide these as compile definitions for all targets
 add_compile_definitions(

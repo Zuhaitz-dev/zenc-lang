@@ -63,6 +63,31 @@ static inline void *libc_realloc(void *ptr, size_t size)
 #endif
 #endif
 
+/* ASAN redzone poisoning for the arena.
+ *
+ * Arena allocations are offsets into a single large block, so ASAN cannot
+ * detect writes past one sub-allocation into the next. When building under
+ * AddressSanitizer, hand each allocation a poisoned 64-byte redzone so an
+ * intra-arena overflow is reported at the exact write site. This is compiled
+ * out (ZARENA_RZ = 0) in non-sanitizer builds. */
+#if defined(__SANITIZE_ADDRESS__)
+#define ZARENA_ASAN_REDZONE 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define ZARENA_ASAN_REDZONE 1
+#endif
+#endif
+#ifndef ZARENA_ASAN_REDZONE
+#define ZARENA_ASAN_REDZONE 0
+#endif
+#if ZARENA_ASAN_REDZONE
+#define ZARENA_RZ 64
+void __asan_poison_memory_region(void const volatile *addr, size_t size);
+void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+#else
+#define ZARENA_RZ 0
+#endif
+
 /* Backend customization */
 #ifndef Z_MALLOC
 #define Z_MALLOC(sz) malloc(sz)
@@ -260,11 +285,16 @@ ZALLOC_API void *zarena_alloc_align(zarena *a, size_t size, size_t align)
         size_t padding = next - curr;
         size_t needed = size + padding;
 
-        if (a->head->used + needed <= a->head->capacity)
+        if (a->head->used + needed + ZARENA_RZ <= a->head->capacity)
         {
-            a->head->used += needed;
+            a->head->used += needed + ZARENA_RZ;
             a->total_alloc += size;
-            return (char *)a->head->data + (next - base);
+            void *p = (char *)a->head->data + (next - base);
+#if ZARENA_ASAN_REDZONE
+            __asan_unpoison_memory_region(p, size);
+            __asan_poison_memory_region((char *)p + size, ZARENA_RZ);
+#endif
+            return p;
         }
     }
 
@@ -275,12 +305,17 @@ ZALLOC_API void *zarena_alloc_align(zarena *a, size_t size, size_t align)
         uintptr_t start = _zarena_align_ptr(base, align);
         size_t padding = start - base;
 
-        if (size + padding <= next_blk->capacity)
+        if (size + padding + ZARENA_RZ <= next_blk->capacity)
         {
             a->head = next_blk;
-            a->head->used = size + padding;
+            a->head->used = size + padding + ZARENA_RZ;
             a->total_alloc += size;
-            return (char *)next_blk->data + (start - base);
+            void *p = (char *)next_blk->data + (start - base);
+#if ZARENA_ASAN_REDZONE
+            __asan_unpoison_memory_region(p, size);
+            __asan_poison_memory_region((char *)p + size, ZARENA_RZ);
+#endif
+            return p;
         }
     }
 
@@ -311,9 +346,14 @@ ZALLOC_API void *zarena_alloc_align(zarena *a, size_t size, size_t align)
     uintptr_t start = _zarena_align_ptr(base, align);
     size_t padding = start - base;
 
-    b->used = size + padding;
+    b->used = size + padding + ZARENA_RZ;
     a->total_alloc += size;
-    return (char *)b->data + (start - base);
+    void *p = (char *)b->data + (start - base);
+#if ZARENA_ASAN_REDZONE
+    __asan_unpoison_memory_region(p, size);
+    __asan_poison_memory_region((char *)p + size, ZARENA_RZ);
+#endif
+    return p;
 }
 
 ZALLOC_API void *zarena_alloc(zarena *a, size_t size)

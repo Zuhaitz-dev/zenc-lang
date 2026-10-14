@@ -1,0 +1,10 @@
+// EXPECT: FAIL
+// compiler/diagnostics: `const` does not start a top-level declaration. It used
+// to be skipped token by token, and the use of LIMIT failed later in the C
+// compiler. Use `def LIMIT = 1;` or `let LIMIT: const u8 = 1;`.
+
+const LIMIT: u8 = 1;
+
+fn main() {
+    println "{LIMIT}";
+}

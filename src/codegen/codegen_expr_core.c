@@ -51,7 +51,7 @@ const char *get_missing_function_hint(ParserContext *ctx, const char *name)
     StructRef *ref = ctx->parsed_funcs_list;
     while (ref)
     {
-        if (ref->node && ref->node->type == NODE_FUNCTION)
+        if (ref->node && ref->node->kind == NODE_FUNCTION)
         {
             int dist = levenshtein(name, ref->node->func.name);
             if (dist < best_dist)
@@ -75,13 +75,13 @@ const char *get_missing_function_hint(ParserContext *ctx, const char *name)
 // Emit literal expression (int, float, string, char)
 static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
 {
-    if (node->literal.type_kind == LITERAL_STRING || node->literal.type_kind == LITERAL_RAW_STRING)
+    if (node->literal.kind == LITERAL_STRING || node->literal.kind == LITERAL_RAW_STRING)
     {
         EMIT(ctx, "\"");
         for (int i = 0; node->literal.string_val[i]; i++)
         {
             char c = node->literal.string_val[i];
-            if (node->literal.type_kind == LITERAL_RAW_STRING)
+            if (node->literal.kind == LITERAL_RAW_STRING)
             {
                 if (c == '\\')
                 {
@@ -115,7 +115,7 @@ static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
         }
         EMIT(ctx, "\"");
     }
-    else if (node->literal.type_kind == LITERAL_CHAR)
+    else if (node->literal.kind == LITERAL_CHAR)
     {
         if (node->literal.int_val > 127)
         {
@@ -126,7 +126,7 @@ static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
             EMIT(ctx, "%s", node->literal.string_val);
         }
     }
-    else if (node->literal.type_kind == LITERAL_FLOAT)
+    else if (node->literal.kind == LITERAL_FLOAT)
     {
         char buf[64];
         snprintf(buf, sizeof(buf), "%.17g", node->literal.float_val);
@@ -149,12 +149,34 @@ static void codegen_literal_expr(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// The variant follows the last "__".
+// Example: Maybe__int32_t__Nothing
+static int is_instance_enum_variant(ParserContext *ctx, const char *name)
+{
+    const char *last = NULL;
+    for (const char *p = strstr(name, "__"); p; p = strstr(p + 2, "__"))
+    {
+        last = p;
+    }
+    if (!last || last == name)
+    {
+        return 0;
+    }
+    size_t len = (size_t)(last - name);
+    char *enum_name = xmalloc(len + 1);
+    strncpy(enum_name, name, len);
+    enum_name[len] = 0;
+    int found = find_enum_variant_of(ctx, enum_name, last + 2) != NULL;
+    zfree(enum_name);
+    return found;
+}
+
 // Emit variable reference expression
 static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
 {
     if (ctx->cg.current_lambda)
     {
-        for (int i = 0; i < ctx->cg.current_lambda->lambda.num_captures; i++)
+        for (int i = 0; i < ctx->cg.current_lambda->lambda.capture_count; i++)
         {
             if (strcmp(node->var_ref.name, ctx->cg.current_lambda->lambda.captured_vars[i]) == 0)
             {
@@ -228,24 +250,10 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
         // NODE_EXPR_CALL will add the ().
         if (!g_emitting_callee)
         {
-            EnumVariantReg *ev = find_enum_variant(ctx, method_name);
-            if (ev)
+            if (find_enum_variant_of(ctx, mangled_type, method_name) ||
+                is_instance_enum_variant(ctx, node->var_ref.name))
             {
-                const char *clean_ev = ev->enum_name;
-                if (strncmp(clean_ev, "struct ", 7) == 0)
-                {
-                    clean_ev += 7;
-                }
-                const char *clean_mangled = mangled_type;
-                if (strncmp(clean_mangled, "struct ", 7) == 0)
-                {
-                    clean_mangled += 7;
-                }
-
-                if (strcmp(clean_ev, clean_mangled) == 0)
-                {
-                    EMIT(ctx, "()");
-                }
+                EMIT(ctx, "()");
             }
         }
 
@@ -280,7 +288,7 @@ static void codegen_var_expr(ParserContext *ctx, ASTNode *node)
             int is_common_enum =
                 (strncmp(base, "Result", 6) == 0 || strncmp(base, "Option", 6) == 0 ||
                  strncmp(base, "JsonType", 8) == 0);
-            if (is_common_enum || (def && def->type == NODE_ENUM))
+            if (is_common_enum || (def && def->kind == NODE_ENUM))
             {
                 emit_mangled_name(ctx, base, underscore + 1);
                 return;
@@ -307,7 +315,7 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
         return;
     }
 
-    if (node->lambda.num_captures > 0)
+    if (node->lambda.capture_count > 0)
     {
         int lid = node->lambda.lambda_id;
         if (ctx->config->use_cpp)
@@ -323,14 +331,14 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                  "({ struct Lambda_%d_Ctx *_z_ctx_%d = malloc(sizeof(struct Lambda_%d_Ctx));\n",
                  lid, lid, lid);
         }
-        for (int i = 0; i < node->lambda.num_captures; i++)
+        for (int i = 0; i < node->lambda.capture_count; i++)
         {
             if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 1)
             {
                 int found = 0;
                 if (ctx->cg.current_lambda)
                 {
-                    for (int k = 0; k < ctx->cg.current_lambda->lambda.num_captures; k++)
+                    for (int k = 0; k < ctx->cg.current_lambda->lambda.capture_count; k++)
                     {
                         if (strcmp(node->lambda.captured_vars[i],
                                    ctx->cg.current_lambda->lambda.captured_vars[k]) == 0)

@@ -23,7 +23,7 @@ void token_set_parser_ctx(ParserContext *ctx)
 Token z_parse_expect(Lexer *l, ZenTokenType type, const char *msg)
 {
     Token t = lexer_next(l);
-    if (t.type != type)
+    if (t.kind != type)
     {
         zpanic_at(t, "Expected %s, but got '%.*s'", msg, (int)(t.len), t.start);
         // Fault-tolerant (LSP) mode: resume as if the expected token was found.
@@ -61,18 +61,18 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
     char *buf = xmalloc((size_t)(buf_size));
     buf[0] = 0;
 
-    switch (node->type)
+    switch (node->kind)
     {
     case NODE_EXPR_LITERAL:
-        if (node->literal.type_kind == LITERAL_INT)
+        if (node->literal.kind == LITERAL_INT)
         {
             snprintf(buf, buf_size, "%llu", node->literal.int_val);
         }
-        else if (node->literal.type_kind == LITERAL_FLOAT)
+        else if (node->literal.kind == LITERAL_FLOAT)
         {
             snprintf(buf, buf_size, "%f", node->literal.float_val);
         }
-        else if (node->literal.type_kind == LITERAL_STRING)
+        else if (node->literal.kind == LITERAL_STRING)
         {
             size_t s_len = strlen(node->literal.string_val);
             size_t required = s_len + 16;
@@ -84,7 +84,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
             }
             snprintf(buf, buf_size, "\"%s\"", node->literal.string_val);
         }
-        else if (node->literal.type_kind == LITERAL_CHAR)
+        else if (node->literal.kind == LITERAL_CHAR)
         {
             if (node->literal.int_val == '\'')
             {
@@ -183,7 +183,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
                     strcat(buf, ", ");
                 }
             }
-            if (field->type == NODE_VAR_DECL)
+            if (field->kind == NODE_VAR_DECL)
             {
                 if (strlen(buf) + (field->var_decl.name ? strlen(field->var_decl.name) : 0) + 4 <
                     buf_size)
@@ -247,8 +247,8 @@ char *token_strdup(Token t)
 char *token_get_string_content(Token t)
 {
     int is_multi = 0;
-    int is_fstring = (t.type == TOK_FSTRING);
-    int is_raw = (t.type == TOK_RAW_STRING);
+    int is_fstring = (t.kind == TOK_FSTRING);
+    int is_raw = (t.kind == TOK_RAW_STRING);
     int start_offset = 1;
     int end_offset = 1;
 
@@ -287,7 +287,7 @@ void skip_comments(Lexer *l)
 {
     int prev_emit = l->emit_comments;
     l->emit_comments = 1;
-    while (lexer_peek(l).type == TOK_COMMENT)
+    while (lexer_peek(l).kind == TOK_COMMENT)
     {
         Token tk = lexer_next(l);
         if (token_parser_ctx->config->keep_comments)
@@ -318,7 +318,7 @@ static const char *C_RESERVED_WORDS[] = {
     "goto",          "typedef",  "static",   "extern",     "volatile",  "inline",
     "restrict",      "sizeof",   "const",    "_Alignas",   "_Alignof",  "_Atomic",
     "_Bool",         "_Complex", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert",
-    "_Thread_local", NULL};
+    "_Thread_local", "int",      "char",     "void",       NULL};
 
 int is_c_reserved_word(const char *name)
 {
@@ -332,13 +332,6 @@ int is_c_reserved_word(const char *name)
     return 0;
 }
 
-void warn_c_reserved_word(Token t, const char *name)
-{
-    zwarn_at(t, "Identifier '%s' conflicts with C reserved word", name);
-    fprintf(stderr, COLOR_CYAN "   = note: " COLOR_RESET
-                               "This will cause compilation errors in the generated C code\n");
-}
-
 char *consume_until_semicolon(Lexer *l)
 {
     const char *s = l->src + l->pos;
@@ -346,20 +339,20 @@ char *consume_until_semicolon(Lexer *l)
     while (1)
     {
         Token t = lexer_peek(l);
-        if (t.type == TOK_EOF)
+        if (t.kind == TOK_EOF)
         {
             break;
         }
-        if (t.type == TOK_LBRACE || t.type == TOK_LPAREN || t.type == TOK_LBRACKET)
+        if (t.kind == TOK_LBRACE || t.kind == TOK_LPAREN || t.kind == TOK_LBRACKET)
         {
             d++;
         }
-        if (t.type == TOK_RBRACE || t.type == TOK_RPAREN || t.type == TOK_RBRACKET)
+        if (t.kind == TOK_RBRACE || t.kind == TOK_RPAREN || t.kind == TOK_RBRACKET)
         {
             d--;
         }
 
-        if (d == 0 && t.type == TOK_SEMICOLON)
+        if (d == 0 && t.kind == TOK_SEMICOLON)
         {
             ptrdiff_t len = t.start - s;
             char *r = xmalloc((size_t)(len + 1));
@@ -385,7 +378,7 @@ const char *normalize_type_name(const char *name)
 
 int is_reserved_keyword(Token t)
 {
-    switch (t.type)
+    switch (t.kind)
     {
     case TOK_TEST:
     case TOK_ASSERT:
@@ -412,7 +405,7 @@ int is_reserved_keyword(Token t)
         break;
     }
 
-    if (t.type == TOK_IDENT)
+    if (t.kind == TOK_IDENT)
     {
         static const char *pseudo_keywords[] = {
             "let",      "static", "const",  "return", "if",    "else",   "while", "break",
@@ -432,9 +425,8 @@ int is_reserved_keyword(Token t)
     return 0;
 }
 
-void check_identifier(ParserContext *ctx, Token t)
+void check_reserved_keyword(Token t)
 {
-    (void)ctx;
     if (is_reserved_keyword(t))
     {
         char buf[MAX_SHORT_MSG_LEN];
@@ -445,4 +437,27 @@ void check_identifier(ParserContext *ctx, Token t)
         snprintf(buf, sizeof(buf), "Cannot use reserved keyword '%s' as an identifier", name);
         zpanic_at(t, "%s", buf);
     }
+}
+
+// Names are emitted unchanged into the generated C (variables, parameters,
+// fields, free functions...), so a C keyword used as a name (`let double = 2;`)
+// can only end in C syntax errors.
+void check_c_identifier(Token t)
+{
+    char name[64];
+    snprintf(name, sizeof(name), "%.*s", (int)t.len, t.start);
+    if (is_c_reserved_word(name))
+    {
+        char buf[MAX_SHORT_MSG_LEN];
+        snprintf(buf, sizeof(buf), "'%s' is a C keyword and cannot be used as an identifier", name);
+        const char *hints[] = {"Zen C names are emitted unchanged into the generated C",
+                               "Rename it, for example with a suffix: `value_double`", NULL};
+        zpanic_with_hints(t, buf, hints);
+    }
+}
+
+void check_identifier(Token t)
+{
+    check_reserved_keyword(t);
+    check_c_identifier(t);
 }

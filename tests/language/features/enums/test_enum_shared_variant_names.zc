@@ -1,0 +1,35 @@
+// language/features/enums: enums: test_enum_shared_variant_names
+// Several enums share a no-payload variant name. `Enum::Variant` written
+// without () must still call that enum's own constructor, whatever order the
+// enums were declared in.
+enum Slot { None = 0, Victim, Weapon }
+enum Attribute { None = 0, Presence }
+enum Sex { None = 0, Male }
+
+enum Value { Nothing, Hour(u8) }
+enum Subject { Nothing, Person(u32) }
+
+fn slot_is_set(slot: Slot) -> bool {
+    return slot != Slot::None;
+}
+
+fn value_of(subject: Subject) -> Value {
+    match subject {
+        Subject::Person(_) => { return Value::Nothing; },
+        _ => { return Value::Hour(1); },
+    }
+    return Value::Hour(2);
+}
+
+test "comparison against a shared variant name" {
+    assert(!slot_is_set(Slot::None()), "Slot::None must equal Slot::None");
+    assert(slot_is_set(Slot::Weapon()), "Slot::Weapon must differ from Slot::None");
+}
+
+test "returning a shared variant name" {
+    let value = value_of(Subject::Person(1));
+    match value {
+        Value::Nothing => assert(true, "Nothing"),
+        _ => assert(false, "expected Value::Nothing"),
+    }
+}
