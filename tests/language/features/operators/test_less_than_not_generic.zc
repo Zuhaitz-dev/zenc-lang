@@ -1,0 +1,78 @@
+// language/features/operators: `name < ...` is a comparison when what follows
+// cannot be a generic argument list (an index with a runtime value, a
+// dereference, a parenthesized expression), and a generic when it can.
+
+import "std/vec.zc"
+
+struct Pair<A, B> {
+    first: A;
+    second: B;
+}
+
+fn identity<T>(x: T) -> T {
+    return x;
+}
+
+fn count_below(limits: int*, n: int) -> int {
+    let total = 0;
+    for i in 0..n {
+        let count = 0;
+        while count < limits[i] {
+            count++;
+        }
+        total += count;
+    }
+    return total;
+}
+
+test "less_than_runtime_index" {
+    let limits: int[3] = [3, 2, 1];
+    expect_eq(count_below(&limits[0], 3), 6, "while count < limits[i] should loop");
+
+    let k = 1;
+    let n = 2;
+    expect(k < limits[n] == false, "1 < limits[2] is false");
+    expect(k < limits[n - 1], "1 < limits[1] is true");
+    expect(k < limits[n] || k < limits[0], "1 < limits[0] is true");
+}
+
+test "less_than_dereference" {
+    let i = 5;
+    let j: int* = &i;
+    *j = 6;
+    let k = 4;
+    expect(k < *j, "4 < 6");
+    expect(k < *j && *j > k, "comparisons on both sides of &&");
+    let hits = 0;
+    if k < *j {
+        hits++;
+    }
+    expect_eq(hits, 1, "if k < *j should take the branch");
+}
+
+test "less_than_parenthesized" {
+    let k = 4;
+    let n = 4;
+    expect(k < (n + 1), "4 < 5");
+    expect(k < (n) == false, "4 < 4 is false");
+}
+
+test "generics_still_parse" {
+    let v = Vec<int>::new();
+    v.push(1);
+    v.push(2);
+    expect_eq((int)v.length(), 2, "Vec<int>::new() still works");
+
+    let p = Pair<int, bool> { first: 3, second: true };
+    expect_eq(p.first, 3, "two generic arguments");
+
+    let x = identity<int>(7);
+    expect_eq(x, 7, "explicit generic call");
+
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let d = 0;
+    expect(a < b && c > d, "a < b && c > d is a comparison");
+    expect((a << 2) == 4, "shift still works");
+}
