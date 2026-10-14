@@ -1,0 +1,7 @@
+// language/features/embedding: a global initialized with `embed ... as string`
+// is a constant, even when the embedded text has braces (CSS, JSON, code).
+let style = embed "tests/language/features/embedding/embed_braces.txt" as string;
+
+test "a global embeds a file with braces" {
+    assert(strstr(style, "{{ color: red; }}") != NULL, "the braces are kept as text");
+}

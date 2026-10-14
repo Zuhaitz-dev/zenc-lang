@@ -1,0 +1,28 @@
+// language/string: a string whose only braces are escaped (`{{`, `}}`) has no
+// interpolation, so it is a plain literal and can initialize a global, also as
+// a multi-line string.
+
+let braces = "a {{b}} c";
+let script = """
+fn hello() {{
+    return;
+}}
+""";
+let expected_script = r"""
+fn hello() {
+    return;
+}
+""";
+
+test "global_string_with_escaped_braces" {
+    expect(strcmp(braces, r"a {b} c") == 0, "escaped braces become single braces");
+    expect(strcmp(script, expected_script) == 0, "multi-line global");
+}
+
+test "local_string_with_escaped_braces" {
+    let local = "x {{y}}";
+    expect(strcmp(local, r"x {y}") == 0, "same in a local");
+    let n = 3;
+    let mixed = "{{n}} = {n}";
+    expect(strcmp(mixed, r"{n} = 3") == 0, "real interpolation still works");
+}
