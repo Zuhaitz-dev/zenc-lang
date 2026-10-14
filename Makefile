@@ -54,7 +54,11 @@ CONSTEXPR_SUPPORTED := $(shell echo "constexpr int x = 42; int main(void){return
 ifneq ($(CONSTEXPR_SUPPORTED),)
 DEFINES += -DHAS_CONSTEXPR
 endif
-CFLAGS = -std=$(C_STD) -g -Wall -Wextra -Wshadow -Wformat=2 -Wmissing-prototypes -Wstrict-prototypes -Wnull-dereference -Wundef -Wfloat-equal -Wmissing-field-initializers -Wsign-compare -Wtype-limits -Wuninitialized -Wdouble-promotion -Wtautological-compare -Wshift-negative-value -Wdangling-else -Wreturn-local-addr -Wconversion -Wno-float-conversion -Wswitch-default -Wvla -Wimplicit-fallthrough -Wredundant-decls -Wcast-align -Wpacked -Wdisabled-optimization -fstack-protector-strong $(DEPFLAGS) $(TCC_EXTRA) $(if $(filter 1,$(WERROR)),-Werror -Wno-error=sign-conversion,) -I./src -I./src/ast -I./src/parser -I./src/codegen -I./plugins -I./src/zen -I./src/utils -I./src/lexer -I./src/analysis -I./src/lsp -I./src/diagnostics $(DEFINES)
+# Warning for returning the address of a local: GCC (and clang >= 14) call it
+# -Wreturn-local-addr, older clang only -Wreturn-stack-address. An unknown warning
+# option is an error under -Werror, so use the name the compiler accepts.
+RETURN_ADDR_WARN := $(shell echo "int x;" | $(CC) -Werror -Wreturn-local-addr -x c - -c -o /dev/null 2>/dev/null && echo -Wreturn-local-addr || (echo "int x;" | $(CC) -Werror -Wreturn-stack-address -x c - -c -o /dev/null 2>/dev/null && echo -Wreturn-stack-address))
+CFLAGS = -std=$(C_STD) -g -Wall -Wextra -Wshadow -Wformat=2 -Wmissing-prototypes -Wstrict-prototypes -Wnull-dereference -Wundef -Wfloat-equal -Wmissing-field-initializers -Wsign-compare -Wtype-limits -Wuninitialized -Wdouble-promotion -Wtautological-compare -Wshift-negative-value -Wdangling-else $(RETURN_ADDR_WARN) -Wconversion -Wno-float-conversion -Wswitch-default -Wvla -Wimplicit-fallthrough -Wredundant-decls -Wcast-align -Wpacked -Wdisabled-optimization -fstack-protector-strong $(DEPFLAGS) $(TCC_EXTRA) $(if $(filter 1,$(WERROR)),-Werror -Wno-error=sign-conversion,) -I./src -I./src/ast -I./src/parser -I./src/codegen -I./plugins -I./src/zen -I./src/utils -I./src/lexer -I./src/analysis -I./src/lsp -I./src/diagnostics $(DEFINES)
 
 # Detect Clang by macro (works even when CC=cc on macOS, or CC=clang on Linux)
 # Uses recursive = so it re-evaluates with target-specific CC overrides (e.g. msan: CC=clang)
@@ -87,7 +91,17 @@ else
     LIBS = -lm -lpthread -ldl
 endif
 
-ZC_HAS_JIT ?= 1
+# The REPL's JIT needs libtcc. Unless ZC_HAS_JIT is given (1 forces it, 0 turns
+# it off), it is enabled only when a small program using libtcc compiles and links.
+ifeq ($(origin ZC_HAS_JIT),undefined)
+    ifeq ($(findstring tcc,$(CC)),tcc)
+        ZC_HAS_JIT := 1
+    else
+        TCC_PROBE_HASH := \#
+        TCC_PROBE_DIRS := $(if $(wildcard /usr/local/lib/libtcc.a),-I/usr/local/include -L/usr/local/lib)
+        ZC_HAS_JIT := $(shell printf '$(TCC_PROBE_HASH)include <libtcc.h>\nint main(void) { tcc_delete(tcc_new()); return 0; }\n' | $(CC) -x c - -o /dev/null $(TCC_PROBE_DIRS) -ltcc >/dev/null 2>&1 && echo 1 || echo 0)
+    endif
+endif
 ZC_RUN ?= ./zc
 ifeq ($(ZC_HAS_JIT), 1)
     CFLAGS += -DZC_HAS_JIT

@@ -563,6 +563,46 @@ ASTNode *parse_float_literal(Token t)
 }
 
 // Parse string literal
+// Whether a string has a `{expr}` to interpolate, not counting the escaped
+// braces `{{` / `}}` and the `\u{...}` escapes.
+static int string_has_interpolated_expr(const char *s)
+{
+    for (const char *c = s; *c; c++)
+    {
+        if ((c[0] == '{' && c[1] == '{') || (c[0] == '}' && c[1] == '}'))
+        {
+            c++;
+            continue;
+        }
+        if (*c == '{')
+        {
+            int is_unicode_escape = (c - s >= 2 && (c[-1] == 'u' || c[-1] == 'U') && c[-2] == '\\');
+            if (!is_unicode_escape)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+// `{{` -> `{` and `}}` -> `}`, as interpolation does for literal text.
+static char *unescape_string_braces(const char *s)
+{
+    char *out = xmalloc(strlen(s) + 1);
+    char *w = out;
+    for (const char *c = s; *c; c++)
+    {
+        if ((c[0] == '{' && c[1] == '{') || (c[0] == '}' && c[1] == '}'))
+        {
+            c++;
+        }
+        *w++ = *c;
+    }
+    *w = 0;
+    return out;
+}
+
 ASTNode *parse_string_literal(ParserContext *ctx, Token t)
 {
     char *content = token_get_string_content(t);
@@ -585,6 +625,18 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
         }
     }
 
+    // Only escaped braces (`{{`, `}}`) and no `{expr}`: a plain literal with the
+    // braces unescaped, so it also works where a statement expression cannot
+    // (a global initializer).
+    if (has_interpolation && !string_has_interpolated_expr(content))
+    {
+        char *unescaped = unescape_string_braces(content);
+        zfree(content);
+        content = unescaped;
+        str_len = (int)strlen(content);
+        has_interpolation = 0;
+    }
+
     if (has_interpolation)
     {
         // ... (interpolation logic)
@@ -593,6 +645,7 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
         ASTNode *node = ast_create(NODE_RAW_STMT);
         node->token = t;
         node->raw_stmt.content = code;
+        take_fstring_exprs(ctx, node);
         node->type_info = type_new(TYPE_STRING);
         node->resolved_type = xstrdup("string");
 
@@ -633,7 +686,6 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
     }
 
     // Plain string literal (no interpolation)
-    content = token_get_string_content(t);
 
     if (ctx->config->misra_mode)
     {
@@ -705,6 +757,7 @@ ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
     ASTNode *node = ast_create(NODE_RAW_STMT);
     node->token = t;
     node->raw_stmt.content = code;
+    take_fstring_exprs(ctx, node);
     node->type_info = type_new(TYPE_STRING);
     node->resolved_type = xstrdup("string");
 

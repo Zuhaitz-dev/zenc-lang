@@ -87,6 +87,14 @@ static ZEN_FORMAT_PRINTF(3, 4) void append_to_gen_fmt(char **gen, size_t *cap, c
     zfree(buf);
 }
 
+void take_fstring_exprs(ParserContext *ctx, ASTNode *node)
+{
+    node->raw_stmt.interp_exprs = ctx->last_fstring_exprs;
+    node->raw_stmt.interp_expr_count = ctx->last_fstring_expr_count;
+    ctx->last_fstring_exprs = NULL;
+    ctx->last_fstring_expr_count = 0;
+}
+
 char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *content, int newline,
                            const char *target, char ***used_syms, int *count, int check_symbols,
                            int is_raw, int is_expr)
@@ -112,6 +120,8 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
 
     char *s = xstrdup(content);
     char *cur = s;
+    ASTNode **interp_exprs = NULL;
+    int interp_expr_count = 0;
 
     while (*cur)
     {
@@ -319,10 +329,29 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
         if (expr_node)
         {
             infer_type(ctx, expr_node);
+            interp_exprs =
+                xrealloc(interp_exprs, sizeof(ASTNode *) * (size_t)(interp_expr_count + 1));
+            interp_exprs[interp_expr_count++] = expr_node;
         }
         else
         {
             zpanic_at(srctoken, "Could not parse expression in interpolation");
+            return NULL;
+        }
+
+        // An interpolation holds one expression: anything left over (`{x y}`,
+        // `{x;}`, a code block in a multiline string) would be dropped silently.
+        Token leftover = lexer_peek(&lex);
+        if (leftover.kind != TOK_EOF)
+        {
+            char msg[MAX_SHORT_MSG_LEN];
+            snprintf(msg, sizeof(msg),
+                     "Invalid expression in f-string: expected '}' or ':', found '%.*s'",
+                     (int)(leftover.len > 60 ? 60 : leftover.len), leftover.start);
+            const char *hints[] = {"braces in f-strings must be escaped with '{{' or '}}'",
+                                   "use a raw string literal (r\"...\") to disable interpolation",
+                                   NULL};
+            zpanic_with_hints(srctoken, msg, hints);
             return NULL;
         }
 
@@ -891,6 +920,10 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
 
     zfree(s);
     ctx->silent_warnings = saved_silent;
+    // Callers that build a node from `gen` take these, so the analysis sees the
+    // interpolated expressions (e.g. for use-after-move).
+    ctx->last_fstring_exprs = interp_exprs;
+    ctx->last_fstring_expr_count = interp_expr_count;
     return gen;
 }
 

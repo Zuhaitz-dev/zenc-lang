@@ -1,0 +1,44 @@
+// language/features/enums: explicit variant values (`Ok = 200`) are kept, and
+// the variants after one continue counting from it, as in C.
+
+enum HttpCode { Ok = 200, NotFound = 404 }
+enum Level { Low = 1, Mid, High }
+enum Mixed { First, Second = 10, Third }
+enum Perm { Read = 0x1, Write = 0x2, Exec = 0x4 }
+enum Sign { Negative = -1, Zero, Positive }
+
+fn describe(code: HttpCode) -> int {
+    match code {
+        HttpCode::Ok => { return 1; },
+        HttpCode::NotFound => { return 2; },
+    }
+    return 0;
+}
+
+test "explicit values are kept" {
+    assert((int)HttpCode::Ok == 200, "Ok = 200");
+    assert((int)HttpCode::NotFound == 404, "NotFound = 404");
+    assert((int)Perm::Read == 1, "Read = 0x1");
+    assert((int)Perm::Write == 2, "Write = 0x2");
+    assert((int)Perm::Exec == 4, "Exec = 0x4");
+}
+
+test "implicit values continue from the previous one" {
+    assert((int)Level::Low == 1, "Low = 1");
+    assert((int)Level::Mid == 2, "Mid follows Low");
+    assert((int)Level::High == 3, "High follows Mid");
+    assert((int)Mixed::First == 0, "First starts at 0");
+    assert((int)Mixed::Second == 10, "Second = 10");
+    assert((int)Mixed::Third == 11, "Third follows Second");
+    assert((int)Sign::Negative == -1, "Negative = -1");
+    assert((int)Sign::Zero == 0, "Zero follows Negative");
+    assert((int)Sign::Positive == 1, "Positive follows Zero");
+}
+
+test "match on explicit values" {
+    assert(describe(HttpCode::Ok) == 1, "match Ok");
+    assert(describe(HttpCode::NotFound) == 2, "match NotFound");
+    let level = Level::High;
+    assert(level == Level::High, "== on an explicit-valued enum");
+    assert(level != Level::Low, "!= on an explicit-valued enum");
+}

@@ -15,6 +15,43 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
+// The element type taken from a mangled collection name (`Vec__ShapePtr`) keeps
+// the mangled pointer suffix. Turn each trailing "Ptr" back into '*' when what is
+// left names a known type, so the loop variable gets a real pointer type.
+static char *demangle_elem_ptr_suffix(ParserContext *ctx, char *elem)
+{
+    size_t len = strlen(elem);
+    size_t stars = 0;
+    while (len > 3 && strncmp(elem + len - 3, "Ptr", 3) == 0)
+    {
+        char *whole = xcalloc(len + 1, 1);
+        memcpy(whole, elem, len);
+        int known = find_struct_def(ctx, whole) || find_type_alias(ctx, whole);
+        zfree(whole);
+        if (known)
+        {
+            break;
+        }
+        len -= 3;
+        stars++;
+    }
+    if (stars == 0)
+    {
+        return elem;
+    }
+
+    char *result = xcalloc(len + stars + 1, 1);
+    memcpy(result, elem, len);
+    if (!find_struct_def(ctx, result) && !find_type_alias(ctx, result) &&
+        !is_primitive_type_name(result))
+    {
+        zfree(result);
+        return elem;
+    }
+    memset(result + len, '*', stars);
+    return result;
+}
+
 static void check_assignment_condition(ASTNode *cond)
 {
     if (!cond)
@@ -601,6 +638,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                             sprintf(option_type_ptr, "Option<%s>", u_type); /* safe */
                         }
 
+                        u_type = demangle_elem_ptr_suffix(ctx, u_type);
                         zfree(inner);
                     }
                 }
@@ -722,7 +760,20 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                 APPEND_STMT(user_var_decl);
 
                 enter_scope(ctx);
-                add_symbol(ctx, var_name, u_type, NULL, 0);
+                // Give the symbol a parsed type as well, so a variable initialised from
+                // it (`let t = s;`) inherits the element type instead of "unknown".
+                Type *u_type_info = NULL;
+                if (u_type && !strchr(u_type, '<'))
+                {
+                    Lexer type_lex;
+                    lexer_init(&type_lex, u_type, ctx->config, ctx->current_filename);
+                    Type *parsed = parse_type_formal(ctx, &type_lex);
+                    if (parsed != NULL)
+                    {
+                        u_type_info = parsed;
+                    }
+                }
+                add_symbol(ctx, var_name, u_type, u_type_info, 0);
                 if (enum_idx_name)
                 {
                     add_symbol(ctx, enum_idx_name, "int", type_new(TYPE_INT), 0);

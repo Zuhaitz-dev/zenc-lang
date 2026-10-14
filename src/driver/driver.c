@@ -107,7 +107,6 @@ int driver_compile(ZenCompiler *compiler)
     module_state_init(&ctx.imports);
     diag_set_parser_ctx(&ctx);
     token_set_parser_ctx(&ctx);
-    token_set_parser_ctx(&ctx);
 
     // Set runtime hooks based on configuration
     if (ctx.config->misra_mode)
@@ -257,6 +256,11 @@ int driver_compile(ZenCompiler *compiler)
         fix_type_refs_has_drop(&ctx);
 
         if (!validate_types(&ctx))
+        {
+            return 1;
+        }
+
+        if (!validate_function_definitions(&ctx, root))
         {
             return 1;
         }

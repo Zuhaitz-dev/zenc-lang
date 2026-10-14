@@ -1,0 +1,10 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a global cannot be initialized with an interpolated
+// string: interpolation runs at run time, outside any function.
+
+let count = 3;
+let label = "count is {count}";
+
+fn main() {
+    println "{label}";
+}

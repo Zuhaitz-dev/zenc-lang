@@ -24,6 +24,120 @@ int token_is_field_name(Token t)
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
+static int token_is_only_stars(Token t)
+{
+    if (t.kind != TOK_OP || t.len == 0)
+    {
+        return 0;
+    }
+    for (const char *c = t.start; c < t.start + t.len; c++)
+    {
+        if (*c != '*')
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int tokens_could_be_generic_args(Lexer *l)
+{
+    Lexer scan = *l;
+    lexer_next(&scan); // eat <
+
+    Token first = lexer_peek(&scan);
+    if (first.kind != TOK_IDENT && first.kind != TOK_LPAREN && first.kind != TOK_LBRACKET)
+    {
+        return 0;
+    }
+
+    int angles = 1;
+    int parens = 0;
+    int brackets = 0;
+    while (1)
+    {
+        Token tk = lexer_next(&scan);
+        if (tk.kind == TOK_EOF || tk.kind == TOK_LBRACE || tk.kind == TOK_RBRACE)
+        {
+            return 0;
+        }
+
+        // An array size is an expression: accept anything up to the matching ']'.
+        if (brackets > 0)
+        {
+            if (tk.kind == TOK_LBRACKET)
+            {
+                brackets++;
+            }
+            else if (tk.kind == TOK_RBRACKET)
+            {
+                brackets--;
+            }
+            continue;
+        }
+
+        switch (tk.kind)
+        {
+        default:
+            // Literals, `{`, `;`, `=`, `&&`, `.`... cannot appear in a type list.
+            return 0;
+        case TOK_IDENT:
+        case TOK_COMMA:
+        case TOK_DCOLON:
+        case TOK_ELLIPSIS:
+            break;
+        case TOK_LANGLE:
+            angles++;
+            break;
+        case TOK_RANGLE:
+            angles--;
+            if (angles == 0)
+            {
+                return parens == 0;
+            }
+            break;
+        case TOK_LPAREN:
+            parens++;
+            break;
+        case TOK_RPAREN:
+            if (parens == 0)
+            {
+                return 0;
+            }
+            parens--;
+            break;
+        case TOK_LBRACKET:
+            brackets++;
+            break;
+        case TOK_ARROW:
+            if (tk.start[0] != '-')
+            {
+                return 0;
+            }
+            break;
+        case TOK_OP:
+            if (token_is_only_stars(tk))
+            {
+                break;
+            }
+            if (tk.len == 2 && strncmp(tk.start, ">>", 2) == 0)
+            {
+                angles -= 2;
+                if (angles == 0)
+                {
+                    return parens == 0;
+                }
+                if (angles < 0)
+                {
+                    return 0;
+                }
+                break;
+            }
+            return 0;
+        }
+    }
+}
+
 int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
 {
     if (!a || !b)

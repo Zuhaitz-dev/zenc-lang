@@ -1,0 +1,14 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a free function defined twice.
+
+fn twice() -> int {
+    return 1;
+}
+
+fn twice() -> int {
+    return 2;
+}
+
+fn main() {
+    println "{twice()}";
+}

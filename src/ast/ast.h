@@ -420,6 +420,8 @@ struct ASTNode
         {
             char *op;
             ASTNode *operand;
+            int owns_temp; ///< `&_rval` of a temporary that the enclosing call must drop.
+            int temp_id;   ///< While emitting that call: 1 + id of the named temporary.
         } unary;
 
         struct
@@ -556,6 +558,8 @@ struct ASTNode
             char *content;
             char **used_symbols;
             int used_symbol_count;
+            struct ASTNode **interp_exprs; ///< Parsed `{...}` expressions of an f-string.
+            int interp_expr_count;
         } raw_stmt;
 
         struct

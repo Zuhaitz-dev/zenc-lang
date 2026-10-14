@@ -87,6 +87,102 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
     return head;
 }
 
+// Whether a value of type `t` (or what it points to) can be a struct, as far as the
+// parser knows. Unknown, generic and alias types are given the benefit of the doubt.
+static int may_be_struct(Type *t)
+{
+    if (t->kind == TYPE_POINTER && t->inner)
+    {
+        t = t->inner;
+    }
+    switch (t->kind)
+    {
+    case TYPE_STRING:
+    case TYPE_BOOL:
+    case TYPE_CHAR:
+    case TYPE_VOID:
+    case TYPE_FUNCTION:
+        return 0;
+    default:
+        return !is_integer_type(t) && !is_float_type(t);
+    }
+}
+
+// Builds the second argument of an operator overload call from its right operand.
+// When the overload takes a pointer, a value is passed by reference; a temporary (also
+// one written as `&make()`) is materialised and dropped after the call. An operand that
+// can never match a struct parameter (a C string, a number) is reported.
+static ASTNode *overload_rhs_argument(ParserContext *ctx, Token op_tok, const char *op,
+                                      FuncSig *sig, ASTNode *rhs)
+{
+    if (sig->total_args < 2 || !sig->arg_types[1])
+    {
+        return rhs;
+    }
+    Type *param = sig->arg_types[1];
+    Type *rt = rhs->type_info;
+
+    // If rhs is a variable reference without type_info, look it up
+    if (!rt && rhs->kind == NODE_EXPR_VAR)
+    {
+        ZenSymbol *sym = find_symbol_entry(ctx, rhs->var_ref.name);
+        if (sym && sym->type_info)
+        {
+            rt = sym->type_info;
+            rhs->type_info = rt;
+            if (sym->type_name)
+            {
+                rhs->resolved_type = xstrdup(sym->type_name);
+            }
+        }
+    }
+
+    Type *param_base = (param->kind == TYPE_POINTER) ? param->inner : param;
+    if (param_base && param_base->kind == TYPE_STRUCT && rt && !may_be_struct(rt))
+    {
+        char msg[MAX_SHORT_MSG_LEN];
+        char *expected = type_to_string(param);
+        char *found = type_to_string(rt);
+        snprintf(msg, sizeof(msg), "Operator '%s' expects '%s' as right operand, found '%s'", op,
+                 expected, found);
+        zpanic_with_suggestion(op_tok, msg,
+                               "The overloaded operator only accepts the type of its parameter");
+        return rhs;
+    }
+
+    if (param->kind != TYPE_POINTER)
+    {
+        return rhs;
+    }
+
+    if (rhs->kind == NODE_EXPR_UNARY && rhs->unary.op && strcmp(rhs->unary.op, "&") == 0 &&
+        rhs->unary.operand && expr_is_rvalue(ctx, rhs->unary.operand))
+    {
+        // `&make()`: C cannot take the address of a call result.
+        zfree(rhs->unary.op);
+        rhs->unary.op = xstrdup("&_rval");
+        rhs->unary.owns_temp = 1;
+        return rhs;
+    }
+
+    if (rt && rt->kind == TYPE_POINTER)
+    {
+        return rhs;
+    }
+
+    // Need pointer, have value
+    int is_rvalue = expr_is_rvalue(ctx, rhs);
+    ASTNode *addr = ast_create(NODE_EXPR_UNARY);
+    addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+    addr->unary.owns_temp = is_rvalue;
+    addr->unary.operand = rhs;
+    if (rt)
+    {
+        addr->type_info = type_new_ptr(rt);
+    }
+    return addr;
+}
+
 ASTNode *parse_expr_prec(ParserContext *ctx, Lexer *l, Precedence min_prec)
 {
     if (++ctx->recursion_depth > 64)
@@ -124,9 +220,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             char *inner = token_get_string_content(t_str);
             int is_raw = (t_str.kind == TOK_RAW_STRING);
 
-            // Reuse printf sugar to generate the prompt print
+            // Reuse printf sugar to generate the prompt print (no newline: the
+            // input is typed after the prompt).
             char *print_code =
-                process_printf_sugar(ctx, t_str, inner, 1, "stdout", NULL, NULL, 0, is_raw, 0);
+                process_printf_sugar(ctx, t_str, inner, 0, "stdout", NULL, NULL, 0, is_raw, 0);
             zfree(inner);
 
             // Checks for (args...) suffix for SCAN mode
@@ -222,9 +319,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 ASTNode *s1 = ast_create(NODE_RAW_STMT);
                 s1->token = t_str;
-                // Append semicolon to ensure it's a valid statement
-                char *s1_code = xmalloc(strlen(print_code) + 2);
-                sprintf(s1_code, "%s;", print_code); /* safe */
+                // Append semicolon to ensure it's a valid statement, and show the
+                // prompt before blocking on input.
+                char *s1_code = xmalloc(strlen(print_code) + 32);
+                sprintf(s1_code, "%s; fflush(stdout);", print_code); /* safe */
                 s1->raw_stmt.content = s1_code;
                 zfree(print_code);
 
@@ -266,7 +364,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
 
                 char *final_code = xmalloc(strlen(print_code) + 64);
-                snprintf(final_code, strlen(print_code) + 64, "%s readln(); })", print_code);
+                snprintf(final_code, strlen(print_code) + 64, "%s fflush(stdout); readln(); })",
+                         print_code);
                 zfree(print_code);
 
                 ASTNode *n = ast_create(NODE_RAW_STMT);
@@ -420,6 +519,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             sprintf(stmt_code, "%s;", code); /* safe */
             zfree(code);
             n->raw_stmt.content = stmt_code;
+            take_fstring_exprs(ctx, n);
             return n;
         }
     }
@@ -640,9 +740,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER && !is_ptr)
                     {
-                        int is_rvalue =
-                            (operand->kind == NODE_EXPR_CALL || operand->kind == NODE_EXPR_BINARY ||
-                             operand->kind == NODE_MATCH);
+                        int is_rvalue = expr_is_rvalue(ctx, operand);
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                         addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
                         addr->unary.operand = operand;
@@ -1176,11 +1274,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 if (!is_lhs_ptr)
                                 {
                                     // Function expects ptr, have value -> &obj
-                                    int is_rvalue =
-                                        (obj->kind == NODE_EXPR_CALL ||
-                                         obj->kind == NODE_EXPR_BINARY ||
-                                         obj->kind == NODE_EXPR_STRUCT_INIT ||
-                                         obj->kind == NODE_EXPR_CAST || obj->kind == NODE_MATCH);
+                                    int is_rvalue = expr_is_rvalue(ctx, obj);
 
                                     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                                     addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
@@ -1925,7 +2019,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             }
 
             // Handle Generic Method Call: object.method<T>
-            if (lexer_peek(l).kind == TOK_LANGLE)
+            if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
             {
                 Lexer lookahead = *l;
                 lexer_next(&lookahead);
@@ -2413,9 +2507,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             arg1 = deref;
                         }
 
+                        ASTNode *arg2 = overload_rhs_argument(ctx, t, bin->binary.op, sig, rhs);
                         call->call.args = arg1;
-                        arg1->next = rhs;
-                        rhs->next = NULL;
+                        arg1->next = arg2;
+                        arg2->next = NULL;
                         call->type_info = sig->ret_type;
 
                         // Replace op_node with the call
@@ -2601,13 +2696,11 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         if (!is_lhs_ptr)
                         {
                             // Value -> Pointer.
-                            int is_rvalue =
-                                (lhs->kind == NODE_EXPR_CALL || lhs->kind == NODE_EXPR_BINARY ||
-                                 lhs->kind == NODE_EXPR_STRUCT_INIT ||
-                                 lhs->kind == NODE_EXPR_CAST || lhs->kind == NODE_MATCH);
+                            int is_rvalue = expr_is_rvalue(ctx, lhs);
 
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                             addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
+                            addr->unary.owns_temp = is_rvalue;
                             addr->unary.operand = lhs;
                             addr->type_info = type_new_ptr(lt);
                             arg1 = addr;
@@ -2631,45 +2724,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     }
 
                     // Handle RHS (Argument 2) Auto-Ref if needed
-                    ASTNode *arg2 = rhs;
-                    if (sig->total_args > 1 && sig->arg_types[1] &&
-                        sig->arg_types[1]->kind == TYPE_POINTER)
-                    {
-                        Type *rt = rhs->type_info;
-
-                        // If rhs is a variable reference without type_info, look it up
-                        if (!rt && rhs->kind == NODE_EXPR_VAR)
-                        {
-                            ZenSymbol *sym = find_symbol_entry(ctx, rhs->var_ref.name);
-                            if (sym && sym->type_info)
-                            {
-                                rt = sym->type_info;
-                                rhs->type_info = rt;
-                                if (sym->type_name)
-                                {
-                                    rhs->resolved_type = xstrdup(sym->type_name);
-                                }
-                            }
-                        }
-
-                        int is_rhs_ptr = (rt && rt->kind == TYPE_POINTER);
-                        if (!is_rhs_ptr) // Need pointer, have value
-                        {
-                            int is_rvalue =
-                                (rhs->kind == NODE_EXPR_CALL || rhs->kind == NODE_EXPR_BINARY ||
-                                 rhs->kind == NODE_EXPR_STRUCT_INIT ||
-                                 rhs->kind == NODE_EXPR_CAST || rhs->kind == NODE_MATCH);
-
-                            ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-                            addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
-                            addr->unary.operand = rhs;
-                            if (rt)
-                            {
-                                addr->type_info = type_new_ptr(rt);
-                            }
-                            arg2 = addr;
-                        }
-                    }
+                    ASTNode *arg2 = overload_rhs_argument(ctx, t, bin->binary.op, sig, rhs);
 
                     call->call.args = arg1;
                     arg1->next = arg2;

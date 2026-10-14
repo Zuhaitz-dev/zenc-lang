@@ -899,6 +899,20 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
     case NODE_RAW_STMT:
         misra_check_raw_block(tc->pctx, node->token);
+        if (node->raw_stmt.interp_expr_count > 0)
+        {
+            // The `{...}` expressions of an f-string were parsed and typed when the
+            // string was; check them only for moves (use after move, consumed values).
+            int prev_move_checks_only = tc->move_checks_only;
+            tc->move_checks_only = 1;
+            ASTNode **expr = node->raw_stmt.interp_exprs;
+            ASTNode **end = expr + node->raw_stmt.interp_expr_count;
+            for (; expr < end; expr++)
+            {
+                check_node(tc, *expr, depth + 1);
+            }
+            tc->move_checks_only = prev_move_checks_only;
+        }
         break;
     case NODE_PREPROC_DIRECTIVE:
         // Rule Zen 1.4 is already handled by parser_audit_preprocessor

@@ -1,0 +1,4 @@
+import "./_shared.zc"
+fn left_answer() -> int {
+    return shared_answer();
+}

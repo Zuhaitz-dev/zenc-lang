@@ -1,0 +1,43 @@
+// language/features/iterators: test_let_from_loop_variable
+//
+// A variable initialised from a for-in loop variable (`let t = s;`) must keep
+// the element type, so a method called on it inside an interpolated string
+// resolves like on `s` itself.
+import "std/vec.zc"
+import "std/string.zc"
+
+struct Counter {
+    n: int;
+}
+
+impl Counter {
+    fn get(self) -> int {
+        return self.n;
+    }
+}
+
+test "let copies a Vec<String> loop variable with its type" {
+    let words = Vec<String>::new();
+    words.push(String::new("ab"));
+    words.push(String::new("cde"));
+    let joined = String::new("");
+    for s in words {
+        let t = s;
+        let piece = "{t.c_str()}-";
+        joined.append_c(piece);
+    }
+    assert(strcmp(joined.c_str(), "ab-cde-") == 0, "c_str() on the copy");
+}
+
+test "let copies a struct loop variable with its type" {
+    let counters = Vec<Counter>::new();
+    counters.push(Counter { n: 2 });
+    counters.push(Counter { n: 3 });
+    let total = 0;
+    for c in counters {
+        let d = c;
+        let text = "{d.get()}";
+        total = total + atoi(text);
+    }
+    assert(total == 5, "get() on the copy");
+}

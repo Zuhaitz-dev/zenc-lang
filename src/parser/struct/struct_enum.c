@@ -5,6 +5,7 @@
 #include "analysis/move_check.h"
 #include "plugins/plugin_manager.h"
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,6 +145,27 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                 }
             }
 
+            // Explicit value: `Ok = 200`. It must be known before the variant is
+            // registered, since match and constant folding read the registered tag.
+            if (lexer_peek(l).kind == TOK_OP && is_token(lexer_peek(l), "="))
+            {
+                lexer_next(l);
+                Token value_tok = lexer_peek(l);
+                ASTNode *value_expr = parse_expression(ctx, l);
+                long long value = 0;
+                if (!value_expr || !eval_const_int_expr(value_expr, ctx, &value))
+                {
+                    zpanic_at(value_tok, "Enum variant value must be a constant integer");
+                    return NULL;
+                }
+                if (value < INT_MIN || value > INT_MAX)
+                {
+                    zpanic_at(value_tok, "Enum variant value %lld does not fit in an 'int'", value);
+                    return NULL;
+                }
+                v = (int)value;
+            }
+
             ASTNode *va = ast_create(NODE_ENUM_VARIANT);
             ATTACH_DOC_COMMENT(ctx, va);
             va->variant.name = vname;
@@ -197,14 +219,6 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                 // Codegen handles calling the constructor via codegen_var_expr.
             }
             zfree(mangled);
-
-            // Handle explicit assignment: Ok = 5
-            if (lexer_peek(l).kind == TOK_OP && *lexer_peek(l).start == '=')
-            {
-                lexer_next(l);
-                va->variant.tag_id = (int)strtol(lexer_next(l).start, NULL, 10);
-                v = va->variant.tag_id + 1;
-            }
 
             if (!h)
             {

@@ -473,6 +473,10 @@ struct ParserContext
     int silent_warnings;    ///< Suppress warnings (e.g., during codegen interpolation).
     char *last_doc_comment; ///< Last seen doc-comment (for association).
 
+    // `{...}` expressions parsed by the last process_printf_sugar call (take_fstring_exprs).
+    ASTNode **last_fstring_exprs;
+    int last_fstring_expr_count;
+
     // Flow Analysis (Move Semantics)
     struct MoveState *move_state;
 
@@ -574,6 +578,14 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t);
  * @brief Validates types.
  */
 int validate_types(ParserContext *ctx);
+
+/**
+ * @brief Reports functions and methods defined twice under the same C name.
+ *
+ * Prototypes, externs, generic templates, `@cfg` definitions and definitions
+ * inside a preprocessor `#if` block are not counted. Returns 0 on error.
+ */
+int validate_function_definitions(ParserContext *ctx, ASTNode *root);
 
 /**
  * @brief Traverses all parsed structs and propagates `has_drop` from fields to their parent
@@ -787,6 +799,8 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
 char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *content, int newline,
                            const char *target, char ***used_syms, int *count, int check_symbols,
                            int is_raw, int is_expr);
+/** @brief Moves the expressions of the last process_printf_sugar call into a NODE_RAW_STMT. */
+void take_fstring_exprs(ParserContext *ctx, ASTNode *node);
 
 /**
  * @brief Checks if a token is a reserved keyword.
@@ -846,6 +860,7 @@ FuncSig *find_func(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
                                      const char *variant_name);
+int expr_is_rvalue(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);

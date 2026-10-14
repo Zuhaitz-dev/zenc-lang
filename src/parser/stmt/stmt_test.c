@@ -48,6 +48,40 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+// The message of `assert`/`expect`. A string with `{...}` parts is interpolated
+// like any other string: it becomes the C expression that builds the text, and
+// is emitted the way a message variable is (`"%s", expr`), so it is only
+// evaluated when the check fails.
+static char *parse_check_message_string(ParserContext *ctx, Token st, int *is_literal)
+{
+    char *content = token_get_string_content(st);
+    int has_interpolation = 0;
+    for (const char *c = content; *c; c++)
+    {
+        // `\u{...}` is a unicode escape, not an interpolation
+        if (*c == '{' && !(c - content >= 2 && (c[-1] == 'u' || c[-1] == 'U') && c[-2] == '\\'))
+        {
+            has_interpolation = 1;
+            break;
+        }
+    }
+
+    if (has_interpolation)
+    {
+        char *code = process_printf_sugar(ctx, st, content, 0, "stdout", NULL, NULL, 0, 0, 1);
+        zfree(content);
+        *is_literal = 0;
+        return code;
+    }
+    zfree(content);
+
+    *is_literal = 1;
+    char *msg = xmalloc(st.len + 1);
+    strncpy(msg, st.start, st.len);
+    msg[st.len] = 0;
+    return msg;
+}
+
 ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
 {
     Token tk = lexer_next(l);
@@ -66,10 +100,7 @@ ASTNode *parse_assert(ParserContext *ctx, Lexer *l)
         Token st = lexer_next(l);
         if (st.kind == TOK_STRING)
         {
-            is_literal = 1;
-            msg = xmalloc(st.len + 1);
-            strncpy(msg, st.start, st.len);
-            msg[st.len] = 0;
+            msg = parse_check_message_string(ctx, st, &is_literal);
         }
         else if (st.kind == TOK_IDENT)
         {
@@ -120,10 +151,7 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l)
         Token st = lexer_next(l);
         if (st.kind == TOK_STRING)
         {
-            is_literal = 1;
-            msg = xmalloc(st.len + 1);
-            strncpy(msg, st.start, st.len);
-            msg[st.len] = 0;
+            msg = parse_check_message_string(ctx, st, &is_literal);
         }
         else if (st.kind == TOK_IDENT)
         {

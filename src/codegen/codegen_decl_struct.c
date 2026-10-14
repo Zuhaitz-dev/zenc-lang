@@ -40,7 +40,7 @@ void emit_simple_enum(ParserContext *ctx, ASTNode *node)
     ASTNode *v = node->enm.variants;
     while (v)
     {
-        EMIT(ctx, "%s__%s_Tag, ", final_name, v->variant.name);
+        EMIT(ctx, "%s__%s_Tag = %d, ", final_name, v->variant.name, v->variant.tag_id);
         v = v->next;
     }
     EMIT(ctx, "} %s;\n\n", final_name);
@@ -271,7 +271,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             v = node->enm.variants;
             while (v)
             {
-                EMIT(ctx, "%s__%s_Tag, ", final_name, v->variant.name);
+                EMIT(ctx, "%s__%s_Tag = %d, ", final_name, v->variant.name, v->variant.tag_id);
                 v = v->next;
             }
             EMIT(ctx, "} %s_Tag;\n", final_name);
