@@ -629,8 +629,8 @@ void register_selective_import(ParserContext *ctx, const char *symbol, const cha
 
 SelectiveImport *find_selective_import(ParserContext *ctx, const char *name)
 {
-    SelectiveImport **si_ptr = zmap_get(&ctx->imports.selective_imports, name);
-    return si_ptr ? *si_ptr : NULL;
+    SelectiveImport **si = zmap_get(&ctx->imports.selective_imports, name);
+    return si ? *si : NULL;
 }
 
 void re_export_propagated(ParserContext *ctx, const char *alias, const char *parent_prefix,
