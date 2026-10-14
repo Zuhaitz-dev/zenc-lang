@@ -260,6 +260,11 @@ int driver_compile(ZenCompiler *compiler)
             return 1;
         }
 
+        if (!validate_function_definitions(&ctx, root))
+        {
+            return 1;
+        }
+
         if (!compiler->config.use_typecheck && !compiler->config.mode_check)
         {
             if (check_moves_only(&ctx, root) != 0)
