@@ -1,0 +1,30 @@
+// language/features/enums: `@derive(Eq)` on an enum without payloads compiles
+// and compares the variants, both with `==`/`!=` and through `eq`.
+
+@derive(Eq)
+enum Color { Red, Green, Blue }
+
+@derive(Eq)
+struct Pixel {
+    color: Color;
+    x: int;
+}
+
+test "derived eq on a plain enum" {
+    let red = Color::Red;
+    let green = Color::Green;
+    let other_red = Color::Red;
+    assert(red == other_red, "same variant");
+    assert(!(red == green), "different variants");
+    assert(red != green, "!= on different variants");
+    assert(red.eq(&other_red), "eq method");
+    assert(!red.eq(&green), "eq method, different variants");
+}
+
+test "derived eq on a struct holding a plain enum" {
+    let a = Pixel { color: Color::Blue, x: 1 };
+    let b = Pixel { color: Color::Blue, x: 1 };
+    let c = Pixel { color: Color::Green, x: 1 };
+    assert(a == b, "equal pixels");
+    assert(!(a == c), "pixels with different colors");
+}
