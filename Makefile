@@ -87,7 +87,17 @@ else
     LIBS = -lm -lpthread -ldl
 endif
 
-ZC_HAS_JIT ?= 1
+# The REPL's JIT needs libtcc. Unless ZC_HAS_JIT is given (1 forces it, 0 turns
+# it off), it is enabled only when a small program using libtcc compiles and links.
+ifeq ($(origin ZC_HAS_JIT),undefined)
+    ifeq ($(findstring tcc,$(CC)),tcc)
+        ZC_HAS_JIT := 1
+    else
+        TCC_PROBE_HASH := \#
+        TCC_PROBE_DIRS := $(if $(wildcard /usr/local/lib/libtcc.a),-I/usr/local/include -L/usr/local/lib)
+        ZC_HAS_JIT := $(shell printf '$(TCC_PROBE_HASH)include <libtcc.h>\nint main(void) { tcc_delete(tcc_new()); return 0; }\n' | $(CC) -x c - -o /dev/null $(TCC_PROBE_DIRS) -ltcc >/dev/null 2>&1 && echo 1 || echo 0)
+    endif
+endif
 ZC_RUN ?= ./zc
 ifeq ($(ZC_HAS_JIT), 1)
     CFLAGS += -DZC_HAS_JIT
