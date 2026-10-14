@@ -1,0 +1,44 @@
+// language/features/constants: `def` values are folded into literals; negative
+// values must stay signed and values wider than 32 bits must not be truncated.
+
+def NEG = -1;
+def LOW: i64 = -3;
+def DIFF = 0 - 5;
+def STEP = -2;
+def LOWER = -5;
+def BIG = 5000000000;
+def OFFSET: u64 = 0xcbf29ce484222325;
+
+test "negative def compares as a signed value" {
+    let zero = 0;
+    assert(zero > NEG, "0 > -1");
+    assert(zero > LOW, "0 > -3 (typed i64)");
+    assert(zero > DIFF, "0 > 0 - 5");
+    assert(NEG < 0, "-1 < 0");
+    assert(-NEG == 1, "negating a negative def");
+}
+
+test "negative def as a loop bound and step" {
+    let count = 0;
+    let j: int;
+    for j = 5; j >= LOWER; j -= -STEP {
+        count += 1;
+    }
+    assert(count == 6, "5, 3, 1, -1, -3, -5");
+}
+
+test "local negative def" {
+    def LOCAL = -7;
+    let x = 3;
+    assert(x > LOCAL, "3 > -7");
+    assert(LOCAL + 7 == 0, "-7 + 7");
+}
+
+test "wide def values are not truncated" {
+    let big: i64 = BIG;
+    assert(big == (i64)5000000000, "5000000000 survives");
+    let inferred = BIG;
+    assert(inferred == big, "an untyped wide def infers a 64-bit type");
+    let offset: u64 = OFFSET;
+    assert(offset == (u64)0xcbf29ce484222325, "64-bit unsigned constant survives");
+}

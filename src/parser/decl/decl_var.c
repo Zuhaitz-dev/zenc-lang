@@ -669,7 +669,7 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l, int is_export)
         if (s)
         {
             s->is_const_value = 1;
-            s->const_int_val = (int)init->literal.int_val;
+            s->const_int_val = (long long)init->literal.int_val;
         }
     }
 
