@@ -1,0 +1,8 @@
+// EXPECT: FAIL
+// compiler/diagnostics: anything that does not start a top-level declaration
+// is an error. It used to be skipped token by token, so `pub fn` compiled as
+// `fn` and a stray statement vanished without a word.
+
+pub fn main() {
+    println "never reached";
+}

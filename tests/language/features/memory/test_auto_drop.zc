@@ -5,7 +5,7 @@ struct Container {
     items: Vec<int>,
 }
 
-pub fn main() {
+fn main() {
     let c = Container {
         items: Vec<int>::new(),
     };
