@@ -645,6 +645,7 @@ ASTNode *parse_string_literal(ParserContext *ctx, Token t)
         ASTNode *node = ast_create(NODE_RAW_STMT);
         node->token = t;
         node->raw_stmt.content = code;
+        take_fstring_exprs(ctx, node);
         node->type_info = type_new(TYPE_STRING);
         node->resolved_type = xstrdup("string");
 
@@ -756,6 +757,7 @@ ASTNode *parse_fstring_literal(ParserContext *ctx, Token t)
     ASTNode *node = ast_create(NODE_RAW_STMT);
     node->token = t;
     node->raw_stmt.content = code;
+    take_fstring_exprs(ctx, node);
     node->type_info = type_new(TYPE_STRING);
     node->resolved_type = xstrdup("string");
 
