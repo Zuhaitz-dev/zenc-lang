@@ -326,6 +326,22 @@ char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *conte
             return NULL;
         }
 
+        // An interpolation holds one expression: anything left over (`{x y}`,
+        // `{x;}`, a code block in a multiline string) would be dropped silently.
+        Token leftover = lexer_peek(&lex);
+        if (leftover.kind != TOK_EOF)
+        {
+            char msg[MAX_SHORT_MSG_LEN];
+            snprintf(msg, sizeof(msg),
+                     "Invalid expression in f-string: expected '}' or ':', found '%.*s'",
+                     (int)(leftover.len > 60 ? 60 : leftover.len), leftover.start);
+            const char *hints[] = {"braces in f-strings must be escaped with '{{' or '}}'",
+                                   "use a raw string literal (r\"...\") to disable interpolation",
+                                   NULL};
+            zpanic_with_hints(srctoken, msg, hints);
+            return NULL;
+        }
+
         char *rw_expr = NULL;
         char *mangled_to_string = NULL;
         int to_string_is_ptr = 0;
