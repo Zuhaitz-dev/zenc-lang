@@ -640,9 +640,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                     if (sig->total_args > 0 && sig->arg_types[0]->kind == TYPE_POINTER && !is_ptr)
                     {
-                        int is_rvalue =
-                            (operand->kind == NODE_EXPR_CALL || operand->kind == NODE_EXPR_BINARY ||
-                             operand->kind == NODE_MATCH);
+                        int is_rvalue = expr_is_rvalue(ctx, operand);
                         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                         addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
                         addr->unary.operand = operand;
@@ -1176,11 +1174,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 if (!is_lhs_ptr)
                                 {
                                     // Function expects ptr, have value -> &obj
-                                    int is_rvalue =
-                                        (obj->kind == NODE_EXPR_CALL ||
-                                         obj->kind == NODE_EXPR_BINARY ||
-                                         obj->kind == NODE_EXPR_STRUCT_INIT ||
-                                         obj->kind == NODE_EXPR_CAST || obj->kind == NODE_MATCH);
+                                    int is_rvalue = expr_is_rvalue(ctx, obj);
 
                                     ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                                     addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
@@ -2601,10 +2595,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         if (!is_lhs_ptr)
                         {
                             // Value -> Pointer.
-                            int is_rvalue =
-                                (lhs->kind == NODE_EXPR_CALL || lhs->kind == NODE_EXPR_BINARY ||
-                                 lhs->kind == NODE_EXPR_STRUCT_INIT ||
-                                 lhs->kind == NODE_EXPR_CAST || lhs->kind == NODE_MATCH);
+                            int is_rvalue = expr_is_rvalue(ctx, lhs);
 
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                             addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
@@ -2655,10 +2646,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                         int is_rhs_ptr = (rt && rt->kind == TYPE_POINTER);
                         if (!is_rhs_ptr) // Need pointer, have value
                         {
-                            int is_rvalue =
-                                (rhs->kind == NODE_EXPR_CALL || rhs->kind == NODE_EXPR_BINARY ||
-                                 rhs->kind == NODE_EXPR_STRUCT_INIT ||
-                                 rhs->kind == NODE_EXPR_CAST || rhs->kind == NODE_MATCH);
+                            int is_rvalue = expr_is_rvalue(ctx, rhs);
 
                             ASTNode *addr = ast_create(NODE_EXPR_UNARY);
                             addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");

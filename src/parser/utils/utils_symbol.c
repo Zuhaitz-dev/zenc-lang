@@ -403,6 +403,53 @@ EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
     return NULL;
 }
 
+// The expression has no address of its own (a call result, a literal, an enum
+// variant...). Taking its address for a `self` or `T*` parameter must go
+// through a temporary (`&_rval`), or the C compiler rejects `&(rvalue)`.
+int expr_is_rvalue(ParserContext *ctx, ASTNode *e)
+{
+    if (!e)
+    {
+        return 0;
+    }
+    switch (e->kind)
+    {
+    case NODE_EXPR_CALL:
+    case NODE_EXPR_BINARY:
+    case NODE_EXPR_STRUCT_INIT:
+    case NODE_EXPR_CAST:
+    case NODE_EXPR_LITERAL:
+    case NODE_MATCH:
+        return 1;
+    case NODE_EXPR_MEMBER:
+        // A field of a temporary is a temporary too (`pairs.get(0).id`), unless
+        // it is reached through a pointer (`ptr->field` has an address).
+        return !e->member.is_pointer_access && expr_is_rvalue(ctx, e->member.target);
+    case NODE_EXPR_VAR:
+    {
+        // `Shape::Circle` written without (): the variant constructor's result.
+        const char *sep = e->var_ref.name ? strstr(e->var_ref.name, "::") : NULL;
+        if (!sep && e->var_ref.name)
+        {
+            sep = strstr(e->var_ref.name, "__");
+        }
+        if (!sep)
+        {
+            return 0;
+        }
+        size_t enum_len = (size_t)(sep - e->var_ref.name);
+        char *enum_name = xmalloc(enum_len + 1);
+        memcpy(enum_name, e->var_ref.name, enum_len);
+        enum_name[enum_len] = 0;
+        int is_variant = find_enum_variant_of(ctx, enum_name, sep + 2) != NULL;
+        zfree(enum_name);
+        return is_variant;
+    }
+    default:
+        return 0;
+    }
+}
+
 void register_lambda(ParserContext *ctx, ASTNode *node)
 {
     LambdaRef *ref = xmalloc(sizeof(LambdaRef));

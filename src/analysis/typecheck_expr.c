@@ -798,8 +798,7 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
              (type_eq(a_res, e_res->inner) || is_struct_base_match(a_res, e_res->inner)))
     {
         ASTNode *addr = ast_create(NODE_EXPR_UNARY);
-        int is_rvalue = (expr->kind == NODE_EXPR_CALL || expr->kind == NODE_EXPR_BINARY ||
-                         expr->kind == NODE_MATCH);
+        int is_rvalue = expr_is_rvalue(tc->pctx, expr);
         addr->unary.op = is_rvalue ? xstrdup("&_rval") : xstrdup("&");
         addr->unary.operand = expr;
         addr->type_info = e_res;
