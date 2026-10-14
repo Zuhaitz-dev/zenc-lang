@@ -12,6 +12,40 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
+// 1 if `type_name` has a `clone` method: a concrete one (`String__clone`) or one
+// from a generic impl whose instance this is (`Vec__int32_t` from `impl Vec<T>`).
+static int type_has_clone_method(ParserContext *ctx, const char *type_name)
+{
+    char *mangled = mangle_method_symbol(type_name, NULL, "clone");
+    if (find_func(ctx, mangled))
+    {
+        return 1;
+    }
+    for (GenericImplTemplate *it = ctx->impl_templates; it; it = it->next)
+    {
+        size_t base_len = strlen(it->struct_name);
+        if (strncmp(type_name, it->struct_name, base_len) != 0)
+        {
+            continue;
+        }
+        const char *rest = type_name + base_len;
+        if (*rest != 0 && strncmp(rest, "__", 2) != 0)
+        {
+            continue;
+        }
+        char *template_method = mangle_method_symbol(it->struct_name, NULL, "clone");
+        for (ASTNode *m = it->impl_node->impl.methods; m; m = m->next)
+        {
+            if (m->kind == NODE_FUNCTION && m->func.name &&
+                strcmp(m->func.name, template_method) == 0)
+            {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count)
 {
     ASTNode *head = NULL, *tail = NULL;
@@ -24,9 +58,45 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 
         if (0 == strcmp(trait, "Clone"))
         {
-            code = xmalloc(1024);
-            sprintf(code, "impl %s { fn clone(self) -> %s { return self; } }", name,
-                    name); /* safe */
+            size_t code_size = 1024;
+            if (strct->kind != NODE_STRUCT)
+            {
+                code = xmalloc(code_size);
+                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { return self; } }", name,
+                         name);
+            }
+            else
+            {
+                // Field by field: a field whose type has `clone` (String, Vec, a
+                // struct that derives or implements it) is cloned, so the copy owns
+                // its own resources; anything else is copied.
+                char body[4096];
+                int written = snprintf(body, sizeof(body), "return %s { ", name);
+                size_t used = written > 0 ? (size_t)written : 0;
+                for (ASTNode *f = strct->strct.fields; f; f = f->next)
+                {
+                    if (f->kind != NODE_FIELD || !f->field.name)
+                    {
+                        continue;
+                    }
+                    Type *ft = f->type_info;
+                    int cloned = ft && ft->kind == TYPE_STRUCT && ft->name &&
+                                 type_has_clone_method(ctx, ft->name);
+                    written = snprintf(body + used, sizeof(body) - used, "%s: self.%s%s, ",
+                                       f->field.name, f->field.name, cloned ? ".clone()" : "");
+                    if (written < 0 || (size_t)written >= sizeof(body) - used - 2)
+                    {
+                        zpanic_at(strct->token, "Too many fields for @derive(Clone)");
+                        return NULL;
+                    }
+                    used += (size_t)written;
+                }
+                snprintf(body + used, sizeof(body) - used, "};");
+                code_size = strlen(body) + strlen(name) * 2 + 64;
+                code = xmalloc(code_size);
+                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { %s } }", name, name,
+                         body);
+            }
         }
         else if (0 == strcmp(trait, "Eq"))
         {
