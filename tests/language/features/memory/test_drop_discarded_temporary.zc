@@ -1,0 +1,48 @@
+// features/memory: a value with Drop that is produced by a call and never
+// bound to a name is dropped right after the statement.
+
+import "std/vec.zc"
+
+let drops = 0;
+
+struct Tracked {
+    id: int
+}
+
+impl Drop for Tracked {
+    fn drop(self) {
+        drops = drops + 1;
+    }
+}
+
+impl Tracked {
+    fn new(id: int) -> Tracked {
+        return Tracked { id: id };
+    }
+}
+
+fn make_tracked(id: int) -> Tracked {
+    return Tracked { id: id };
+}
+
+fn plain_number() -> int {
+    return 7;
+}
+
+test "discarded temporaries are dropped" {
+    drops = 0;
+    Tracked::new(1);
+    assert(drops == 1, "static method result");
+    make_tracked(2);
+    assert(drops == 2, "free function result");
+
+    let items = Vec<Tracked>::new();
+    items.push(Tracked::new(3));
+    items.pop();
+    assert(drops == 3, "popped element");
+
+    plain_number();
+    let kept = Tracked::new(4);
+    assert(drops == 3, "bound values are not dropped early");
+    assert(kept.id == 4, "bound value is intact");
+}
