@@ -106,6 +106,34 @@ else
     check "zc transpile emits C source" 0
 fi
 
+# --- Program output ----------------------------------------------------------
+
+# Runs a program and compares its exact standard output (stdin from $3).
+output_check() {
+    local name="$1"
+    local code="$2"
+    local input="$3"
+    local expected="$4"
+    printf '%s\n' "$code" > "$workdir/output.zc"
+    "$ZC" build -w "$workdir/output.zc" -o "$workdir/output_bin" >/dev/null 2>&1
+    local actual
+    actual=$(printf '%s' "$input" | "$workdir/output_bin" 2>/dev/null)
+    if [ "$actual" = "$expected" ]; then
+        check "$name" 1
+    else
+        check "$name" 0
+    fi
+}
+
+output_check "bare strings print without semicolons" 'fn main() {
+    let x = 3
+    "first"
+    "x is {x}"
+    "last"
+}' "" "first
+x is 3
+last"
+
 out=$("$ZC" build "$workdir/smoke.zc" -o "$workdir/smoke_build" 2>&1)
 if [ -x "$workdir/smoke_build" ]; then
     check "zc build compiles a program" 1
