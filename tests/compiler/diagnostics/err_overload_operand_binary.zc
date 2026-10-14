@@ -1,0 +1,14 @@
+// EXPECT: FAIL
+// compiler/diagnostics: the right operand of an overloaded `+` must match the
+// overload's parameter: `String::add` takes a `String*`, not a C string.
+// (Never called: the error must come from the compiler, not from a crash.)
+
+import "std/string.zc"
+
+fn join_plain(text: String) -> String {
+    return text + "plain C string";
+}
+
+fn main() {
+    println "unreachable";
+}

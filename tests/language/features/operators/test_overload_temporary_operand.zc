@@ -1,0 +1,49 @@
+// features/operators: a temporary passed by reference to an overloaded operator
+// (`a += &make()`, `a += make()`, `a + &make()`) compiles and is dropped after
+// the operation.
+
+import "std/string.zc"
+
+let temp_drops = 0;
+
+struct Amount {
+    value: int
+}
+
+impl Drop for Amount {
+    fn drop(self) {
+        // Only the temporaries below hold multiples of 100.
+        if self.value >= 100 && self.value % 100 == 0 {
+            temp_drops = temp_drops + 1;
+        }
+    }
+}
+
+impl Amount {
+    fn new(value: int) -> Amount {
+        return Amount { value: value };
+    }
+
+    fn add(self, other: Amount*) -> Amount {
+        return Amount { value: self.value + other.value };
+    }
+}
+
+test "temporary operands of overloaded operators" {
+    temp_drops = 0;
+    let total = Amount::new(1);
+    total += &Amount::new(100);
+    assert(total.value == 101, "explicit reference to a temporary");
+    total += Amount::new(200);
+    assert(total.value == 301, "temporary passed by value");
+    let sum = total + &Amount::new(300);
+    assert(sum.value == 601, "binary operator");
+    assert(temp_drops == 3, "each temporary is dropped once");
+}
+
+test "string concatenation with temporaries" {
+    let text = String::from("a");
+    text += &String::from("b");
+    text += String::from("c");
+    assert(strcmp(text.c_str(), "abc") == 0, "appended temporaries");
+}
