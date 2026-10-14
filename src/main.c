@@ -153,14 +153,21 @@ int main(int argc, char **argv)
             arg_start = 1;
         }
     }
+    else if (strcmp(command, "build") == 0)
+    {
+        // Building is the default mode.
+    }
+    else if (strchr(command, '.'))
+    {
+        // "zc file.zc": build it
+        g_config.input_file = command;
+        arg_start = 2;
+    }
     else
     {
-        // Check if file
-        if (strchr(command, '.'))
-        {
-            g_config.input_file = command;
-            arg_start = 2;
-        }
+        fprintf(stderr, "error: unknown command '%s'\n\n", command);
+        print_usage();
+        return 1;
     }
 
     // Parse args
