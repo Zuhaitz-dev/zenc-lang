@@ -220,9 +220,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             char *inner = token_get_string_content(t_str);
             int is_raw = (t_str.kind == TOK_RAW_STRING);
 
-            // Reuse printf sugar to generate the prompt print
+            // Reuse printf sugar to generate the prompt print (no newline: the
+            // input is typed after the prompt).
             char *print_code =
-                process_printf_sugar(ctx, t_str, inner, 1, "stdout", NULL, NULL, 0, is_raw, 0);
+                process_printf_sugar(ctx, t_str, inner, 0, "stdout", NULL, NULL, 0, is_raw, 0);
             zfree(inner);
 
             // Checks for (args...) suffix for SCAN mode
@@ -318,9 +319,10 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 ASTNode *s1 = ast_create(NODE_RAW_STMT);
                 s1->token = t_str;
-                // Append semicolon to ensure it's a valid statement
-                char *s1_code = xmalloc(strlen(print_code) + 2);
-                sprintf(s1_code, "%s;", print_code); /* safe */
+                // Append semicolon to ensure it's a valid statement, and show the
+                // prompt before blocking on input.
+                char *s1_code = xmalloc(strlen(print_code) + 32);
+                sprintf(s1_code, "%s; fflush(stdout);", print_code); /* safe */
                 s1->raw_stmt.content = s1_code;
                 zfree(print_code);
 
@@ -362,7 +364,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 }
 
                 char *final_code = xmalloc(strlen(print_code) + 64);
-                snprintf(final_code, strlen(print_code) + 64, "%s readln(); })", print_code);
+                snprintf(final_code, strlen(print_code) + 64, "%s fflush(stdout); readln(); })",
+                         print_code);
                 zfree(print_code);
 
                 ASTNode *n = ast_create(NODE_RAW_STMT);
