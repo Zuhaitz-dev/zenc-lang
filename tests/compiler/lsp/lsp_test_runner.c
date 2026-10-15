@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include "../../src/utils/cJSON.h"
 #include "../../src/platform/compiler.h"
 
@@ -656,6 +657,306 @@ static void test_workspace_symbol(void)
     printf("PASS: test_workspace_symbol\n");
 }
 
+/* --- C headers: hover and go to definition --- */
+
+#define C_TEST_DIR "/tmp/zc_lsp_c"
+
+static void write_file(const char *path, const char *content)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0 || write(fd, content, strlen(content)) != (ssize_t)strlen(content))
+    {
+        fail("Could not write a test file");
+    }
+    close(fd);
+}
+
+// Writes `path` and opens it in the server.
+static void open_document(const char *path, const char *text)
+{
+    write_file(path, text);
+    char uri[512];
+    snprintf(uri, sizeof(uri), "file://%s", path);
+
+    cJSON *message = cJSON_CreateObject();
+    cJSON_AddStringToObject(message, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(message, "method", "textDocument/didOpen");
+    cJSON *params = cJSON_AddObjectToObject(message, "params");
+    cJSON *document = cJSON_AddObjectToObject(params, "textDocument");
+    cJSON_AddStringToObject(document, "uri", uri);
+    cJSON_AddStringToObject(document, "languageId", "zenc");
+    cJSON_AddNumberToObject(document, "version", 1);
+    cJSON_AddStringToObject(document, "text", text);
+    char *json = cJSON_PrintUnformatted(message);
+    send_request(json);
+    free(json);
+    cJSON_Delete(message);
+}
+
+// Sends a position request and returns the whole response; the caller deletes it.
+static cJSON *position_request(int id, const char *method, const char *path, int line,
+                               int character)
+{
+    char json[1024];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"%s\", \"params\": "
+             "{\"textDocument\": {\"uri\": \"file://%s\"}, \"position\": {\"line\": %d, "
+             "\"character\": %d}}}",
+             id, method, path, line, character);
+    send_request(json);
+    char *response = wait_for_response(id);
+    if (!response)
+    {
+        fail("No response for a position request");
+    }
+    cJSON *parsed = cJSON_Parse(response);
+    free(response);
+    if (!parsed)
+    {
+        fail("Unparsable response for a position request");
+    }
+    return parsed;
+}
+
+// Go to definition at (line, character) must land on a single location in a file ending with
+// `file_suffix`, at `expected_line`; with a NULL `file_suffix`, it must find nothing.
+static void expect_definition(int id, const char *what, const char *path, int line, int character,
+                              const char *file_suffix, int expected_line)
+{
+    cJSON *response = position_request(id, "textDocument/definition", path, line, character);
+    cJSON *result = cJSON_GetObjectItem(response, "result");
+    if (!file_suffix)
+    {
+        if (result && !cJSON_IsNull(result) &&
+            !(cJSON_IsArray(result) && cJSON_GetArraySize(result) == 0))
+        {
+            printf("Unexpected definition for %s: %s\n", what, cJSON_PrintUnformatted(result));
+            fail("A missing C symbol has a definition");
+        }
+        cJSON_Delete(response);
+        return;
+    }
+
+    if (cJSON_IsArray(result) && cJSON_GetArraySize(result) != 1)
+    {
+        printf("%s: %d locations\n", what, cJSON_GetArraySize(result));
+        fail("Expected exactly one location");
+    }
+    cJSON *location = cJSON_IsArray(result) ? cJSON_GetArrayItem(result, 0) : result;
+    cJSON *uri = location ? cJSON_GetObjectItem(location, "uri") : NULL;
+    cJSON *start =
+        location ? cJSON_GetObjectItem(cJSON_GetObjectItem(location, "range"), "start") : NULL;
+    cJSON *start_line = start ? cJSON_GetObjectItem(start, "line") : NULL;
+    size_t uri_length = cJSON_IsString(uri) ? strlen(uri->valuestring) : 0;
+    size_t suffix_length = strlen(file_suffix);
+    if (!cJSON_IsString(uri) || uri_length < suffix_length ||
+        strcmp(uri->valuestring + uri_length - suffix_length, file_suffix) != 0 ||
+        !cJSON_IsNumber(start_line) || start_line->valueint != expected_line)
+    {
+        printf("%s: expected %s:%d, got %s\n", what, file_suffix, expected_line,
+               result ? cJSON_PrintUnformatted(result) : "nothing");
+        fail("Wrong definition for a C symbol");
+    }
+    cJSON_Delete(response);
+}
+
+// The hover at (line, character) must contain `expected`.
+static void expect_hover(int id, const char *what, const char *path, int line, int character,
+                         const char *expected)
+{
+    cJSON *response = position_request(id, "textDocument/hover", path, line, character);
+    cJSON *contents = cJSON_GetObjectItem(cJSON_GetObjectItem(response, "result"), "contents");
+    cJSON *value = contents ? cJSON_GetObjectItem(contents, "value") : NULL;
+    if (!cJSON_IsString(value) || !strstr(value->valuestring, expected))
+    {
+        printf("%s: hover without '%s': %s\n", what, expected,
+               cJSON_IsString(value) ? value->valuestring : "nothing");
+        fail("Wrong hover for a C symbol");
+    }
+    cJSON_Delete(response);
+}
+
+static void write_c_header_fixtures(void)
+{
+    mkdir(C_TEST_DIR, 0755);
+    mkdir(C_TEST_DIR "/include", 0755);
+    mkdir(C_TEST_DIR "/include_mod", 0755);
+    write_file(C_TEST_DIR "/include/fake.h", "#ifndef FAKE_H\n"
+                                             "#define FAKE_H\n"
+                                             "#define FAKE_LIMIT 8 // Upper bound\n"
+                                             "/* Adds two numbers. */\n"
+                                             "int fake_add(int a,\n"
+                                             "             int b);\n"
+                                             "typedef struct FakePoint\n"
+                                             "{\n"
+                                             "    int x;\n"
+                                             "} FakePoint;\n"
+                                             "typedef enum { FAKE_ON = 1, FAKE_OFF } FakeMode;\n"
+                                             "_FAKE_MACRO()\n"
+                                             "int fake_after_macro(void);\n"
+                                             "#include \"fake_nested.h\"\n"
+                                             "#endif\n");
+    write_file(C_TEST_DIR "/include/fake_nested.h", "int fake_nested(void); // nested\n");
+    write_file(C_TEST_DIR "/include_mod/modonly.h", "int mod_function(void); // from the module\n");
+}
+
+static void test_c_header_symbols(void)
+{
+    printf("Running test_c_header_symbols...\n");
+    write_c_header_fixtures();
+    const char *main_path = C_TEST_DIR "/main.zc";
+    open_document(main_path, "//> include: " C_TEST_DIR "/include\n"
+                             "import \"fake.h\" as fk;\n"
+                             "\n"
+                             "fn main() {\n"
+                             "    fk::fake_add(1, 2);\n"
+                             "    let p: fk::FakePoint;\n"
+                             "    let m = fk::FAKE_ON;\n"
+                             "    let n = fk::fake_nested();\n"
+                             "    let a = fk::fake_after_macro();\n"
+                             "    let l = fk::FAKE_LIMIT;\n"
+                             "    let z = fk::fake_missing();\n"
+                             "}\n");
+
+    expect_definition(800, "multi-line prototype", main_path, 4, 10, "/include/fake.h", 4);
+    expect_definition(801, "typedef struct", main_path, 5, 17, "/include/fake.h", 6);
+    expect_definition(802, "enum value", main_path, 6, 18, "/include/fake.h", 10);
+    expect_definition(803, "nested include", main_path, 7, 18, "/include/fake_nested.h", 0);
+    expect_definition(804, "after a macro call", main_path, 8, 18, "/include/fake.h", 12);
+    expect_definition(805, "#define", main_path, 9, 18, "/include/fake.h", 2);
+    expect_definition(806, "missing symbol", main_path, 10, 18, NULL, 0);
+    expect_hover(807, "prototype", main_path, 4, 10, "int fake_add(int a,");
+    expect_hover(808, "leading comment", main_path, 4, 10, "Adds two numbers.");
+    expect_hover(809, "trailing comment", main_path, 9, 18, "Upper bound");
+    printf("PASS: test_c_header_symbols\n");
+
+    expect_definition(810, "alias", main_path, 4, 5, "/main.zc", 1);
+    expect_hover(811, "alias", main_path, 4, 5, "alias of the C header `fake.h`");
+    expect_definition(812, "header name", main_path, 1, 10, "/include/fake.h", 0);
+
+    // The hover highlights the whole header name, which a client splits at the dot.
+    cJSON *response = position_request(813, "textDocument/hover", main_path, 1, 10);
+    cJSON *range = cJSON_GetObjectItem(cJSON_GetObjectItem(response, "result"), "range");
+    cJSON *start = cJSON_GetObjectItem(cJSON_GetObjectItem(range, "start"), "character");
+    cJSON *end = cJSON_GetObjectItem(cJSON_GetObjectItem(range, "end"), "character");
+    if (!cJSON_IsNumber(start) || !cJSON_IsNumber(end) || start->valueint != 8 ||
+        end->valueint != 14)
+    {
+        fail("The hover on a header name must cover the whole name");
+    }
+    cJSON_Delete(response);
+    printf("PASS: test_c_header_symbols (alias and header name)\n");
+}
+
+static void test_c_header_reexports(void)
+{
+    printf("Running test_c_header_reexports...\n");
+    write_c_header_fixtures();
+
+    // A module that re-exports a header, found only through the module's own directive.
+    write_file(C_TEST_DIR "/gfx_a.zc", "//> include: " C_TEST_DIR "/include_mod\n"
+                                       "export import \"modonly.h\" as md;\n");
+    const char *use_path = C_TEST_DIR "/use_a.zc";
+    open_document(use_path, "import \"gfx_a.zc\"\n"
+                            "\n"
+                            "fn main() {\n"
+                            "    md::mod_function();\n"
+                            "}\n");
+
+    // The directive of gfx_a.zc does not apply when building use_a.zc.
+    int warned = 0;
+    for (int i = 0; i < 20 && !warned; i++)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        if (strstr(message, "publishDiagnostics") && strstr(message, "use_a.zc") &&
+            strstr(message, "modonly.h"))
+        {
+            warned = 1;
+        }
+        free(message);
+        if (!warned && i > 0)
+        {
+            break;
+        }
+    }
+    if (!warned)
+    {
+        fail("No warning for a header only found through an imported module's directive");
+    }
+
+    expect_definition(820, "re-exported name", use_path, 3, 10, "/include_mod/modonly.h", 0);
+    expect_hover(821, "re-exported name", use_path, 3, 10, "Re-exported by `gfx_a.zc`");
+    expect_definition(822, "re-exported alias", use_path, 3, 5, "/gfx_a.zc", 1);
+
+    // An `extern fn` that declares a function of an included header.
+    const char *extern_path = C_TEST_DIR "/gfx_b.zc";
+    open_document(extern_path, "//> include: " C_TEST_DIR "/include\n"
+                               "include <fake.h>\n"
+                               "\n"
+                               "extern fn fake_add(a: int, b: int) -> int;\n");
+    expect_definition(823, "extern fn", extern_path, 3, 12, "/include/fake.h", 4);
+    expect_hover(824, "extern fn", extern_path, 3, 12, "int fake_add(int a,");
+    printf("PASS: test_c_header_reexports\n");
+}
+
+// Completion at (line, character) must offer `expected` with `kind`, and not the generic
+// keyword list.
+static void expect_completion(int id, const char *path, int line, int character,
+                              const char *expected, int kind)
+{
+    cJSON *response = position_request(id, "textDocument/completion", path, line, character);
+    cJSON *items = cJSON_GetObjectItem(response, "result");
+    int found = 0;
+    int keywords = 0;
+    for (int i = 0; i < cJSON_GetArraySize(items); i++)
+    {
+        cJSON *label = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "label");
+        cJSON *item_kind = cJSON_GetObjectItem(cJSON_GetArrayItem(items, i), "kind");
+        if (cJSON_IsString(label) && strcmp(label->valuestring, expected) == 0 &&
+            cJSON_IsNumber(item_kind) && item_kind->valueint == kind)
+        {
+            found = 1;
+        }
+        if (cJSON_IsString(label) && strcmp(label->valuestring, "if") == 0)
+        {
+            keywords = 1;
+        }
+    }
+    if (!found || keywords)
+    {
+        printf("Completion at %d:%d without %s (kind %d) or with keywords\n", line, character,
+               expected, kind);
+        fail("Wrong completion after a C header alias");
+    }
+    cJSON_Delete(response);
+}
+
+static void test_c_header_completion(void)
+{
+    printf("Running test_c_header_completion...\n");
+    write_c_header_fixtures();
+    const char *path = C_TEST_DIR "/complete.zc";
+    open_document(path, "//> include: " C_TEST_DIR "/include\n"
+                        "import \"fake.h\" as fk;\n"
+                        "\n"
+                        "fn main() {\n"
+                        "    fk::fake_\n"
+                        "    fk::FAKE_O\n"
+                        "    fk::\n"
+                        "}\n");
+    expect_completion(830, path, 4, 13, "fake_add", 3);
+    expect_completion(831, path, 4, 13, "fake_nested", 3);
+    expect_completion(832, path, 5, 14, "FAKE_ON", 20);
+    expect_completion(833, path, 6, 8, "FakePoint", 22);
+    // A header re-exported by an imported module (use_a.zc, from test_c_header_reexports).
+    expect_completion(834, C_TEST_DIR "/use_a.zc", 3, 11, "mod_function", 3);
+    printf("PASS: test_c_header_completion\n");
+}
+
 static void test_shutdown()
 {
     printf("Running test_shutdown...\n");
@@ -1103,6 +1404,9 @@ int main()
     test_code_action();
     test_unknown_method();
     test_workspace_symbol();
+    test_c_header_symbols();
+    test_c_header_reexports();
+    test_c_header_completion();
     test_shutdown();
     send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
     waitpid(child_pid, NULL, 0);

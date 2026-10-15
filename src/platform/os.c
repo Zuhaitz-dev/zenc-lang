@@ -628,3 +628,168 @@ int z_run_command_capture(char *const argv[], char *buffer, size_t size)
 #endif
     return -1;
 }
+
+#if !ZC_OS_WINDOWS
+#include <fcntl.h>
+#endif
+
+int z_run_command_capture_ex(char *const argv[], char *buffer, size_t size, int capture_stderr)
+{
+    if (size == 0)
+    {
+        return -1;
+    }
+    buffer[0] = '\0';
+
+#if ZC_OS_WINDOWS
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
+
+    HANDLE read_pipe, write_pipe;
+    if (!CreatePipe(&read_pipe, &write_pipe, &sa, 0))
+    {
+        return -1;
+    }
+    SetHandleInformation(read_pipe, HANDLE_FLAG_INHERIT, 0);
+    HANDLE null_input = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+                                    OPEN_EXISTING, 0, NULL);
+
+    size_t cmd_len = 0;
+    for (int i = 0; argv[i]; i++)
+    {
+        char *q = quote_arg(argv[i]);
+        cmd_len += strlen(q) + 1;
+        zfree(q);
+    }
+    char *cmd_line = malloc(cmd_len + 1);
+    cmd_line[0] = '\0';
+    for (int i = 0; argv[i]; i++)
+    {
+        char *q = quote_arg(argv[i]);
+        strcat(cmd_line, q);
+        if (argv[i + 1])
+        {
+            strcat(cmd_line, " ");
+        }
+        zfree(q);
+    }
+
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    si.hStdInput = null_input;
+    si.hStdOutput = write_pipe;
+    si.hStdError = capture_stderr ? write_pipe : GetStdHandle(STD_ERROR_HANDLE);
+    si.dwFlags |= STARTF_USESTDHANDLES;
+    ZeroMemory(&pi, sizeof(pi));
+
+    if (!CreateProcessA(NULL, cmd_line, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi))
+    {
+        CloseHandle(read_pipe);
+        CloseHandle(write_pipe);
+        if (null_input != INVALID_HANDLE_VALUE)
+        {
+            CloseHandle(null_input);
+        }
+        zfree(cmd_line);
+        return -1;
+    }
+    CloseHandle(write_pipe);
+    if (null_input != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(null_input);
+    }
+
+    // Read until EOF; output beyond the buffer is drained and dropped.
+    size_t used = 0;
+    char discard[256];
+    for (;;)
+    {
+        char *dest = used < size - 1 ? buffer + used : discard;
+        DWORD capacity = used < size - 1 ? (DWORD)(size - 1 - used) : (DWORD)sizeof(discard);
+        DWORD bytes_read = 0;
+        if (!ReadFile(read_pipe, dest, capacity, &bytes_read, NULL) || bytes_read == 0)
+        {
+            break;
+        }
+        if (dest != discard)
+        {
+            used += bytes_read;
+        }
+    }
+    buffer[used] = '\0';
+    CloseHandle(read_pipe);
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exit_code;
+    GetExitCodeProcess(pi.hProcess, &exit_code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    zfree(cmd_line);
+    return (int)exit_code;
+#else
+    int pipefd[2];
+    if (pipe(pipefd) == -1)
+    {
+        return -1;
+    }
+
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+        close(pipefd[0]);
+        int null_fd = open("/dev/null", O_RDONLY);
+        if (null_fd >= 0)
+        {
+            dup2(null_fd, STDIN_FILENO);
+            close(null_fd);
+        }
+        dup2(pipefd[1], STDOUT_FILENO);
+        if (capture_stderr)
+        {
+            dup2(pipefd[1], STDERR_FILENO);
+        }
+        close(pipefd[1]);
+        execvp(argv[0], argv);
+        // _exit: exit() would flush stdio buffers inherited from the parent.
+        _exit(127);
+    }
+    if (pid < 0)
+    {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return -1;
+    }
+
+    close(pipefd[1]);
+    // Read until EOF; output beyond the buffer is drained and dropped.
+    size_t used = 0;
+    char discard[256];
+    for (;;)
+    {
+        char *dest = used < size - 1 ? buffer + used : discard;
+        size_t capacity = used < size - 1 ? size - 1 - used : sizeof(discard);
+        ssize_t n = read(pipefd[0], dest, capacity);
+        if (n <= 0)
+        {
+            break;
+        }
+        if (dest != discard)
+        {
+            used += (size_t)n;
+        }
+    }
+    buffer[used] = '\0';
+    close(pipefd[0]);
+
+    int status;
+    if (waitpid(pid, &status, 0) < 0)
+    {
+        return -1;
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+#endif
+}

@@ -2,6 +2,8 @@
 #include "../utils/cJSON.h"
 #include "../constants.h"
 #include "lsp_project.h" // Includes lsp_index.h, parser.h
+#include "lsp_c_headers.h"
+#include "json_rpc.h"
 #include "../plugins/plugin_manager.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -169,6 +171,9 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
         d = d->next;
     }
 
+    const char *document_path = strncmp(uri, "file://", 7) == 0 ? uri + 7 : uri;
+    lsp_c_headers_add_diagnostics(document_path, json_src, diag_array);
+
     cJSON_AddItemToObject(params, "diagnostics", diag_array);
     cJSON_AddItemToObject(root, "params", params);
 
@@ -199,6 +204,26 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
     int target_start_line = 0, target_start_col = 0;
     int target_end_line = 0, target_end_col = 0;
     int found = 0;
+
+    // On a C header alias or name, and on the name of an `extern fn`, the C side is what
+    // matters, even where Zen C has a definition of its own.
+    CHeaderOrigin c_origin;
+    CHeaderOriginKind c_origin_kind = C_HEADER_NONE;
+    const CHeaderSymbol *c_symbols[8];
+    int c_symbol_count = 0;
+    if (pf->source)
+    {
+        c_origin_kind = lsp_c_headers_origin_at(pf->path, pf->source, line, col, &c_origin);
+        if (c_origin_kind == C_HEADER_NONE && lsp_c_headers_is_extern_name(pf->source, line, col))
+        {
+            c_symbol_count =
+                lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8, NULL);
+        }
+        if (c_origin_kind != C_HEADER_NONE || c_symbol_count > 0)
+        {
+            r = NULL;
+        }
+    }
 
     if (r)
     {
@@ -258,11 +283,28 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
         }
     }
 
+    if (!found && c_origin_kind == C_HEADER_NONE && c_symbol_count == 0 && pf->source)
+    {
+        c_symbol_count = lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8, NULL);
+    }
+    cJSON *c_location =
+        c_origin_kind != C_HEADER_NONE
+            ? lsp_c_headers_origin_location(&c_origin, c_origin_kind, g_lsp_definition_link_support)
+            : NULL;
+
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
 
-    if (found)
+    if (c_location)
+    {
+        cJSON_AddItemToObject(root, "result", c_location);
+    }
+    else if (c_symbol_count > 0)
+    {
+        cJSON_AddItemToObject(root, "result", lsp_c_headers_locations(c_symbols, c_symbol_count));
+    }
+    else if (found)
     {
         cJSON *result = cJSON_CreateObject();
         cJSON_AddStringToObject(result, "uri", target_uri);
@@ -455,6 +497,34 @@ void lsp_hover(const char *uri, int line, int col, int id)
     LSPRange *r = lsp_find_at(idx, line, col);
     char *text = NULL;
     int is_primitive = 0;
+    char *c_hover = NULL;
+    cJSON *c_hover_range = NULL;
+
+    // On a C header alias or name, and on the name of an `extern fn`, show the C side.
+    if (pf->source)
+    {
+        CHeaderOrigin c_origin;
+        CHeaderOriginKind c_origin_kind =
+            lsp_c_headers_origin_at(pf->path, pf->source, line, col, &c_origin);
+        if (c_origin_kind != C_HEADER_NONE)
+        {
+            c_hover = lsp_c_headers_origin_hover(&c_origin, c_origin_kind);
+            c_hover_range = lsp_c_headers_origin_range(&c_origin, c_origin_kind);
+        }
+        else if (lsp_c_headers_is_extern_name(pf->source, line, col))
+        {
+            const CHeaderSymbol *c_symbol = NULL;
+            if (lsp_c_headers_find_at(pf->path, pf->source, line, col, &c_symbol, 1, NULL) > 0)
+            {
+                c_hover = lsp_c_headers_hover(c_symbol, NULL);
+            }
+        }
+        if (c_hover)
+        {
+            text = c_hover;
+            r = NULL;
+        }
+    }
 
     if (r)
     {
@@ -523,6 +593,17 @@ void lsp_hover(const char *uri, int line, int col, int id)
         }
     }
 
+    if (!text && pf && pf->source)
+    {
+        const CHeaderSymbol *c_symbol = NULL;
+        CHeaderOrigin via;
+        if (lsp_c_headers_find_at(pf->path, pf->source, line, col, &c_symbol, 1, &via) > 0)
+        {
+            c_hover = lsp_c_headers_hover(c_symbol, &via);
+            text = c_hover;
+        }
+    }
+
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
@@ -533,7 +614,7 @@ void lsp_hover(const char *uri, int line, int col, int id)
         cJSON *contents = cJSON_CreateObject();
         cJSON_AddStringToObject(contents, "kind", "markdown");
 
-        if (is_primitive)
+        if (is_primitive || c_hover)
         {
             cJSON_AddStringToObject(contents, "value", text);
         }
@@ -548,6 +629,11 @@ void lsp_hover(const char *uri, int line, int col, int id)
         }
 
         cJSON_AddItemToObject(result, "contents", contents);
+        if (c_hover_range)
+        {
+            cJSON_AddItemToObject(result, "range", c_hover_range);
+            c_hover_range = NULL;
+        }
         cJSON_AddItemToObject(root, "result", result);
     }
     else
@@ -556,6 +642,8 @@ void lsp_hover(const char *uri, int line, int col, int id)
     }
 
     send_json_response(root);
+    libc_free(c_hover);
+    cJSON_Delete(c_hover_range);
 }
 
 static void enqueue_node_children(ASTNode *curr, ASTNode **queue, int *q_tail, int q_limit)
@@ -799,6 +887,16 @@ void lsp_completion(const char *uri, int line, int col, int id)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
+
+    // After the alias of a C header (`rl::`), the declarations of that header.
+    cJSON *c_items = pf->source ? lsp_c_headers_completion(pf->path, pf->source, line, col) : NULL;
+    if (c_items)
+    {
+        cJSON_AddItemToObject(root, "result", c_items);
+        send_json_response(root);
+        return;
+    }
+
     cJSON *items = cJSON_CreateArray();
 
     ASTNode *target_func = NULL;
