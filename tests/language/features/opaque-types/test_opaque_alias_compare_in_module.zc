@@ -1,0 +1,28 @@
+// language/features/opaque-types: test_opaque_alias_compare_in_module
+// In the module that defines it, an opaque alias of a number compares with
+// numbers, as it already converts to and from them.
+opaque alias Level = u8;
+
+impl Level {
+    fn of(raw: u8) -> Level {
+        return raw;
+    }
+
+    fn is_ground(self) -> bool {
+        return *self == 0;
+    }
+
+    fn above(self, floor: u8) -> bool {
+        return *self > floor;
+    }
+}
+
+test "an opaque alias compares with numbers in its module" {
+    let ground = Level::of(0);
+    let third = Level::of(3);
+    assert(ground.is_ground(), "== 0 inside the impl");
+    assert(!third.is_ground(), "!= 0 inside the impl");
+    assert(third.above(2), "> a parameter of the underlying type");
+    assert(third < 4, "< a literal outside the impl");
+    assert(third != ground, "two values of the alias");
+}

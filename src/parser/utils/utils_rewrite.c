@@ -683,9 +683,8 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                     }
                     else
                     {
-                        // Structs: self is a pointer in signature and body
-                        Type *st = type_new(TYPE_STRUCT);
-                        st->name = xstrdup(ctx->current_impl_struct);
+                        // Structs and opaque aliases: self is a pointer in signature and body
+                        Type *st = type_from_name(ctx, ctx->current_impl_struct);
                         st->is_const = is_const_param;
                         Type *ptr = type_new_ptr(st);
 
