@@ -27,6 +27,8 @@ char *z_basename(const char *path);
 char *z_strip_ext(const char *filename);
 void append_flag(char *dest, size_t max_size, const char *prefix, const char *val);
 void scan_build_directives(struct ParserContext *ctx, const char *src);
+int resolve_build_directive(const char *raw, char *out, size_t out_size);
+int is_safe_pkg_config_spec(const char *libs);
 int levenshtein(const char *s1, const char *s2);
 void load_all_configs(struct CompilerConfig *cfg);
 

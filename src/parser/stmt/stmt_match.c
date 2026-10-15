@@ -416,7 +416,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                             }
                             if (real)
                             {
-                                payload_type = type_from_string_helper(real);
+                                payload_type = type_from_string_helper(ctx, real);
                                 if (!payload_type)
                                 {
                                     payload_type = type_new(TYPE_STRUCT);

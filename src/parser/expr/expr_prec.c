@@ -14,13 +14,23 @@
 static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence min_prec);
 
 // Method calls parse their arguments inline instead of through parse_call_args,
-// so they need the same signature-driven fix-ups free-function calls get:
-// default values for the trailing parameters that were not given, and the
-// implicit cast of `&value` to a trait object where the parameter is a trait.
+// so they need the same signature-driven fix-ups free-function calls get: the
+// check of opaque alias arguments, default values for the trailing parameters
+// that were not given, and the implicit cast of `&value` to a trait object
+// where the parameter is a trait.
 // `head` already includes the receiver when the method takes `self`, so it is
 // aligned with `sig->arg_types`.
 static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode *head, int *count)
 {
+    if (sig->arg_types)
+    {
+        ASTNode *arg = head;
+        Type **expected = sig->arg_types;
+        for (int i = 0; arg && i < sig->total_args; i++, arg = arg->next, expected++)
+        {
+            check_opaque_alias_argument(ctx, *expected, arg);
+        }
+    }
     if (sig->defaults && sig->arg_types)
     {
         ASTNode *tail = head;
@@ -87,6 +97,16 @@ static ASTNode *apply_method_signature(ParserContext *ctx, FuncSig *sig, ASTNode
     return head;
 }
 
+// The type under an opaque alias (through aliases of aliases); `t` itself otherwise.
+static Type *opaque_alias_base(Type *t)
+{
+    while (t && t->kind == TYPE_ALIAS && t->alias.is_opaque_alias && t->inner)
+    {
+        t = t->inner;
+    }
+    return t;
+}
+
 // Whether a value of type `t` (or what it points to) can be a struct, as far as the
 // parser knows. Unknown, generic and alias types are given the benefit of the doubt.
 static int may_be_struct(Type *t)
@@ -106,6 +126,46 @@ static int may_be_struct(Type *t)
     default:
         return !is_integer_type(t) && !is_float_type(t);
     }
+}
+
+// The method that overloads an operator for `struct_name`: `Struct__method`, or the
+// one of a trait impl (`Struct__Trait__method`). Its name goes to *mangled_out.
+static FuncSig *find_operator_method(ParserContext *ctx, const char *struct_name,
+                                     const char *method, char **mangled_out)
+{
+    char buf[MAX_ERROR_MSG_LEN];
+    snprintf(buf, sizeof(buf), "%s__%s", struct_name, method);
+    char *mangled = merge_underscores(buf);
+    FuncSig *sig = find_func(ctx, mangled);
+
+    StructRef *ref = ctx->parsed_impls_list;
+    while (!sig && ref)
+    {
+        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT)
+        {
+            const char *t_struct = ref->node->impl_trait.target_type;
+            if (t_struct && strcmp(t_struct, struct_name) == 0)
+            {
+                char buf_t[MAX_ERROR_MSG_LEN];
+                snprintf(buf_t, sizeof(buf_t), "%s__%s__%s", struct_name,
+                         ref->node->impl_trait.trait_name, method);
+                char *trait_mangled = merge_underscores(buf_t);
+                sig = find_func(ctx, trait_mangled);
+                if (sig)
+                {
+                    zfree(mangled);
+                    mangled = trait_mangled;
+                }
+                else
+                {
+                    zfree(trait_mangled);
+                }
+            }
+        }
+        ref = ref->next;
+    }
+    *mangled_out = mangled;
+    return sig;
 }
 
 // Builds the second argument of an operator overload call from its right operand.
@@ -1238,7 +1298,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                                 // Check if the inner type matches the struct
                                 char *inner_name = NULL;
                                 if (first_param->inner->kind == TYPE_STRUCT ||
-                                    first_param->inner->kind == TYPE_ENUM)
+                                    first_param->inner->kind == TYPE_ENUM ||
+                                    (first_param->inner->kind == TYPE_ALIAS &&
+                                     first_param->inner->alias.is_opaque_alias))
                                 {
                                     inner_name = first_param->inner->name;
                                 }
@@ -2643,40 +2705,16 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
             if (struct_name)
             {
-                char buf[MAX_ERROR_MSG_LEN];
-                snprintf(buf, sizeof(buf), "%s__%s", struct_name, method);
-                char *mangled = merge_underscores(buf);
+                char *mangled = NULL;
+                FuncSig *sig = find_operator_method(ctx, struct_name, method, &mangled);
 
-                FuncSig *sig = find_func(ctx, mangled);
-
-                if (!sig)
+                // Without a `neq` method, `a != b` is `!a.eq(b)`.
+                int negate = 0;
+                if (!sig && strcmp(bin->binary.op, "!=") == 0)
                 {
-                    // Try resolving as a trait method: Struct__Trait__Method
-                    StructRef *ref = ctx->parsed_impls_list;
-                    while (ref)
-                    {
-                        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT)
-                        {
-                            const char *t_struct = ref->node->impl_trait.target_type;
-                            if (t_struct && strcmp(t_struct, struct_name) == 0)
-                            {
-                                char buf_t[MAX_ERROR_MSG_LEN];
-                                snprintf(buf_t, sizeof(buf_t), "%s__%s__%s", struct_name,
-                                         ref->node->impl_trait.trait_name, method);
-                                char *trait_mangled = merge_underscores(buf_t);
-
-                                if (find_func(ctx, trait_mangled))
-                                {
-                                    zfree(mangled);
-                                    mangled = trait_mangled;
-                                    sig = find_func(ctx, mangled);
-                                    break;
-                                }
-                                zfree(trait_mangled);
-                            }
-                        }
-                        ref = ref->next;
-                    }
+                    zfree(mangled);
+                    sig = find_operator_method(ctx, struct_name, "eq", &mangled);
+                    negate = sig != NULL;
                 }
 
                 if (sig)
@@ -2734,6 +2772,15 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     call->resolved_type = type_to_string(sig->ret_type);
 
                     lhs = call;
+                    if (negate)
+                    {
+                        ASTNode *not_node = ast_create(NODE_EXPR_UNARY);
+                        not_node->token = t;
+                        not_node->unary.op = xstrdup("!");
+                        not_node->unary.operand = call;
+                        not_node->type_info = type_new(TYPE_BOOL);
+                        lhs = not_node;
+                    }
                     if (allocated_name)
                     {
                         zfree(allocated_name);
@@ -2847,6 +2894,20 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
                 int lhs_is_num = is_integer_type(lhs->type_info) || is_float_type(lhs->type_info);
                 int rhs_is_num = is_integer_type(rhs->type_info) || is_float_type(rhs->type_info);
+
+                // In the module that defines it, an opaque alias of a number compares
+                // with numbers.
+                if (!lhs_is_num || !rhs_is_num)
+                {
+                    Type *lhs_base = opaque_alias_base(lhs->type_info);
+                    Type *rhs_base = opaque_alias_base(rhs->type_info);
+                    if ((lhs_base != lhs->type_info || rhs_base != rhs->type_info) &&
+                        check_opaque_alias_compat(ctx, lhs->type_info, rhs->type_info))
+                    {
+                        lhs_is_num = is_integer_type(lhs_base) || is_float_type(lhs_base);
+                        rhs_is_num = is_integer_type(rhs_base) || is_float_type(rhs_base);
+                    }
+                }
 
                 if (!skip_check && !type_eq(lhs->type_info, rhs->type_info) &&
                     !(lhs_is_num && rhs_is_num))

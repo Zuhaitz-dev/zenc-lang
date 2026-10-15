@@ -21,5 +21,9 @@ void handle_request(const char *json_str);
 /// When 1 (default), the caller (lsp_main.c) may restore the arena after the request.
 extern int g_lsp_request_is_readonly;
 
+/// The client accepts `LocationLink` results for textDocument/definition
+/// (`textDocument.definition.linkSupport`), read at initialize.
+extern int g_lsp_definition_link_support;
+
 #endif
 int lsp_main(int argc, char **argv);

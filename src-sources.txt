@@ -76,6 +76,7 @@ src/platform/console.c
 src/platform/dylib.c
 src/platform/misra.c
 src/utils/config.c
+src/utils/string_list.c
 src/diagnostics/diagnostics.c
 src/lexer/token.c
 src/analysis/typecheck.c
@@ -93,6 +94,7 @@ src/lsp/lsp_semantic.c
 src/lsp/lsp_index.c
 src/lsp/lsp_formatter.c
 src/lsp/lsp_project.c
+src/lsp/lsp_c_headers.c
 src/utils/cJSON.c
 src/tools/tool_common.c
 src/zen/zen_doc.c

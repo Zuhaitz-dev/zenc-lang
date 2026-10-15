@@ -1,0 +1,10 @@
+// EXPECT: FAIL
+// compiler/diagnostics: outside the module that defines it, an opaque alias is
+// a distinct type for arguments too: another alias over the same underlying
+// type (here ItemId for UserId) is rejected, as it is in a `let`.
+import "../../language/features/opaque-types/_opaque_id_lib.zc"
+
+fn main() {
+    let item = ItemId::of(7);
+    println "{user_number(item)}";
+}

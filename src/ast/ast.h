@@ -276,6 +276,11 @@ struct ASTNode
             int elide_from_idx;      // Index of parameter for lifetime elision (-1 if none)
 
             Attribute *attributes; // Custom attributes
+
+            // Declaration context (to parse a deferred body)
+            char *module_prefix;  // C prefix of the declaring module (NULL if none)
+            char *impl_struct;    // Type of the enclosing impl block (NULL for free function)
+            const char *filename; // Source file that declares the function
         } func;
 
         struct
@@ -566,6 +571,10 @@ struct ASTNode
         {
             char *name;
             ASTNode *body;
+
+            // Declaration context
+            char *module_prefix;  // C prefix of the declaring module
+            const char *filename; // Source file that declares the test
         } test_stmt;
 
         struct

@@ -40,11 +40,25 @@ ASTNode *parse_test(ParserContext *ctx, Lexer *l)
 
     char *name = token_get_string_content(t);
 
-    ASTNode *body = parse_block(ctx, l);
-
     ASTNode *n = ast_create(NODE_TEST);
     n->test_stmt.name = name;
-    n->test_stmt.body = body;
+    n->test_stmt.module_prefix = ctx->imports.current_module_prefix;
+    n->test_stmt.filename = ctx->current_filename;
+
+    // The body is parsed once all declarations are known (parse_pending_bodies).
+    PendingBody *pending = xcalloc(1, sizeof(PendingBody));
+    pending->node = n;
+    pending->name = name;
+    pending->body_start = *l;
+    pending->scope = ctx->current_scope;
+    pending->in_method_with_self = ctx->in_method_with_self;
+    pending->self_is_pointer = ctx->self_is_pointer;
+    if (!skip_braced_block(l))
+    {
+        return NULL;
+    }
+    push_pending_body(ctx, pending);
+
     return n;
 }
 

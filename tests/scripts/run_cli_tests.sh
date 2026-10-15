@@ -271,6 +271,29 @@ impl Counter { fn get(self) -> int { return 1; } }
 impl Counter { fn get(self) -> int { return 2; } }
 fn main() { let c = Counter { value: 0 }; println "{c.get()}"; }' "Redefinition of method 'Counter::get'"
 
+# --- Imported files: diagnostics and #line name the imported file -----------
+
+mkdir -p "$workdir/imported"
+printf 'fn make() -> int {\n    let x: int = "text";\n    return 1;\n}\n' > "$workdir/imported/broken.zc"
+printf 'import "imported/broken.zc"\nfn main() {\n    println "{make()}";\n}\n' > "$workdir/imported_main.zc"
+out=$("$ZC" build "$workdir/imported_main.zc" -o "$workdir/imported_out" 2>&1)
+if echo "$out" | grep -q "imported/broken.zc:2:" && ! echo "$out" | grep -q "imported_main.zc:"; then
+    check "error in an imported file is reported at its own path" 1
+else
+    check "error in an imported file is reported at its own path" 0
+fi
+
+mkdir -p "$workdir/lib"
+printf 'struct Counter { hits: int; }\nimpl Counter {\n    fn bump(self) { self.hits = self.hits + 1; }\n}\n' > "$workdir/lib/counter.zc"
+printf 'import "lib/counter.zc"\nfn main() {\n    let c = Counter { hits: 0 };\n    c.bump();\n    println "{c.hits}";\n}\n' > "$workdir/lib_main.zc"
+"$ZC" build --emit-c "$workdir/lib_main.zc" -o "$workdir/lib_out" >/dev/null 2>&1
+line=$(awk '/#line/{l=$0} /^ZC_FUNC void Counter__bump\(Counter\* self\)$/{print l; exit}' "$workdir/lib_out.c" 2>/dev/null)
+if echo "$line" | grep -q 'lib/counter.zc"'; then
+    check "emit-c #line of an imported method names the imported file" 1
+else
+    check "emit-c #line of an imported method names the imported file" 0
+fi
+
 echo "----------------------------------------"
 echo "Results (CLI):"
 echo "-> Passed:  $PASSED"

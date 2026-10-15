@@ -47,7 +47,7 @@ static void check_global_initializers(ASTNode *decls)
     }
 }
 
-ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
+static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
 {
     ASTNode *h = 0, *tl = 0;
     while (1)
@@ -601,6 +601,21 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
         }
     }
     return h;
+}
+
+ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
+{
+    ctx->parse_depth++;
+    ASTNode *nodes = parse_top_level_nodes(ctx, l);
+    ctx->parse_depth--;
+
+    // Back at the outermost level: every declaration has been read, imports
+    // included, so the deferred bodies can see all of them.
+    if (ctx->parse_depth == 0)
+    {
+        parse_pending_bodies(ctx);
+    }
+    return nodes;
 }
 
 ASTNode *parse_program(ParserContext *ctx, Lexer *l)

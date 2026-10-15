@@ -1,0 +1,34 @@
+// language/features/compiler: calls that rely on default arguments declared later in the file
+fn caller() -> int {
+    return later();
+}
+
+// Declared after `caller`, which omits the argument.
+fn later(x: int = 5) -> int {
+    return x;
+}
+
+test "default argument of a function declared later" {
+    assert(caller() == 5, "the default value should be used");
+}
+
+// Scenario 2
+struct Account {
+    balance: int;
+}
+
+fn deposit_default() -> int {
+    let a = Account { balance: 100 };
+    return a.deposit();
+}
+
+// Declared after `deposit_default`, which omits the amount.
+impl Account {
+    fn deposit(self, amount: int = 10) -> int {
+        return self.balance + amount;
+    }
+}
+
+test "method default argument, impl declared later" {
+    assert(deposit_default() == 110, "100 + default 10 should be 110");
+}
