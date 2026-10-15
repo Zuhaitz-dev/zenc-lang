@@ -1,0 +1,23 @@
+// language/features/operators: test_ne_from_eq
+// Without a `neq` method, `a != b` is `!a.eq(b)`, also on an instance of a generic
+// struct whose `eq` is written by hand.
+struct Key<K> {
+    value: u32;
+}
+
+impl Key<K> {
+    fn eq(self, other: Key<K>) -> bool {
+        return self.value == other.value;
+    }
+}
+
+struct Door {}
+alias DoorKey = Key<Door>;
+
+test "!= uses eq on an instance of a generic struct" {
+    let a = DoorKey { value: 1 };
+    let b = DoorKey { value: 1 };
+    let c = DoorKey { value: 2 };
+    assert(a != c, "different values");
+    assert(!(a != b), "equal values");
+}

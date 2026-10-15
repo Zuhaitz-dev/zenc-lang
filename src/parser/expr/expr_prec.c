@@ -108,6 +108,46 @@ static int may_be_struct(Type *t)
     }
 }
 
+// The method that overloads an operator for `struct_name`: `Struct__method`, or the
+// one of a trait impl (`Struct__Trait__method`). Its name goes to *mangled_out.
+static FuncSig *find_operator_method(ParserContext *ctx, const char *struct_name,
+                                     const char *method, char **mangled_out)
+{
+    char buf[MAX_ERROR_MSG_LEN];
+    snprintf(buf, sizeof(buf), "%s__%s", struct_name, method);
+    char *mangled = merge_underscores(buf);
+    FuncSig *sig = find_func(ctx, mangled);
+
+    StructRef *ref = ctx->parsed_impls_list;
+    while (!sig && ref)
+    {
+        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT)
+        {
+            const char *t_struct = ref->node->impl_trait.target_type;
+            if (t_struct && strcmp(t_struct, struct_name) == 0)
+            {
+                char buf_t[MAX_ERROR_MSG_LEN];
+                snprintf(buf_t, sizeof(buf_t), "%s__%s__%s", struct_name,
+                         ref->node->impl_trait.trait_name, method);
+                char *trait_mangled = merge_underscores(buf_t);
+                sig = find_func(ctx, trait_mangled);
+                if (sig)
+                {
+                    zfree(mangled);
+                    mangled = trait_mangled;
+                }
+                else
+                {
+                    zfree(trait_mangled);
+                }
+            }
+        }
+        ref = ref->next;
+    }
+    *mangled_out = mangled;
+    return sig;
+}
+
 // Builds the second argument of an operator overload call from its right operand.
 // When the overload takes a pointer, a value is passed by reference; a temporary (also
 // one written as `&make()`) is materialised and dropped after the call. An operand that
@@ -2643,40 +2683,16 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
             if (struct_name)
             {
-                char buf[MAX_ERROR_MSG_LEN];
-                snprintf(buf, sizeof(buf), "%s__%s", struct_name, method);
-                char *mangled = merge_underscores(buf);
+                char *mangled = NULL;
+                FuncSig *sig = find_operator_method(ctx, struct_name, method, &mangled);
 
-                FuncSig *sig = find_func(ctx, mangled);
-
-                if (!sig)
+                // Without a `neq` method, `a != b` is `!a.eq(b)`.
+                int negate = 0;
+                if (!sig && strcmp(bin->binary.op, "!=") == 0)
                 {
-                    // Try resolving as a trait method: Struct__Trait__Method
-                    StructRef *ref = ctx->parsed_impls_list;
-                    while (ref)
-                    {
-                        if (ref->node && ref->node->kind == NODE_IMPL_TRAIT)
-                        {
-                            const char *t_struct = ref->node->impl_trait.target_type;
-                            if (t_struct && strcmp(t_struct, struct_name) == 0)
-                            {
-                                char buf_t[MAX_ERROR_MSG_LEN];
-                                snprintf(buf_t, sizeof(buf_t), "%s__%s__%s", struct_name,
-                                         ref->node->impl_trait.trait_name, method);
-                                char *trait_mangled = merge_underscores(buf_t);
-
-                                if (find_func(ctx, trait_mangled))
-                                {
-                                    zfree(mangled);
-                                    mangled = trait_mangled;
-                                    sig = find_func(ctx, mangled);
-                                    break;
-                                }
-                                zfree(trait_mangled);
-                            }
-                        }
-                        ref = ref->next;
-                    }
+                    zfree(mangled);
+                    sig = find_operator_method(ctx, struct_name, "eq", &mangled);
+                    negate = sig != NULL;
                 }
 
                 if (sig)
@@ -2734,6 +2750,15 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                     call->resolved_type = type_to_string(sig->ret_type);
 
                     lhs = call;
+                    if (negate)
+                    {
+                        ASTNode *not_node = ast_create(NODE_EXPR_UNARY);
+                        not_node->token = t;
+                        not_node->unary.op = xstrdup("!");
+                        not_node->unary.operand = call;
+                        not_node->type_info = type_new(TYPE_BOOL);
+                        lhs = not_node;
+                    }
                     if (allocated_name)
                     {
                         zfree(allocated_name);
