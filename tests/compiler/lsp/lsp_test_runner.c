@@ -657,6 +657,91 @@ static void test_workspace_symbol(void)
     printf("PASS: test_workspace_symbol\n");
 }
 
+// The name of the first symbol of /tmp/test_close.zc, as the server knows it.
+static char *first_close_symbol(int id)
+{
+    char json[256];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/documentSymbol\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/test_close.zc\"}}}",
+             id);
+    send_request(json);
+    char *response = wait_for_response(id);
+    cJSON *parsed = response ? cJSON_Parse(response) : NULL;
+    free(response);
+    cJSON *name =
+        cJSON_GetObjectItem(cJSON_GetArrayItem(cJSON_GetObjectItem(parsed, "result"), 0), "name");
+    char *copy = cJSON_IsString(name) ? strdup(name->valuestring) : strdup("(none)");
+    cJSON_Delete(parsed);
+    return copy;
+}
+
+static void on_missing_diagnostics(int signal_number)
+{
+    (void)signal_number;
+    const char message[] = "TEST FAIL: no diagnostics after closing a document\n";
+    write(STDERR_FILENO, message, sizeof(message) - 1);
+    _exit(1);
+}
+
+static void test_did_close(void)
+{
+    printf("Running test_did_close...\n");
+    // On disk the file has one function; the client opens it with unsaved changes (and an
+    // error, so that its diagnostics are not empty).
+    int fd = open("/tmp/test_close.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0)
+    {
+        const char *code = "fn disk_version() {}\n";
+        write(fd, code, strlen(code));
+        close(fd);
+    }
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_close.zc\", \"languageId\": "
+                 "\"zenc\", \"version\": 1, \"text\": \"fn memory_version() {}\\nfn broken() { "
+                 "let x: int = ; }\\n\"}}}");
+    char *symbol = first_close_symbol(950);
+    if (strcmp(symbol, "memory_version") != 0)
+    {
+        printf("Open document: first symbol %s\n", symbol);
+        fail("The open document must be the client's version");
+    }
+    free(symbol);
+
+    // Closing it clears its diagnostics (the alarm turns a missing message into a failure)...
+    signal(SIGALRM, on_missing_diagnostics);
+    alarm(5);
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didClose\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_close.zc\"}}}");
+    int cleared = 0;
+    while (!cleared)
+    {
+        char *message = read_message();
+        if (!message)
+        {
+            break;
+        }
+        cleared = strstr(message, "publishDiagnostics") && strstr(message, "test_close.zc") &&
+                  strstr(message, "\"diagnostics\":[]");
+        free(message);
+    }
+    alarm(0);
+    if (!cleared)
+    {
+        fail("Closing a document must clear its diagnostics");
+    }
+
+    // ...and the server goes back to the file on disk.
+    symbol = first_close_symbol(951);
+    if (strcmp(symbol, "disk_version") != 0)
+    {
+        printf("Closed document: first symbol %s\n", symbol);
+        fail("A closed document must go back to its contents on disk");
+    }
+    free(symbol);
+    printf("PASS: test_did_close\n");
+}
+
 /* --- C headers: hover and go to definition --- */
 
 #define C_TEST_DIR "/tmp/zc_lsp_c"
@@ -1404,6 +1489,7 @@ int main()
     test_code_action();
     test_unknown_method();
     test_workspace_symbol();
+    test_did_close();
     test_c_header_symbols();
     test_c_header_reexports();
     test_c_header_completion();

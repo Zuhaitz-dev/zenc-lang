@@ -156,6 +156,22 @@ void lsp_project_track_document(const char *uri, const char *src)
     document->source = source;
 }
 
+void lsp_project_untrack_document(const char *uri)
+{
+    for (TrackedDocument **link = &g_tracked_documents; *link; link = &(*link)->next)
+    {
+        TrackedDocument *document = *link;
+        if (strcmp(document->uri, uri) == 0)
+        {
+            *link = document->next;
+            libc_free(document->uri);
+            libc_free(document->source);
+            libc_free(document);
+            return;
+        }
+    }
+}
+
 size_t lsp_project_built_total(void)
 {
     return g_built_total;

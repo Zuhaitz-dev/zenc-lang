@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "../utils/cJSON.h"
 #include "../constants.h"
+#include "../utils/utils.h"
 #include "lsp_project.h" // Includes lsp_index.h, parser.h
 #include "lsp_c_headers.h"
 #include "json_rpc.h"
@@ -84,6 +85,30 @@ void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int d
         list->tail->next = d;
         list->tail = d;
     }
+}
+
+void lsp_close_file(const char *uri)
+{
+    // The client's unsaved changes are gone: back to the file on disk. A file deleted
+    // meanwhile keeps its last contents.
+    lsp_project_untrack_document(uri);
+    ProjectFile *pf = lsp_project_get_file(uri);
+    char *src = pf ? load_file(pf->path, NULL) : NULL;
+    if (src)
+    {
+        lsp_project_update_file(uri, src);
+        zfree(src);
+    }
+
+    // Diagnostics are only computed for open documents, so a closed one's would go stale.
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(root, "method", "textDocument/publishDiagnostics");
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "uri", uri);
+    cJSON_AddItemToObject(params, "diagnostics", cJSON_CreateArray());
+    cJSON_AddItemToObject(root, "params", params);
+    send_json_response(root);
 }
 
 void lsp_check_file(const char *uri, const char *json_src, int id)

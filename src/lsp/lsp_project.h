@@ -53,6 +53,9 @@ void lsp_project_update_file(const char *uri, const char *src);
 // re-apply it.
 void lsp_project_track_document(const char *uri, const char *src);
 
+// Forget a document the client closed: a rebuild reads it from disk again.
+void lsp_project_untrack_document(const char *uri);
+
 // Arena usage right after the last full build (workspace indexing or rebuild).
 size_t lsp_project_built_total(void);
 
@@ -86,6 +89,7 @@ char *lsp_semantic_tokens_full(const char *uri);
 void lsp_on_error(void *data, Token t, const char *msg);
 void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int diag_id);
 void lsp_check_file(const char *uri, const char *src, int id);
+void lsp_close_file(const char *uri);
 void lsp_goto_definition(const char *uri, int line, int col, int id);
 void lsp_hover(const char *uri, int line, int col, int id);
 void lsp_completion(const char *uri, int line, int col, int id);
