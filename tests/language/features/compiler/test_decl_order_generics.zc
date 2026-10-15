@@ -1,0 +1,34 @@
+// language/features/compiler: generic functions and structs used before they are declared
+
+fn use_generic_fn() -> int {
+    return ident<int>(4);
+}
+
+// Declared after `use_generic_fn`.
+fn ident<T>(x: T) -> T {
+    return x;
+}
+
+fn use_generic_struct() -> int {
+    let h = Holder<int> { val: 6 };
+    return h.get();
+}
+
+// Declared after `use_generic_struct`.
+struct Holder<T> {
+    val: T;
+}
+
+impl Holder<T> {
+    fn get(self) -> T {
+        return self.val;
+    }
+}
+
+test "generic function declared later" {
+    assert(use_generic_fn() == 4, "ident should return its argument");
+}
+
+test "generic struct declared later" {
+    assert(use_generic_struct() == 6, "holder should return its value");
+}

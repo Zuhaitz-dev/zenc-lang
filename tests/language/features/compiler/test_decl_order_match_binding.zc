@@ -1,0 +1,35 @@
+// language/features/compiler: a method on a match binding whose impl later in the file
+struct Window {
+    id: int;
+}
+
+enum Value {
+    Win(Window),
+    Nothing,
+}
+
+impl Value {
+    fn same(self, x: Window) -> bool {
+        match *self {
+            Value::Win(mine) => {
+                return mine.eq(x);
+            }
+            _ => {
+                return false;
+            }
+        }
+    }
+}
+
+// Declared after `impl Value`, which already calls `eq` on `mine`.
+impl Window {
+    fn eq(self, other: Window) -> bool {
+        return self.id == other.id;
+    }
+}
+
+test "method on a match bidning, impl declared later" {
+    let v = Value::Win(Window { id: 3 });
+    assert(v.same(Window { id: 3 }), "same id should be equal");
+    assert(!v.same(Window { id: 4 }), "different id should not be equal");
+}
