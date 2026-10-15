@@ -592,9 +592,11 @@ DeclarationAttributes parse_attributes(ParserContext *ctx, Lexer *l)
                         return (DeclarationAttributes){0};
                         return (DeclarationAttributes){0};
                     }
+                    char *trait = token_strdup(inner_t);
+                    check_derivable_trait(inner_t, trait);
                     if (res.derived_count < 32)
                     {
-                        res.derived_traits[res.derived_count++] = token_strdup(inner_t);
+                        res.derived_traits[res.derived_count++] = trait;
                     }
                     if (lexer_peek(l).kind == TOK_COMMA)
                     {
