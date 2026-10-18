@@ -231,7 +231,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
         char *ret_str;
         if (func->func.ret_type_info)
         {
-            ret_str = type_to_c_string(func->func.ret_type_info);
+            ret_str = type_to_c_string(func->func.ret_type_info, ctx->config->misra_mode);
         }
         else if (func->func.ret_type)
         {
@@ -284,7 +284,7 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
             }
             else if (func->func.arg_types && func->func.arg_types[i])
             {
-                type_str = type_to_c_string(func->func.arg_types[i]);
+                type_str = type_to_c_string(func->func.arg_types[i], ctx->config->misra_mode);
             }
             else
             {
@@ -546,7 +546,7 @@ void handle_node_await_internal(ParserContext *ctx, ASTNode *node)
     char *ret_type = "void";
     if (node->type_info)
     {
-        char *t = type_to_c_string(node->type_info);
+        char *t = type_to_c_string(node->type_info, ctx->config->misra_mode);
         if (t && strcmp(t, "void") != 0)
         {
             ret_type = t;

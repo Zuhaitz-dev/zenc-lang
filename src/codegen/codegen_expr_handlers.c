@@ -592,7 +592,8 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                     char *c_type = NULL;
                     if (node->binary.left->type_info)
                     {
-                        c_type = type_to_c_string(node->binary.left->type_info);
+                        c_type =
+                            type_to_c_string(node->binary.left->type_info, ctx->config->misra_mode);
                     }
                     if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
                     {
@@ -1140,7 +1141,7 @@ skip_method_mangling:
         EMIT(ctx, "; ");
 
         Type *ft = callee_ti;
-        char *ret = type_to_c_string(ft->inner);
+        char *ret = type_to_c_string(ft->inner, ctx->config->misra_mode);
         if (strcmp(ret, "string") == 0)
         {
             zfree(ret);
@@ -1155,7 +1156,7 @@ skip_method_mangling:
         EMIT(ctx, "((%s (*)(void*", ret);
         for (int i = 0; i < ft->count; i++)
         {
-            char *as = type_to_c_string(ft->args[i]);
+            char *as = type_to_c_string(ft->args[i], ctx->config->misra_mode);
             if (strcmp(as, "unknown") == 0)
             {
                 zfree(as);
@@ -1320,7 +1321,7 @@ skip_callee_gen:
                 if (param_t && param_t->kind == TYPE_ARRAY && param_t->array_size == 0 && arg_t &&
                     arg_t->kind == TYPE_ARRAY && arg_t->array_size > 0)
                 {
-                    char *inner = type_to_c_string(param_t->inner);
+                    char *inner = type_to_c_string(param_t->inner, ctx->config->misra_mode);
                     EMIT(ctx, "(Slice__%s){.data = ", inner);
                     codegen_expression(ctx, arg);
                     EMIT(ctx, ", .len = %d, .cap = %d}", arg_t->array_size, arg_t->array_size);
@@ -1385,7 +1386,7 @@ skip_callee_gen:
                     Type *param_t = sig->arg_types[arg_idx];
                     if (param_t && (param_t->kind == TYPE_POINTER || param_t->kind == TYPE_ENUM))
                     {
-                        char *c_type = type_to_c_string(param_t);
+                        char *c_type = type_to_c_string(param_t, ctx->config->misra_mode);
                         EMIT(ctx, "(%s)(", c_type);
                         codegen_expression_with_move(ctx, arg);
                         EMIT(ctx, ")");

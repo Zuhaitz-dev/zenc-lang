@@ -619,11 +619,12 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
             else if (arr->array_literal.elements && arr->array_literal.elements->type_info)
             {
-                elem_type = type_to_c_string(arr->array_literal.elements->type_info);
+                elem_type = type_to_c_string(arr->array_literal.elements->type_info,
+                                             ctx->config->misra_mode);
             }
             else if (arr->type_info && arr->type_info->inner)
             {
-                elem_type = type_to_c_string(arr->type_info->inner);
+                elem_type = type_to_c_string(arr->type_info->inner, ctx->config->misra_mode);
             }
             else
             {
@@ -735,7 +736,8 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 emitter_indent(&ctx->cg.emitter);
                 if (ctx->cg.current_func_ret_type_info)
                 {
-                    char *tstr = type_to_c_string(ctx->cg.current_func_ret_type_info);
+                    char *tstr = type_to_c_string(ctx->cg.current_func_ret_type_info,
+                                                  ctx->config->misra_mode);
                     EMIT(ctx, "%s", tstr);
                     zfree(tstr);
                 }

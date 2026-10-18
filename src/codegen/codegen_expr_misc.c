@@ -62,7 +62,7 @@ void handle_reflection(ParserContext *ctx, ASTNode *node)
     Type *t = node->reflection.target_type;
     if (node->reflection.kind == 0)
     {
-        char *s = type_to_c_string(t);
+        char *s = type_to_c_string(t, ctx->config->misra_mode);
         EMIT(ctx, "\"%s\"", s);
         zfree(s);
     }
