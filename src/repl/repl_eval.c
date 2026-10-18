@@ -15,6 +15,7 @@
 void repl_parser_ctx_init(ParserContext *ctx)
 {
     memset(ctx, 0, sizeof(*ctx));
+    ctx->compiler = &g_compiler;
     ctx->config = &g_compiler.config;
     ctx->current_filename = "<repl>";
     ctx->cg.is_repl = 1;
