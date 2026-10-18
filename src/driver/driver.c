@@ -385,7 +385,7 @@ int driver_compile(ZenCompiler *compiler)
                                                        : (z_is_windows() ? "a.exe" : "a.out");
     ArgList compile_args;
     arg_list_init(&compile_args);
-    build_compile_arg_list(&compile_args, outfile, temp_source_buf, &compiler->config);
+    build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
 
     if (compiler->config.verbose)
     {
