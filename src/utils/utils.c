@@ -559,7 +559,7 @@ int is_safe_pkg_config_spec(const char *libs)
 
 void scan_build_directives(ParserContext *ctx, const char *src)
 {
-    (void)ctx;
+    ZenCompiler *compiler = ctx->compiler;
     const char *p = src;
     while (*p)
     {
@@ -611,7 +611,8 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                 {
                     directive_val++;
                 }
-                append_flag(g_link_flags, sizeof(g_link_flags), directive_val, NULL);
+                append_flag(compiler->link_flags, sizeof(compiler->link_flags), directive_val,
+                            NULL);
             }
             else if (0 == strncmp(directive, "cflags:", 7))
             {
@@ -620,7 +621,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                 {
                     directive_val++;
                 }
-                append_flag(g_cflags, sizeof(g_cflags), directive_val, NULL);
+                append_flag(compiler->cflags, sizeof(compiler->cflags), directive_val, NULL);
             }
             else if (0 == strncmp(directive, "include:", 8))
             {
@@ -659,7 +660,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
 
                     char flags[MAX_PATH_LEN + 32];
                     snprintf(flags, sizeof(flags), "-I%s", path);
-                    append_flag(g_cflags, sizeof(g_cflags), flags, NULL);
+                    append_flag(compiler->cflags, sizeof(compiler->cflags), flags, NULL);
                 }
             }
             else if (strncmp(directive, "lib:", 4) == 0)
@@ -699,7 +700,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
 
                     char flags[MAX_PATH_LEN + 32];
                     snprintf(flags, sizeof(flags), "-L%s", path);
-                    append_flag(g_link_flags, sizeof(g_link_flags), flags, NULL);
+                    append_flag(compiler->link_flags, sizeof(compiler->link_flags), flags, NULL);
                 }
             }
             else if (strncmp(directive, "framework:", 10) == 0)
@@ -739,7 +740,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
 
                     char flags[MAX_VAR_NAME_LEN + 32];
                     snprintf(flags, sizeof(flags), "-framework %s", name);
-                    append_flag(g_link_flags, sizeof(g_link_flags), flags, NULL);
+                    append_flag(compiler->link_flags, sizeof(compiler->link_flags), flags, NULL);
                 }
             }
             else if (strncmp(directive, "define:", 7) == 0)
@@ -777,7 +778,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                     }
                     *d = '\0';
 
-                    append_flag(g_cflags, sizeof(g_cflags), "-D", def_val);
+                    append_flag(compiler->cflags, sizeof(compiler->cflags), "-D", def_val);
 
                     char *name = xstrdup(def_val);
                     char *eq = (char *)strchr(name, '=');
@@ -839,7 +840,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                         {
                             buf[l - 1] = 0;
                         }
-                        append_flag(g_cflags, sizeof(g_cflags), buf, NULL);
+                        append_flag(compiler->cflags, sizeof(compiler->cflags), buf, NULL);
                     }
                     arg_list_free(&args);
 
@@ -855,7 +856,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                         {
                             buf[l - 1] = 0;
                         }
-                        append_flag(g_link_flags, sizeof(g_link_flags), buf, NULL);
+                        append_flag(compiler->link_flags, sizeof(compiler->link_flags), buf, NULL);
                     }
                     arg_list_free(&args);
                 }
