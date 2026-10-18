@@ -366,9 +366,9 @@ char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cf
     return NULL;
 }
 
-char *load_file(const char *fn, const char *relative_to)
+char *load_file(const char *fn, const char *relative_to, CompilerConfig *cfg)
 {
-    char *resolved = z_resolve_path(fn, relative_to, &g_compiler.config);
+    char *resolved = z_resolve_path(fn, relative_to, cfg);
     if (!resolved)
     {
         return NULL;

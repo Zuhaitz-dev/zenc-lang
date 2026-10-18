@@ -34,7 +34,7 @@ void load_std_module(ParserContext *ctx, const char *path)
     }
     zmap_put(&ctx->imports.currently_parsing, resolved, resolved);
     // Load and parse the file
-    char *src = load_file(resolved, ctx->current_filename);
+    char *src = load_file(resolved, ctx->current_filename, ctx->config);
     if (!src)
     {
         zmap_remove(&ctx->imports.currently_parsing, resolved);

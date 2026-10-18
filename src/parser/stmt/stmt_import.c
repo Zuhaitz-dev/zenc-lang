@@ -231,7 +231,7 @@ static void scan_c_header_contents(ParserContext *ctx, const char *path, int dep
     }
     mark_file_imported(ctx, path);
 
-    char *src = load_file(path, ctx->current_filename);
+    char *src = load_file(path, ctx->current_filename, ctx->config);
     if (!src)
     {
         return;
@@ -767,7 +767,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         return n;
     }
 
-    char *src = load_file(fn, ctx->current_filename);
+    char *src = load_file(fn, ctx->current_filename, ctx->config);
     if (!src)
     {
         if (!src)

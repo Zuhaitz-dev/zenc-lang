@@ -93,7 +93,7 @@ void lsp_close_file(const char *uri)
     // meanwhile keeps its last contents.
     lsp_project_untrack_document(uri);
     ProjectFile *pf = lsp_project_get_file(uri);
-    char *src = pf ? load_file(pf->path, NULL) : NULL;
+    char *src = pf ? load_file(pf->path, NULL, g_project->ctx->config) : NULL;
     if (src)
     {
         lsp_project_update_file(uri, src);

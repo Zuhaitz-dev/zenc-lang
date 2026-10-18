@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     diag_set_parser_ctx(&ctx);
     token_set_parser_ctx(&ctx);
 
-    char *src = load_file(g_compiler.config.input_file, ctx.current_filename);
+    char *src = load_file(g_compiler.config.input_file, ctx.current_filename, ctx.config);
     if (!src)
     {
         fprintf(stderr, "error: could not read file '%s'\n", g_compiler.config.input_file);
