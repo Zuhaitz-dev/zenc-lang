@@ -756,6 +756,33 @@ struct ASTNode
 ASTNode *ast_create(NodeType type);
 void ast_free(ASTNode *node);
 
+/// Most child fields a node kind has (NODE_CUDA_LAUNCH has 5).
+#define AST_MAX_CHILDREN 8
+
+/**
+ * @brief Where the children of a node are stored.
+ *
+ * Each slot is the address of a child field of the node; the field holds the
+ * head of a list linked by `next`, or NULL. Through a slot a walker can read
+ * the child (`*slot`) or replace it (`*slot = other`).
+ */
+typedef struct
+{
+    ASTNode **slots[AST_MAX_CHILDREN];
+    int count;
+} ASTChildren;
+
+/**
+ * @brief The child fields of a node, in source order.
+ *
+ * Not included: the tree of an imported module (`import_stmt.module_root`,
+ * shared between importers; walk it yourself with a visited set), and the two
+ * arrays that are not lists (`func.default_values`, `raw_stmt.interp_exprs`).
+ * For NODE_COMPTIME, both `body` (the code written) and `generated` (the code
+ * it produced).
+ */
+ASTChildren ast_children(ASTNode *node);
+
 Type *type_new(TypeKind kind);
 Type *type_new_ptr(Type *inner);
 Type *type_new_array(Type *inner, int size);
