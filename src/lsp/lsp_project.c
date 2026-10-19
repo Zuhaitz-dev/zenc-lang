@@ -102,23 +102,16 @@ void lsp_project_init(const char *root_path)
 
     CompilerConfig *cfg = &g_project->ctx->compiler->config;
 
-    // Add root path and std/ to include paths to resolve 'std.zc' etc.
-    // Ensure we don't overflow the include_paths array (limit is 64)
+    // Add the workspace root and its std/ to the include paths: imports resolve from the
+    // workspace, and a workspace with its own std/ (the compiler's repository) uses it. They
+    // are searched before cfg->root_path, which keeps the compiler's own root, set by
+    // z_compiler_setup next to the executable: the standard library is found from there for a
+    // workspace without one.
     zvec_push_Str(&cfg->include_paths, xstrdup(root_path));
 
-    // In LSP mode, the workspace root should also be considered the root path for stdlib
-    // resolution
-    if (root_path)
-    {
-        cfg->root_path = xstrdup(root_path);
-    }
-
-    if (cfg->root_path)
-    {
-        char std_path[MAX_PATH_LEN];
-        snprintf(std_path, sizeof(std_path), "%s/std", cfg->root_path);
-        zvec_push_Str(&cfg->include_paths, xstrdup(std_path));
-    }
+    char std_path[MAX_PATH_LEN];
+    snprintf(std_path, sizeof(std_path), "%s/std", root_path);
+    zvec_push_Str(&cfg->include_paths, xstrdup(std_path));
 
     lsp_config_load(root_path, cfg, g_project);
 }
