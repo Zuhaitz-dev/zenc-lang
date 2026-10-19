@@ -49,13 +49,19 @@ ASTNode *lsp_find_local_decl(ASTNode *func, const char *name)
     return find_decl(func->func.body, name);
 }
 
+// Every loop statement, where break and continue make sense.
+static int is_loop(NodeType kind)
+{
+    return kind == NODE_WHILE || kind == NODE_FOR || kind == NODE_FOR_RANGE || kind == NODE_LOOP ||
+           kind == NODE_REPEAT || kind == NODE_DO_WHILE;
+}
+
 static int has_loop_before(ASTNode *node, int line)
 {
     for (; node; node = node->next)
     {
         // Approximate line check (Zen C AST stores line numbers in tokens)
-        if (node->token.line > 0 && node->token.line <= line &&
-            (node->kind == NODE_WHILE || node->kind == NODE_FOR || node->kind == NODE_LOOP))
+        if (node->token.line > 0 && node->token.line <= line && is_loop(node->kind))
         {
             return 1;
         }

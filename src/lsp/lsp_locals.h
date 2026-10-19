@@ -19,7 +19,8 @@
 ASTNode *lsp_find_local_decl(ASTNode *func, const char *name);
 
 /**
- * @brief Whether a while, for or loop starts in the body of `func` at or before `line`.
+ * @brief Whether a loop (while, for, for-in, loop, repeat, do-while) starts in the body of
+ *        `func` at or before `line`.
  *
  * `line` is compared with the line of the loop's token as it is.
  */
