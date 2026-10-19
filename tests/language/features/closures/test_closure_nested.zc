@@ -1,0 +1,39 @@
+// closures: test_closure_nested
+// A lambda defined inside another lambda: the inner one is emitted first, since
+// the outer body uses its context and its function.
+
+test "a lambda inside a lambda" {
+    let f = fn(x: int) -> int {
+        let g = fn(y: int) -> int { return y * 2; };
+        return g(x) + 1;
+    };
+    assert f(3) == 7;
+}
+
+test "the inner lambda uses an outer variable" {
+    let k = 10;
+    let f = fn(x: int) -> int {
+        let g = fn(y: int) -> int { return y + k; };
+        return g(x);
+    };
+    assert f(1) == 11;
+}
+
+test "three levels" {
+    let k = 100;
+    let f = fn(x: int) -> int {
+        let g = fn(y: int) -> int {
+            let h = fn(z: int) -> int { return z + k; };
+            return h(y) * 2;
+        };
+        return g(x) + 1;
+    };
+    assert f(1) == 203;
+}
+
+test "two lambdas side by side" {
+    let a = fn(x: int) -> int { return x + 1; };
+    let b = fn(x: int) -> int { return x * 3; };
+    assert a(1) == 2;
+    assert b(2) == 6;
+}

@@ -454,8 +454,16 @@ void register_lambda(ParserContext *ctx, ASTNode *node)
 {
     LambdaRef *ref = xmalloc(sizeof(LambdaRef));
     ref->node = node;
-    ref->next = ctx->global_lambdas;
-    ctx->global_lambdas = ref;
+    ref->next = NULL;
+
+    // Keep the creation order, which is the order they are emitted in: a lambda defined inside
+    // another one is created first, and the outer body uses its context and its function.
+    LambdaRef **tail = &ctx->global_lambdas;
+    while (*tail)
+    {
+        tail = &(*tail)->next;
+    }
+    *tail = ref;
 }
 
 void register_extern_symbol(ParserContext *ctx, const char *name)

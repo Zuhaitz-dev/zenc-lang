@@ -389,7 +389,7 @@ struct ParserContext
                             ///< global_scope).
 
     // Lambdas
-    LambdaRef *global_lambdas; ///< List of all lambdas generated during parsing.
+    LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
     int lambda_counter;        ///< Counter for generating unique lambda IDs.
     int fstring_counter;       ///< Counter for generating unique f-string IDs.
 
