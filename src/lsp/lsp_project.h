@@ -100,7 +100,6 @@ typedef enum
 } LspDiagnosticSeverity;
 
 // LSP analysis functions (declared here for cross-file visibility)
-void lsp_on_error(void *data, Token t, const char *msg);
 void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int diag_id);
 void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d);
 void lsp_check_file(const char *uri, const char *src, int id);

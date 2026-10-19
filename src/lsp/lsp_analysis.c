@@ -51,17 +51,6 @@ static void send_json_response(cJSON *root)
     cJSON_Delete(root);
 }
 
-// Callback for parser errors (legacy fallback).
-void lsp_on_error(void *data, Token t, const char *msg)
-{
-    (void)data;
-    (void)t;
-    (void)msg;
-    // We do nothing here: the diagnostics reach lsp_diagnose_consumer.
-    // This function exists merely to satisfy the 'if (g_parser_ctx->on_error)' check
-    // inside zpanic_at so the compiler recovers instead of exiting.
-}
-
 // Unified callback for diagnostics.
 void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int diag_id)
 {
@@ -161,18 +150,14 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
     // Setup error capture on the global project context
     DiagnosticList diagnostics = {0};
 
-    // We attach the callback to 'g_project->ctx'.
-    void (*old_cb_error)(void *, Token, const char *) = g_project->ctx->on_error;
+    // The consumer collects the diagnostics of this document while it is parsed.
     void *old_consumer_data = lsp_compiler()->diag_consumer_data;
-
-    g_project->ctx->on_error = lsp_on_error;
     lsp_compiler()->diag_consumer_data = &diagnostics;
 
     // Update and Parse
     lsp_project_update_file(uri, json_src);
 
     // Restore
-    g_project->ctx->on_error = old_cb_error;
     lsp_compiler()->diag_consumer_data = old_consumer_data;
 
     // Construct JSON Response (publishDiagnostics)
