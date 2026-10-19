@@ -2,6 +2,7 @@
 #include "../parser/parser.h"
 
 #include "codegen.h"
+#include "codegen_internal.h"
 #include "zprep.h"
 #include "../constants.h"
 #include <ctype.h>
@@ -960,69 +961,9 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         break;
     }
     case NODE_RAW_STMT:
-    {
-        if (ctx->cg.current_lambda)
-        {
-            Lexer l;
-            lexer_init(&l, node->raw_stmt.content, ctx->config, ctx->current_filename);
-            Token t;
-            int last_pos = 0;
-            while ((t = lexer_next(&l)).kind != TOK_EOF)
-            {
-                int current_tok_start = (int)(t.start - node->raw_stmt.content);
-                for (int i = last_pos; i < current_tok_start; i++)
-                {
-                    EMIT(ctx, "%c", node->raw_stmt.content[i]);
-                }
-
-                if (t.kind == TOK_IDENT)
-                {
-                    char *name = token_strdup(t);
-                    int captured = -1;
-                    if (ctx->cg.current_lambda->lambda.captured_vars)
-                    {
-                        for (int i = 0; i < ctx->cg.current_lambda->lambda.capture_count; i++)
-                        {
-                            if (strcmp(name, ctx->cg.current_lambda->lambda.captured_vars[i]) == 0)
-                            {
-                                captured = i;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (captured != -1)
-                    {
-                        if (ctx->cg.current_lambda->lambda.capture_modes &&
-                            ctx->cg.current_lambda->lambda.capture_modes[captured] == 1)
-                        {
-                            EMIT(ctx, "(*ctx->%s)", name);
-                        }
-                        else
-                        {
-                            EMIT(ctx, "ctx->%s", name);
-                        }
-                    }
-                    else
-                    {
-                        EMIT(ctx, "%.*s", (int)(t.len), t.start);
-                    }
-                    zfree(name);
-                }
-                else
-                {
-                    EMIT(ctx, "%.*s", (int)(t.len), t.start);
-                }
-                last_pos = current_tok_start + (int)(t.len);
-            }
-            EMIT(ctx, "%s\n", node->raw_stmt.content + last_pos);
-        }
-        else
-        {
-            EMIT(ctx, "%s\n", node->raw_stmt.content);
-        }
+        emit_raw_with_captures(ctx, node->raw_stmt.content);
+        EMIT(ctx, "\n");
         break;
-    }
 
     case NODE_LINK:
         // @link handled during compilation setup — nothing to emit

@@ -475,9 +475,80 @@ void handle_expr_literal(ParserContext *ctx, ASTNode *node)
     codegen_literal_expr(ctx, node);
 }
 
+void emit_raw_with_captures(ParserContext *ctx, const char *content)
+{
+    // The emitter writes a pending indentation even for an empty string, which would leave
+    // spaces on an otherwise empty line: emit nothing for nothing.
+    if (!ctx->cg.current_lambda)
+    {
+        if (*content)
+        {
+            EMIT(ctx, "%s", content);
+        }
+        return;
+    }
+
+    Lexer l;
+    lexer_init(&l, content, ctx->config, ctx->current_filename);
+    Token t;
+    int last_pos = 0;
+    while ((t = lexer_next(&l)).kind != TOK_EOF)
+    {
+        int current_tok_start = (int)(t.start - content);
+        for (int i = last_pos; i < current_tok_start; i++)
+        {
+            EMIT(ctx, "%c", content[i]);
+        }
+
+        if (t.kind == TOK_IDENT)
+        {
+            char *name = token_strdup(t);
+            int captured = -1;
+            if (ctx->cg.current_lambda->lambda.captured_vars)
+            {
+                for (int i = 0; i < ctx->cg.current_lambda->lambda.capture_count; i++)
+                {
+                    if (strcmp(name, ctx->cg.current_lambda->lambda.captured_vars[i]) == 0)
+                    {
+                        captured = i;
+                        break;
+                    }
+                }
+            }
+
+            if (captured != -1)
+            {
+                if (ctx->cg.current_lambda->lambda.capture_modes &&
+                    ctx->cg.current_lambda->lambda.capture_modes[captured] == 1)
+                {
+                    EMIT(ctx, "(*ctx->%s)", name);
+                }
+                else
+                {
+                    EMIT(ctx, "ctx->%s", name);
+                }
+            }
+            else
+            {
+                EMIT(ctx, "%.*s", (int)(t.len), t.start);
+            }
+            zfree(name);
+        }
+        else
+        {
+            EMIT(ctx, "%.*s", (int)(t.len), t.start);
+        }
+        last_pos = current_tok_start + (int)(t.len);
+    }
+    if (content[last_pos])
+    {
+        EMIT(ctx, "%s", content + last_pos);
+    }
+}
+
 void handle_raw_stmt(ParserContext *ctx, ASTNode *node)
 {
-    EMIT(ctx, "%s", node->raw_stmt.content);
+    emit_raw_with_captures(ctx, node->raw_stmt.content);
 }
 
 void handle_ast_comment(ParserContext *ctx, ASTNode *node)

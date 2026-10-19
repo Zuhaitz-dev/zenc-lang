@@ -1,0 +1,34 @@
+// closures: test_closure_fstring
+// An f-string inside a lambda reads captured variables through the lambda's
+// context, whether it is a statement (println) or an expression.
+
+test "an f-string returned from a lambda" {
+    let k = 7;
+    let f = fn() -> string { return "{k}"; };
+    assert strcmp(f(), "7") == 0;
+}
+
+test "an f-string in a let, with a parameter and a capture" {
+    let k = 7;
+    let f = fn(x: int) -> int {
+        let s = "{x}-{k}";
+        return strcmp(s, "1-7");
+    };
+    assert f(1) == 0;
+}
+
+test "an f-string reads a capture by reference" {
+    let k = 7;
+    let f = fn[&]() -> string { return "{k}"; };
+    k = 8;
+    assert strcmp(f(), "8") == 0;
+}
+
+test "println in a lambda" {
+    let k = 7;
+    let f = fn() -> int {
+        println "k is {k}";
+        return k;
+    };
+    assert f() == 7;
+}
