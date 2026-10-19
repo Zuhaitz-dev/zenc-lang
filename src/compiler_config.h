@@ -50,7 +50,6 @@ typedef struct CompilerConfig
     int use_cuda;
     int use_objc;
     int mode_lsp;
-    int json_output;
     int use_typecheck;
     int warn_as_errors;
     int no_suppress_warnings;

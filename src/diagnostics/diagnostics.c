@@ -79,60 +79,6 @@ static void diag_print_context(FILE *f, Token t, const char *caret_color)
     fprintf(f, COLOR_BLUE "   |\n" COLOR_RESET);
 }
 
-static void emit_json(const char *level, Token t, const char *msg, const char *suggestion,
-                      int diag_id)
-{
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddStringToObject(root, "file", diag_filename(t));
-    cJSON_AddNumberToObject(root, "line", t.line);
-    cJSON_AddNumberToObject(root, "col", t.col);
-    cJSON_AddStringToObject(root, "level", level);
-    cJSON_AddStringToObject(root, "message", msg);
-    if (diag_id != DIAG_NONE)
-    {
-        cJSON_AddNumberToObject(root, "code", diag_id);
-    }
-    if (suggestion)
-    {
-        cJSON_AddStringToObject(root, "suggestion", suggestion);
-    }
-
-    char *json = cJSON_PrintUnformatted(root);
-    if (!diag_cfg()->mode_lsp)
-    {
-        fprintf(stderr, "%s\n", json);
-    }
-    zfree(json);
-    cJSON_Delete(root);
-
-    // Call LSP diagnostics hook
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_diagnostic)
-    {
-        int severity = 1; // Error
-        if (strcmp(level, "warning") == 0)
-        {
-            severity = 2; // Warning
-        }
-        else if (strcmp(level, "info") == 0)
-        {
-            severity = 3; // Info
-        }
-
-        // Room for the message, the hints (diag_emit joins them in MAX_PATH_LEN) and the text.
-        char full_msg[MAX_ERROR_MSG_LEN + MAX_PATH_LEN + 32];
-        if (suggestion)
-        {
-            snprintf(full_msg, sizeof(full_msg), "%s (Suggestion: %s)", msg, suggestion);
-        }
-        else
-        {
-            snprintf(full_msg, sizeof(full_msg), "%s", msg);
-        }
-        d_ctx.parser_ctx->on_diagnostic(d_ctx.parser_ctx->error_callback_data, t, severity,
-                                        full_msg, diag_id);
-    }
-}
-
 // Prints a diagnostic as text to `data`, a FILE * (stderr when NULL). It has the
 // DiagConsumer signature, so a tool can register it, and it is used when none is registered.
 void diag_render_text(void *data, const ZenDiagnostic *d)
@@ -182,8 +128,9 @@ void diag_render_json(void *data, const ZenDiagnostic *d)
     cJSON_Delete(root);
 }
 
-// The single path of every diagnostic: silence, count, print (text or JSON), notify the
-// LSP/REPL and, for a fatal error, stop. `hints` is NULL or a NULL-terminated array.
+// The single path of every diagnostic: silence, count, hand it to the compiler's consumer
+// (or print it as text if there is none) and, for a fatal error, mark had_error when
+// recovering or stop. `hints` is NULL or a NULL-terminated array.
 static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char *msg,
                       const char *const *hints)
 {
@@ -217,13 +164,6 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
     {
         compiler->diag_consumer(compiler->diag_consumer_data, &d);
     }
-    else if (diag_cfg()->json_output)
-    {
-        char joined_hints[MAX_PATH_LEN] = {0};
-        str_join(joined_hints, sizeof(joined_hints), hints, "\n");
-        emit_json(is_error ? "error" : "warning", t, msg, joined_hints[0] ? joined_hints : NULL,
-                  diag_id);
-    }
     else
     {
         diag_render_text(NULL, &d);
@@ -232,20 +172,6 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
     if (fatal && pctx && pctx->is_fault_tolerant)
     {
         pctx->had_error = 1;
-    }
-
-    if (is_error && pctx && pctx->on_error)
-    {
-        char full_msg[MAX_PATH_LEN * 2];
-        snprintf(full_msg, sizeof(full_msg), "%s", msg);
-        const char *const *h = hints;
-        while (h && *h)
-        {
-            strncat(full_msg, "\nhelp: ", sizeof(full_msg) - strlen(full_msg) - 1);
-            strncat(full_msg, *h, sizeof(full_msg) - strlen(full_msg) - 1);
-            h++;
-        }
-        pctx->on_error(pctx->error_callback_data, t, full_msg);
     }
 
     if (fatal && !(pctx && pctx->is_fault_tolerant) && !diag_cfg()->mode_lsp)

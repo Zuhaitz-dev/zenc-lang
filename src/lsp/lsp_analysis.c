@@ -51,8 +51,8 @@ static void send_json_response(cJSON *root)
     cJSON_Delete(root);
 }
 
-// Unified callback for diagnostics.
-void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int diag_id)
+// Appends a diagnostic to `data`, a DiagnosticList.
+static void diagnostic_list_add(void *data, Token t, int severity, const char *msg, int diag_id)
 {
     DiagnosticList *list = (DiagnosticList *)data;
     Diagnostic *d = calloc(1, sizeof(Diagnostic));
@@ -95,8 +95,8 @@ void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d)
     {
         snprintf(msg, sizeof(msg), "%s", d->message);
     }
-    lsp_on_diagnostic(data, d->token, d->is_error ? LSP_SEVERITY_ERROR : LSP_SEVERITY_WARNING, msg,
-                      d->id);
+    diagnostic_list_add(data, d->token, d->is_error ? LSP_SEVERITY_ERROR : LSP_SEVERITY_WARNING,
+                        msg, d->id);
 }
 
 void lsp_close_file(const char *uri)
