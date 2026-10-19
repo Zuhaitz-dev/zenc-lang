@@ -21,6 +21,8 @@ static const char *dot_type_name(int type)
         return "RETURN";
     case NODE_VAR_DECL:
         return "VAR\\nDECL";
+    case NODE_FIELD_INIT:
+        return "FIELD\\nINIT";
     case NODE_CONST:
         return "CONST";
     case NODE_TYPE_ALIAS:
@@ -206,6 +208,7 @@ static int dot_emit_node(ParserContext *ctx, ASTNode *node)
     {
     case NODE_FUNCTION:
     case NODE_VAR_DECL:
+    case NODE_FIELD_INIT:
     case NODE_CONST:
     case NODE_TYPE_ALIAS:
     case NODE_STRUCT:
@@ -323,6 +326,7 @@ static int dot_emit_node(ParserContext *ctx, ASTNode *node)
         break;
     }
     case NODE_VAR_DECL:
+    case NODE_FIELD_INIT:
         if (node->var_decl.init_expr)
         {
             int cid = dot_emit_node(ctx, node->var_decl.init_expr);

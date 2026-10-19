@@ -271,11 +271,9 @@ static void find_declared_vars(ASTNode *node, char ***decls, int *count)
         }
     }
 
-    // Struct literal fields are NODE_VAR_DECLs named after the field, the locals of a nested
-    // lambda are its own and those of a comptime block live while compiling: none declares
-    // anything here.
-    if (node->kind == NODE_EXPR_STRUCT_INIT || node->kind == NODE_LAMBDA ||
-        node->kind == NODE_COMPTIME)
+    // The locals of a nested lambda are its own, and those of a comptime block live while
+    // compiling.
+    if (node->kind == NODE_LAMBDA || node->kind == NODE_COMPTIME)
     {
         return;
     }

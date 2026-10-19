@@ -20,6 +20,8 @@ static const char *node_type_name(int type)
         return "RETURN";
     case NODE_VAR_DECL:
         return "VAR_DECL";
+    case NODE_FIELD_INIT:
+        return "FIELD_INIT";
     case NODE_CONST:
         return "CONST";
     case NODE_TYPE_ALIAS:
@@ -130,6 +132,7 @@ static void emit_label(ParserContext *ctx, ASTNode *node)
     {
     case NODE_FUNCTION:
     case NODE_VAR_DECL:
+    case NODE_FIELD_INIT:
     case NODE_CONST:
     case NODE_TYPE_ALIAS:
     case NODE_STRUCT:
@@ -368,6 +371,7 @@ static void dump_node(ParserContext *ctx, ASTNode *node, int is_last, const char
         break;
     }
     case NODE_VAR_DECL:
+    case NODE_FIELD_INIT:
     {
         if (node->var_decl.init_expr)
         {

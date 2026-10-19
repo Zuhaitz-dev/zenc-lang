@@ -258,6 +258,9 @@ ASTChildren ast_children(ASTNode *node)
     case NODE_EXPR_STRUCT_INIT:
         add_child(&c, &node->struct_init.fields);
         break;
+    case NODE_FIELD_INIT:
+        add_child(&c, &node->var_decl.init_expr);
+        break;
     case NODE_EXPR_ARRAY_LITERAL:
         add_child(&c, &node->array_literal.elements);
         break;

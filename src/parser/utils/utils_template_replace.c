@@ -1025,6 +1025,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     }
     break;
     case NODE_VAR_DECL:
+    case NODE_FIELD_INIT:
         new_node->var_decl.name = n->var_decl.name ? xstrdup(n->var_decl.name) : NULL;
         new_node->var_decl.type_str = replace_type_str(n->var_decl.type_str, p, c, os, ns);
         new_node->var_decl.type_info =
