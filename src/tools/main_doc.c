@@ -12,7 +12,7 @@
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup();
+    z_compiler_setup(&g_compiler);
 
     g_config.mode_doc = 1;
     g_config.keep_comments = 1;

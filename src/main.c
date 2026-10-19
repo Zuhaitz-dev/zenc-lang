@@ -63,7 +63,7 @@ static int exec_tool(const char *cmd, const char *tool, int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup();
+    z_compiler_setup(&g_compiler);
 
     int i;
     const char *optimization_level = NULL;

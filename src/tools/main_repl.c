@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Standalone Zen C read-eval-print loop. Formerly `zc repl`.
 #include "tool_common.h"
+#include "../compiler.h"
 #include "../repl/repl.h"
 #include <stddef.h>
 #include <string.h>
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup();
+    z_compiler_setup(&g_compiler);
 
     // run_repl() reads options starting at argv[2] (it expects argv[1] to be
     // the "repl" subcommand). Normalize so direct `zc-repl -c <line>` and
