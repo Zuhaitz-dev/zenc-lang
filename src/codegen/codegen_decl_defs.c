@@ -375,11 +375,22 @@ static void collect_lambda_return_types(ParserContext *ctx, ASTNode *node, char 
 static void emit_lambda_ctx_field(ParserContext *ctx, const char *tstr, const char *name,
                                   int by_ref)
 {
-    if (strstr(tstr, "(*"))
+    // Function pointers and arrays put the name inside the type: `int (*name)(int)`,
+    // `int name[3]`. By reference, a function pointer gets one more `*` and an array becomes
+    // a pointer to it, `int (*name)[3]` (`int *name[3]` would be an array of pointers).
+    int is_fn_ptr = strstr(tstr, "(*") != NULL;
+    if (is_fn_ptr || strchr(tstr, '['))
     {
-        size_t decl_sz = strlen(name) + 2;
+        size_t decl_sz = strlen(name) + 4;
         char *decl_name = xmalloc(decl_sz);
-        snprintf(decl_name, decl_sz, "%s%s", by_ref ? "*" : "", name);
+        if (!by_ref)
+        {
+            snprintf(decl_name, decl_sz, "%s", name);
+        }
+        else
+        {
+            snprintf(decl_name, decl_sz, is_fn_ptr ? "*%s" : "(*%s)", name);
+        }
         emit_var_decl_type(ctx, tstr, decl_name);
         EMIT(ctx, ";\n");
         zfree(decl_name);
