@@ -5,7 +5,6 @@ warning: Assignment in condition
 6  |     if (x = 2) {
    |           ^ here
    |
-   |
    = note: Did you mean '=='?
     Finished build in Xs with 0 errors and 1 warnings
 [exit 0]

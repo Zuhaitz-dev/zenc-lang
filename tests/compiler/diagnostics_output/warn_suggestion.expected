@@ -1,6 +1,7 @@
    Compiling tests/compiler/diagnostics_output/warn_suggestion.zc...
 warning: Unused parameter 'p' in function 'show'
   --> tests/compiler/diagnostics_output/warn_suggestion.zc
+   = note: Consider prefixing with '_' if intentionally unused
 warning: Unknown type 'Pointt' (assuming external C struct)
   --> tests/compiler/diagnostics_output/warn_suggestion.zc:8:12
    |

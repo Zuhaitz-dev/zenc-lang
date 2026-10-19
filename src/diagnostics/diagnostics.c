@@ -132,6 +132,90 @@ static void emit_json(const char *level, Token t, const char *msg, const char *s
     }
 }
 
+// The single path of every diagnostic: silence, count, print (text or JSON), notify the
+// LSP/REPL and, for a fatal error, stop. `hints` is NULL or a NULL-terminated array.
+static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char *msg,
+                      const char *const *hints)
+{
+    ParserContext *pctx = d_ctx.parser_ctx;
+    if (is_error && pctx && pctx->suppress_errors)
+    {
+        if (fatal && pctx->is_fault_tolerant)
+        {
+            pctx->had_error = 1;
+        }
+        return;
+    }
+    if (!is_error && diag_cfg()->quiet)
+    {
+        return;
+    }
+
+    if (is_error)
+    {
+        diag_compiler()->error_count++;
+    }
+    else
+    {
+        diag_compiler()->warning_count++;
+    }
+
+    if (diag_cfg()->json_output)
+    {
+        char joined_hints[MAX_PATH_LEN] = {0};
+        const char *const *h = hints;
+        while (h && *h)
+        {
+            if (joined_hints[0])
+            {
+                strncat(joined_hints, "\n", sizeof(joined_hints) - strlen(joined_hints) - 1);
+            }
+            strncat(joined_hints, *h, sizeof(joined_hints) - strlen(joined_hints) - 1);
+            h++;
+        }
+        emit_json(is_error ? "error" : "warning", t, msg, joined_hints[0] ? joined_hints : NULL,
+                  diag_id);
+    }
+    else
+    {
+        const char *label = is_error ? COLOR_RED "error: " : COLOR_YELLOW "warning: ";
+        fprintf(stderr, "%s" COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", label, msg);
+        diag_print_location(stderr, t);
+        diag_print_context(stderr, t, is_error ? COLOR_RED : COLOR_YELLOW);
+
+        const char *kind = is_error ? "help" : "note";
+        const char *const *h = hints;
+        while (h && *h)
+        {
+            fprintf(stderr, COLOR_CYAN "   = %s: " COLOR_RESET "%s\n", kind, *h);
+            h++;
+        }
+    }
+
+    if (is_error && pctx && pctx->on_error)
+    {
+        char full_msg[MAX_PATH_LEN * 2];
+        snprintf(full_msg, sizeof(full_msg), "%s", msg);
+        const char *const *h = hints;
+        while (h && *h)
+        {
+            strncat(full_msg, "\nhelp: ", sizeof(full_msg) - strlen(full_msg) - 1);
+            strncat(full_msg, *h, sizeof(full_msg) - strlen(full_msg) - 1);
+            h++;
+        }
+        if (fatal && pctx->is_fault_tolerant)
+        {
+            pctx->had_error = 1;
+        }
+        pctx->on_error(pctx->error_callback_data, t, full_msg);
+    }
+
+    if (fatal && !(pctx && pctx->is_fault_tolerant && pctx->on_error) && !diag_cfg()->mode_lsp)
+    {
+        exit(1);
+    }
+}
+
 void zfatal(const char *fmt, ...)
 {
     va_list a;
@@ -154,503 +238,81 @@ void zfatal(const char *fmt, ...)
 // Warning system (non-fatal).
 void zwarn(const char *fmt, ...)
 {
-    if (diag_cfg()->quiet)
-    {
-        return;
-    }
-    if (diag_cfg()->json_output)
-    {
-        char msg[MAX_ERROR_MSG_LEN];
-        va_list a;
-        va_start(a, fmt);
-        vsnprintf(msg, sizeof(msg), fmt, a);
-        va_end(a);
-        emit_json("warning", TOKEN_UNKNOWN, msg, NULL, DIAG_NONE);
-        return;
-    }
-    diag_compiler()->warning_count++;
-    va_list a;
-    va_start(a, fmt);
-    fprintf(stderr, COLOR_YELLOW "warning: " COLOR_RESET COLOR_BOLD);
-    vfprintf(stderr, fmt, a);
-    fprintf(stderr, COLOR_RESET "\n");
-    va_end(a);
-}
-
-void zwarn_at_diag(int diag_id, Token t, const char *fmt, ...)
-{
-    if (diag_cfg()->quiet)
-    {
-        return;
-    }
     char msg[MAX_ERROR_MSG_LEN];
     va_list a;
     va_start(a, fmt);
     vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
+    diag_emit(0, 0, DIAG_NONE, TOKEN_UNKNOWN, msg, NULL);
+}
 
-    if (diag_cfg()->json_output)
-    {
-        emit_json("warning", t, msg, NULL, diag_id);
-    }
-    else
-    {
-        // Header: 'warning: message'.
-        fprintf(stderr, COLOR_YELLOW "warning: " COLOR_RESET COLOR_BOLD);
-        fprintf(stderr, "%s", msg);
-        fprintf(stderr, COLOR_RESET "\n");
-
-        diag_print_location(stderr, t);
-    }
+void zwarn_at_diag(int diag_id, Token t, const char *fmt, ...)
+{
+    char msg[MAX_ERROR_MSG_LEN];
+    va_list a;
+    va_start(a, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, a);
+    va_end(a);
+    diag_emit(0, 0, diag_id, t, msg, NULL);
 }
 
 void zwarn_at(Token t, const char *fmt, ...)
 {
-    if (diag_cfg()->quiet)
-    {
-        return;
-    }
-    if (diag_cfg()->json_output)
-    {
-        char msg[MAX_ERROR_MSG_LEN];
-        va_list a;
-        va_start(a, fmt);
-        vsnprintf(msg, sizeof(msg), fmt, a);
-        va_end(a);
-        emit_json("warning", t, msg, NULL, DIAG_NONE);
-        return;
-    }
-    // Header: 'warning: message'.
-    diag_compiler()->warning_count++;
+    char msg[MAX_ERROR_MSG_LEN];
     va_list a;
     va_start(a, fmt);
-    fprintf(stderr, COLOR_YELLOW "warning: " COLOR_RESET COLOR_BOLD);
-    vfprintf(stderr, fmt, a);
-    fprintf(stderr, COLOR_RESET "\n");
+    vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-
-    // Context. Only if token has valid data.
-    if (t.start && t.col > 0)
-    {
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, COLOR_YELLOW);
-        fprintf(stderr, COLOR_BLUE "   |\n" COLOR_RESET);
-    }
-    else
-    {
-        // No valid token position — just print the bare location line.
-        diag_print_location(stderr, t);
-    }
+    diag_emit(0, 0, DIAG_NONE, t, msg, NULL);
 }
 
 void zwarn_with_suggestion_diag(int diag_id, Token t, const char *msg, const char *suggestion)
 {
-    if (diag_cfg()->quiet)
-    {
-        return;
-    }
-    if (diag_cfg()->json_output)
-    {
-        emit_json("warning", t, msg, suggestion, diag_id);
-        return;
-    }
-    zwarn_with_suggestion(t, msg, suggestion);
+    const char *hints[] = {suggestion, NULL};
+    diag_emit(0, 0, diag_id, t, msg, suggestion ? hints : NULL);
 }
 
 void zwarn_with_suggestion(Token t, const char *msg, const char *suggestion)
 {
-    if (diag_cfg()->quiet)
-    {
-        return;
-    }
-    if (diag_cfg()->json_output)
-    {
-        emit_json("warning", t, msg, suggestion, DIAG_NONE);
-        return;
-    }
-
-    // Header: 'warning: message'.
-    diag_compiler()->warning_count++;
-    fprintf(stderr, COLOR_YELLOW "warning: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", msg);
-
-    // Context.
-    if (t.start && t.col > 0)
-    {
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, COLOR_YELLOW);
-        if (suggestion)
-        {
-            fprintf(stderr, COLOR_CYAN "   = note: " COLOR_RESET "%s\n", suggestion);
-        }
-    }
-    else
-    {
-        diag_print_location(stderr, t);
-    }
+    const char *hints[] = {suggestion, NULL};
+    diag_emit(0, 0, DIAG_NONE, t, msg, suggestion ? hints : NULL);
 }
 
 void zpanic_at(Token t, const char *fmt, ...)
 {
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->suppress_errors)
-    {
-        if (d_ctx.parser_ctx->is_fault_tolerant)
-        {
-            d_ctx.parser_ctx->had_error = 1;
-        }
-        return;
-    }
-    if (diag_cfg()->json_output)
-    {
-        char msg[MAX_ERROR_MSG_LEN];
-        va_list a;
-        va_start(a, fmt);
-        vsnprintf(msg, sizeof(msg), fmt, a);
-        va_end(a);
-        emit_json("error", t, msg, NULL, DIAG_NONE);
-        if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_error)
-        {
-            d_ctx.parser_ctx->had_error = 1;
-            d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, msg);
-            return;
-        }
-        if (diag_cfg()->mode_lsp)
-        {
-            return;
-        }
-        exit(1);
-    }
-    // Header: 'error: message'.
+    char msg[MAX_ERROR_MSG_LEN];
     va_list a;
     va_start(a, fmt);
-    fprintf(stderr, COLOR_RED "error: " COLOR_RESET COLOR_BOLD);
-    vfprintf(stderr, fmt, a);
-    fprintf(stderr, COLOR_RESET "\n");
+    vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-
-    // Context line.
-    if (t.start && t.col > 0)
-    {
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, COLOR_RED);
-    }
-    else
-    {
-        diag_print_location(stderr, t);
-    }
-
-    diag_compiler()->error_count++;
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_error)
-    {
-        // Construct error message buffer
-        char msg[MAX_ERROR_MSG_LEN];
-        va_list args2;
-        va_start(args2, fmt);
-        vsnprintf(msg, sizeof(msg), fmt, args2);
-        va_end(args2);
-
-        d_ctx.parser_ctx->had_error = 1;
-        d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, msg);
-        return; // Recover!
-    }
-
-    if (diag_cfg()->mode_lsp)
-    {
-        return;
-    }
-    exit(1);
+    diag_emit(1, 1, DIAG_NONE, t, msg, NULL);
 }
 
 // Enhanced error with suggestion.
 void zpanic_with_suggestion(Token t, const char *msg, const char *suggestion)
 {
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->suppress_errors)
-    {
-        if (d_ctx.parser_ctx->is_fault_tolerant)
-        {
-            d_ctx.parser_ctx->had_error = 1;
-        }
-        return;
-    }
-    if (diag_cfg()->json_output)
-    {
-        emit_json("error", t, msg, suggestion, DIAG_NONE);
-        if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_error)
-        {
-            char full_msg[MAX_ERROR_MSG_LEN];
-            snprintf(full_msg, sizeof(full_msg), "%s (Suggestion: %s)", msg,
-                     suggestion ? suggestion : "");
-            d_ctx.parser_ctx->had_error = 1;
-            d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
-            diag_compiler()->error_count++;
-            return;
-        }
-        if (diag_cfg()->mode_lsp)
-        {
-            return;
-        }
-        exit(1);
-    }
-    // Header.
-    fprintf(stderr, COLOR_RED "error: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", msg);
-
-    diag_compiler()->error_count++;
-
-    // Context.
-    if (t.start && t.col > 0)
-    {
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, COLOR_RED);
-        if (suggestion)
-        {
-            fprintf(stderr, COLOR_CYAN "   = help: " COLOR_RESET "%s\n", suggestion);
-        }
-    }
-    else
-    {
-        diag_print_location(stderr, t);
-    }
-
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_error)
-    {
-        // Construct error message buffer
-        char full_msg[MAX_ERROR_MSG_LEN];
-        snprintf(full_msg, sizeof(full_msg), "%s (Suggestion: %s)", msg,
-                 suggestion ? suggestion : "");
-        d_ctx.parser_ctx->had_error = 1;
-        d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
-        return; // Recover!
-    }
-
-    if (diag_cfg()->mode_lsp)
-    {
-        return;
-    }
-    exit(1);
+    const char *hints[] = {suggestion, NULL};
+    diag_emit(1, 1, DIAG_NONE, t, msg, suggestion ? hints : NULL);
 }
 
 void zpanic_with_hints(Token t, const char *msg, const char *const *hints)
 {
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->suppress_errors)
-    {
-        if (d_ctx.parser_ctx->is_fault_tolerant)
-        {
-            d_ctx.parser_ctx->had_error = 1;
-        }
-        return;
-    }
-    if (diag_cfg()->json_output)
-    {
-        char combined_hints[MAX_PATH_LEN] = {0};
-        if (hints)
-        {
-            const char *const *h = hints;
-            while (*h)
-            {
-                if (combined_hints[0])
-                {
-                    strncat(combined_hints, "\n", sizeof(combined_hints) - 1);
-                }
-                strncat(combined_hints, *h, sizeof(combined_hints) - strlen(combined_hints) - 1);
-                h++;
-            }
-        }
-        emit_json("error", t, msg, combined_hints[0] ? combined_hints : NULL, DIAG_NONE);
-
-        if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_error)
-        {
-            char full_msg[MAX_PATH_LEN * 2];
-            snprintf(full_msg, sizeof(full_msg), "%s\n%s", msg, combined_hints);
-            d_ctx.parser_ctx->had_error = 1;
-            d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
-            return;
-        }
-        if (diag_cfg()->mode_lsp)
-        {
-            return;
-        }
-        exit(1);
-    }
-
-    // Header.
-    fprintf(stderr, COLOR_RED "error: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", msg);
-
-    // Context.
-    if (t.start && t.col > 0)
-    {
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, COLOR_RED);
-    }
-    else
-    {
-        diag_print_location(stderr, t);
-    }
-
-    // Hints.
-    if (hints)
-    {
-        const char *const *h = hints;
-        while (*h)
-        {
-            fprintf(stderr, COLOR_BLUE "   |\n" COLOR_RESET);
-            fprintf(stderr, COLOR_CYAN "   = help: " COLOR_RESET "%s\n", *h);
-            h++;
-        }
-    }
-
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_error)
-    {
-        // Construct error message buffer
-        char full_msg[MAX_PATH_LEN * 2];
-        char combined_hints[MAX_MANGLED_NAME_LEN * 4] = {0};
-        if (hints)
-        {
-            const char *const *h = hints;
-            while (*h)
-            {
-                strncat(combined_hints,
-                        "\nHelp: ", sizeof(combined_hints) - strlen(combined_hints) - 1);
-                strncat(combined_hints, *h, sizeof(combined_hints) - strlen(combined_hints) - 1);
-                h++;
-            }
-        }
-        // Construct error message buffer
-        int header_len = snprintf(full_msg, sizeof(full_msg), "%s", msg);
-        if (header_len < (int)sizeof(full_msg))
-        {
-            strncat(full_msg, combined_hints, sizeof(full_msg) - strlen(full_msg) - 1);
-        }
-        d_ctx.parser_ctx->had_error = 1;
-        d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
-        return; // Recover!
-    }
-
-    if (diag_cfg()->mode_lsp)
-    {
-        return;
-    }
-    exit(1);
+    diag_emit(1, 1, DIAG_NONE, t, msg, hints);
 }
 
 void zerror_at(Token t, const char *fmt, ...)
 {
-    if (diag_cfg()->json_output)
-    {
-        char msg[MAX_ERROR_MSG_LEN];
-        va_list a;
-        va_start(a, fmt);
-        vsnprintf(msg, sizeof(msg), fmt, a);
-        va_end(a);
-        emit_json("error", t, msg, NULL, DIAG_NONE);
-        diag_compiler()->error_count++;
-        if (d_ctx.parser_ctx && d_ctx.parser_ctx->on_error)
-        {
-            d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, msg);
-        }
-        return;
-    }
-    // Header: 'error: message'.
+    char msg[MAX_ERROR_MSG_LEN];
     va_list a;
     va_start(a, fmt);
-    fprintf(stderr, COLOR_RED "error: " COLOR_RESET COLOR_BOLD);
-    vfprintf(stderr, fmt, a);
-    fprintf(stderr, COLOR_RESET "\n");
+    vsnprintf(msg, sizeof(msg), fmt, a);
     va_end(a);
-
-    // Context line.
-    if (t.start && t.col > 0)
-    {
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, COLOR_RED);
-    }
-    else
-    {
-        diag_print_location(stderr, t);
-    }
-
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->on_error)
-    {
-        // Construct error message buffer
-        char msg[MAX_ERROR_MSG_LEN];
-        va_list args2;
-        va_start(args2, fmt);
-        vsnprintf(msg, sizeof(msg), fmt, args2);
-        va_end(args2);
-
-        d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, msg);
-    }
-    diag_compiler()->error_count++;
+    diag_emit(1, 0, DIAG_NONE, t, msg, NULL);
 }
 
 void zerror_with_hints(Token t, const char *msg, const char *const *hints)
 {
-    char combined_hints[MAX_PATH_LEN] = {0};
-    if (hints)
-    {
-        const char *const *h = hints;
-        while (*h)
-        {
-            if (combined_hints[0])
-            {
-                strncat(combined_hints, "\n", sizeof(combined_hints) - 1);
-            }
-            strncat(combined_hints, *h, sizeof(combined_hints) - strlen(combined_hints) - 1);
-            h++;
-        }
-    }
-
-    if (diag_cfg()->json_output)
-    {
-        emit_json("error", t, msg, combined_hints[0] ? combined_hints : NULL, DIAG_NONE);
-        if (d_ctx.parser_ctx && d_ctx.parser_ctx->on_error)
-        {
-            char full_msg[MAX_PATH_LEN * 2];
-            int header_len = snprintf(full_msg, sizeof(full_msg), "%s\n", msg);
-            if (header_len < (int)sizeof(full_msg))
-            {
-                strncat(full_msg, combined_hints, sizeof(full_msg) - strlen(full_msg) - 1);
-            }
-            d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
-        }
-        diag_compiler()->error_count++;
-        return;
-    }
-
-    // Header.
-    fprintf(stderr, COLOR_RED "error: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", msg);
-
-    // Context.
-    if (t.start && t.col > 0)
-    {
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, COLOR_RED);
-        if (hints)
-        {
-            const char *const *h = hints;
-            while (*h)
-            {
-                fprintf(stderr, COLOR_CYAN "   = help: " COLOR_RESET "%s\n", *h);
-                h++;
-            }
-        }
-    }
-    else
-    {
-        diag_print_location(stderr, t);
-    }
-
-    if (d_ctx.parser_ctx && d_ctx.parser_ctx->on_error)
-    {
-        // Construct error message buffer
-        char full_msg[MAX_PATH_LEN * 2];
-        int header_len = snprintf(full_msg, sizeof(full_msg), "%s", msg);
-        if (header_len < (int)sizeof(full_msg))
-        {
-            strncat(full_msg, "\n", sizeof(full_msg) - strlen(full_msg) - 1);
-            strncat(full_msg, combined_hints, sizeof(full_msg) - strlen(full_msg) - 1);
-        }
-        d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
-    }
-    diag_compiler()->error_count++;
+    diag_emit(1, 0, DIAG_NONE, t, msg, hints);
 }
 
 // Specific error types with helpful messages.

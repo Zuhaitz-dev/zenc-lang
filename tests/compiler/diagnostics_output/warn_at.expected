@@ -5,6 +5,5 @@ warning: repeat is deprecated. Use 'for _ in 0..N' instead.
 5  |     repeat 3 {
    |     ^ here
    |
-   |
     Finished build in Xs with 0 errors and 1 warnings
 [exit 0]

@@ -8,5 +8,6 @@ warning: Unused variable 'unused_local'
    = note: Consider removing it or prefixing with '_'
 warning: Unused parameter 'unused_param' in function 'helper'
   --> tests/compiler/diagnostics_output/warn_diag.zc
+   = note: Consider prefixing with '_' if intentionally unused
     Finished build in Xs with 0 errors and 2 warnings
 [exit 0]
