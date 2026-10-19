@@ -99,6 +99,11 @@ int driver_run(ZenCompiler *compiler)
 
 static int compile_program(ZenCompiler *compiler)
 {
+    // The counts are per compilation: the build fails when error_count is not 0 (see
+    // check_moves_only), so a previous compilation of the same compiler must not leave any.
+    compiler->error_count = 0;
+    compiler->warning_count = 0;
+
     ParserContext ctx;
     memset(&ctx, 0, sizeof(ctx));
     ctx.compiler = compiler;
