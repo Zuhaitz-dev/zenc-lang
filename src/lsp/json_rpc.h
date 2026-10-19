@@ -26,5 +26,3 @@ extern int g_lsp_request_is_readonly;
 extern int g_lsp_definition_link_support;
 
 #endif
-struct ZenCompiler;
-int lsp_main(struct ZenCompiler *compiler, int argc, char **argv);

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "json_rpc.h"
+#include "lsp_main.h"
 #include "lsp_project.h"
 #include "../constants.h"
 #include "zprep.h"
