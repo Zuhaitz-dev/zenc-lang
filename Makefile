@@ -565,11 +565,14 @@ test-lsp: $(TARGET) $(PLUGINS) zc-lsp
 # Unit tests in C of the compiler's internals (tests/unit/, with utest.h). They link
 # the compiler objects, without main.o: tests/unit/unit_main.c provides main().
 UNIT_TEST_SRCS = $(wildcard tests/unit/*.c tests/unit/*/*.c)
+# tests/unit/lsp/ also links the LSP index, which only needs the core; skipped without the LSP.
+UNIT_TEST_LSP_OBJS = $(if $(filter 1,$(ZC_LSP)),$(OBJ_DIR)/src/lsp/lsp_index.o)
+UNIT_TEST_SRCS := $(if $(filter 1,$(ZC_LSP)),$(UNIT_TEST_SRCS),$(filter-out tests/unit/lsp/%,$(UNIT_TEST_SRCS)))
 
-test-unit: $(TOOL_BASE_OBJS)
+test-unit: $(TOOL_BASE_OBJS) $(UNIT_TEST_LSP_OBJS)
 	@echo "=> Building unit tests"
 	@$(MKDIR) $(OBJ_DIR)/tests/unit
-	$(CC) $(CFLAGS) -isystem tests/vendor -I tests/unit $(UNIT_TEST_SRCS) $(TOOL_BASE_OBJS) -o $(OBJ_DIR)/tests/unit/run_unit $(LIBS)
+	$(CC) $(CFLAGS) -isystem tests/vendor -I tests/unit $(UNIT_TEST_SRCS) $(TOOL_BASE_OBJS) $(UNIT_TEST_LSP_OBJS) -o $(OBJ_DIR)/tests/unit/run_unit $(LIBS)
 	@echo "=> Running unit tests"
 	./$(OBJ_DIR)/tests/unit/run_unit
 

@@ -240,9 +240,6 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
                 snprintf(hover, sizeof(hover), "fn %s(...) -> %s", name, ret);
             }
             lsp_index_add_def(idx, node->token, hover, node);
-
-            // Recurse body.
-            lsp_walk_node(idx, node->func.body, depth + 1);
         }
         else if (node->kind == NODE_VAR_DECL)
         {
@@ -250,8 +247,6 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
             snprintf(hover, sizeof(hover), "let %s", name);
             lsp_index_add_def(idx, node->token, hover, node);
-
-            lsp_walk_node(idx, node->var_decl.init_expr, depth + 1);
         }
         else if (node->kind == NODE_CONST)
         {
@@ -259,8 +254,6 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             const char *name = node->var_decl.name ? node->var_decl.name : "unknown";
             snprintf(hover, sizeof(hover), "def %s", name);
             lsp_index_add_def(idx, node->token, hover, node);
-
-            lsp_walk_node(idx, node->var_decl.init_expr, depth + 1);
         }
         else if (node->kind == NODE_STRUCT)
         {
@@ -331,88 +324,24 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             lsp_index_add_ref(idx, node->token, node->definition_token, node);
         }
 
-        // General recursion for children.
-        switch (node->kind)
+        // Struct literal fields are NODE_VAR_DECLs named after the field, not
+        // declarations: walk only their values. Trait methods are prototypes,
+        // kept out of the index.
+        if (node->kind == NODE_EXPR_STRUCT_INIT)
         {
-        case NODE_ROOT:
-            lsp_walk_node(idx, node->root.children, depth + 1);
-            break;
-        case NODE_BLOCK:
-            lsp_walk_node(idx, node->block.statements, depth + 1);
-            break;
-        case NODE_IF:
-            lsp_walk_node(idx, node->if_stmt.condition, depth + 1);
-            lsp_walk_node(idx, node->if_stmt.then_body, depth + 1);
-            lsp_walk_node(idx, node->if_stmt.else_body, depth + 1);
-            break;
-        case NODE_WHILE:
-            lsp_walk_node(idx, node->while_stmt.condition, depth + 1);
-            lsp_walk_node(idx, node->while_stmt.body, depth + 1);
-            break;
-        case NODE_RETURN:
-            lsp_walk_node(idx, node->ret.value, depth + 1);
-            break;
-        case NODE_EXPR_BINARY:
-            lsp_walk_node(idx, node->binary.left, depth + 1);
-            lsp_walk_node(idx, node->binary.right, depth + 1);
-            break;
-        case NODE_EXPR_UNARY:
-            lsp_walk_node(idx, node->unary.operand, depth + 1);
-            break;
-        case NODE_EXPR_CAST:
-            lsp_walk_node(idx, node->cast.expr, depth + 1);
-            break;
-        case NODE_EXPR_MEMBER:
-            lsp_walk_node(idx, node->member.target, depth + 1);
-            break;
-        case NODE_EXPR_INDEX:
-            lsp_walk_node(idx, node->index.array, depth + 1);
-            lsp_walk_node(idx, node->index.index, depth + 1);
-            break;
-        case NODE_EXPR_CALL:
-            lsp_walk_node(idx, node->call.callee, depth + 1);
-            lsp_walk_node(idx, node->call.args, depth + 1);
-            break;
-        case NODE_MATCH:
-            lsp_walk_node(idx, node->match_stmt.expr, depth + 1);
-            lsp_walk_node(idx, node->match_stmt.cases, depth + 1);
-            break;
-        case NODE_MATCH_CASE:
-            lsp_walk_node(idx, node->match_case.guard, depth + 1);
-            lsp_walk_node(idx, node->match_case.body, depth + 1);
-            break;
-        case NODE_FOR:
-            lsp_walk_node(idx, node->for_stmt.init, depth + 1);
-            lsp_walk_node(idx, node->for_stmt.condition, depth + 1);
-            lsp_walk_node(idx, node->for_stmt.step, depth + 1);
-            lsp_walk_node(idx, node->for_stmt.body, depth + 1);
-            break;
-        case NODE_FOR_RANGE:
-            lsp_walk_node(idx, node->for_range.start, depth + 1);
-            lsp_walk_node(idx, node->for_range.end, depth + 1);
-            lsp_walk_node(idx, node->for_range.body, depth + 1);
-            break;
-        case NODE_LOOP:
-            lsp_walk_node(idx, node->loop_stmt.body, depth + 1);
-            break;
-        case NODE_DEFER:
-            lsp_walk_node(idx, node->defer_stmt.stmt, depth + 1);
-            break;
-        case NODE_GUARD:
-            lsp_walk_node(idx, node->guard_stmt.condition, depth + 1);
-            lsp_walk_node(idx, node->guard_stmt.body, depth + 1);
-            break;
-        case NODE_TEST:
-            lsp_walk_node(idx, node->test_stmt.body, depth + 1);
-            break;
-        case NODE_IMPL:
-            lsp_walk_node(idx, node->impl.methods, depth + 1);
-            break;
-        case NODE_IMPL_TRAIT:
-            lsp_walk_node(idx, node->impl_trait.methods, depth + 1);
-            break;
-        default:
-            break;
+            for (ASTNode *f = node->struct_init.fields; f; f = f->next)
+            {
+                lsp_walk_node(idx, f->var_decl.init_expr, depth + 1);
+            }
+        }
+        else if (node->kind != NODE_TRAIT)
+        {
+            // Walk every child list.
+            ASTChildren children = ast_children(node);
+            for (int i = 0; i < children.count; i++)
+            {
+                lsp_walk_node(idx, *children.slots[i], depth + 1);
+            }
         }
 
         // Move to next sibling without recursion.
