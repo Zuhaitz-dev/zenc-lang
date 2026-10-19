@@ -118,7 +118,8 @@ static void emit_json(const char *level, Token t, const char *msg, const char *s
             severity = 3; // Info
         }
 
-        char full_msg[MAX_ERROR_MSG_LEN * 2];
+        // Room for the message, the hints (diag_emit joins them in MAX_PATH_LEN) and the text.
+        char full_msg[MAX_ERROR_MSG_LEN + MAX_PATH_LEN + 32];
         if (suggestion)
         {
             snprintf(full_msg, sizeof(full_msg), "%s (Suggestion: %s)", msg, suggestion);
