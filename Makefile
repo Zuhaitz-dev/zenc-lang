@@ -569,10 +569,10 @@ UNIT_TEST_SRCS = $(wildcard tests/unit/*.c tests/unit/*/*.c)
 UNIT_TEST_LSP_OBJS = $(if $(filter 1,$(ZC_LSP)),$(OBJ_DIR)/src/lsp/lsp_index.o $(OBJ_DIR)/src/lsp/lsp_locals.o)
 UNIT_TEST_SRCS := $(if $(filter 1,$(ZC_LSP)),$(UNIT_TEST_SRCS),$(filter-out tests/unit/lsp/%,$(UNIT_TEST_SRCS)))
 
-test-unit: $(TOOL_BASE_OBJS) $(UNIT_TEST_LSP_OBJS)
+test-unit: $(TOOL_BASE_OBJS) $(DRIVER_OBJS) $(UNIT_TEST_LSP_OBJS)
 	@echo "=> Building unit tests"
 	@$(MKDIR) $(OBJ_DIR)/tests/unit
-	$(CC) $(CFLAGS) -isystem tests/vendor -I tests/unit $(UNIT_TEST_SRCS) $(TOOL_BASE_OBJS) $(UNIT_TEST_LSP_OBJS) -o $(OBJ_DIR)/tests/unit/run_unit $(LIBS)
+	$(CC) $(CFLAGS) -isystem tests/vendor -I tests/unit $(UNIT_TEST_SRCS) $(TOOL_BASE_OBJS) $(DRIVER_OBJS) $(UNIT_TEST_LSP_OBJS) -o $(OBJ_DIR)/tests/unit/run_unit $(LIBS)
 	@echo "=> Running unit tests"
 	./$(OBJ_DIR)/tests/unit/run_unit
 

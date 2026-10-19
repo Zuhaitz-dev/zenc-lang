@@ -97,7 +97,7 @@ int driver_run(ZenCompiler *compiler)
     return result;
 }
 
-int driver_compile(ZenCompiler *compiler)
+static int compile_program(ZenCompiler *compiler)
 {
     ParserContext ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -461,4 +461,14 @@ int driver_compile(ZenCompiler *compiler)
     }
 
     return 0;
+}
+
+int driver_compile(ZenCompiler *compiler)
+{
+    int result = compile_program(compiler);
+    // The parser context lived on compile_program's stack: unregister it, so that a
+    // diagnostic emitted after the compilation does not reach freed memory.
+    diag_set_parser_ctx(NULL);
+    token_set_parser_ctx(NULL);
+    return result;
 }
