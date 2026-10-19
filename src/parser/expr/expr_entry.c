@@ -420,7 +420,10 @@ void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda)
             s = s->parent;
         }
 
-        if (is_found && !is_local)
+        // Only a local variable of an enclosing scope is captured. A global is reached
+        // directly, and a name found in no scope is not a variable outside the lambda: a C
+        // macro, or a local that a comptime block in the body declares.
+        if (!is_found || !is_local)
         {
             continue;
         }
