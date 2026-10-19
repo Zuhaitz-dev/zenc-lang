@@ -8,7 +8,8 @@
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup(&g_compiler);
+    ZenCompiler compiler = {0};
+    z_compiler_setup(&compiler);
 
     // run_repl() reads options starting at argv[2] (it expects argv[1] to be
     // the "repl" subcommand). Normalize so direct `zc-repl -c <line>` and
@@ -33,6 +34,6 @@ int main(int argc, char **argv)
         shifted[n] = NULL;
     }
 
-    run_repl(argv[0], n, shifted);
+    run_repl(&compiler, argv[0], n, shifted);
     return 0;
 }
