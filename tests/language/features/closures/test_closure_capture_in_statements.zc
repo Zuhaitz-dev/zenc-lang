@@ -1,0 +1,66 @@
+// closures: test_closure_capture_in_statements
+// A lambda captures an outer variable wherever its body uses it, not only
+// inside the statements the capture analysis used to list.
+
+struct Point {
+    k: int;
+}
+
+test "capture used only inside unless" {
+    let k = 7;
+    let f = fn(x: int) -> int { unless x < 0 { return k; } return 0; };
+    assert f(1) == 7;
+}
+
+test "capture used only inside repeat" {
+    let k = 7;
+    let f = fn(x: int) -> int { let r = 0; repeat 1 { r = k + x; } return r; };
+    assert f(1) == 8;
+}
+
+test "capture used only inside loop" {
+    let k = 7;
+    let f = fn(x: int) -> int { loop { return k + x; } };
+    assert f(1) == 8;
+}
+
+test "capture used only inside guard" {
+    let k = 7;
+    let f = fn(x: int) -> int { guard x > 0 else { return k; } return 0; };
+    assert f(0) == 7;
+}
+
+test "capture used only inside do-while" {
+    let k = 7;
+    let f = fn(x: int) -> int { let r = 0; do { r = k + x; } while 0; return r; };
+    assert f(1) == 8;
+}
+
+test "capture used only inside a tuple" {
+    let k = 7;
+    let f = fn(x: int) -> int { let t = (k, x); return t.0; };
+    assert f(1) == 7;
+}
+
+test "a struct literal field named like the capture is not a local" {
+    let k = 7;
+    let f = fn(x: int) -> int { let p = Point { k: x }; return p.k + k; };
+    assert f(1) == 8;
+}
+
+test "capture used only inside println" {
+    let k = 7;
+    let f = fn(x: int) -> int { println "{k}"; return x; };
+    assert f(1) == 1;
+}
+
+test "a comptime block in a lambda is not searched for captures" {
+    let k = 7;
+    let f = fn() -> int {
+        comptime {
+            yield("println \"generated\";");
+        }
+        return k;
+    };
+    assert f() == 7;
+}
