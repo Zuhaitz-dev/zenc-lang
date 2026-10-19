@@ -42,7 +42,7 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
     }
 
     cfg->mode_lsp = 1;
-    cfg->json_output = 1;
+    compiler->diag_consumer = lsp_diagnose_consumer;
 
     // Initialize root path from executable to find std/
     char self_path[MAX_PATH_LEN];

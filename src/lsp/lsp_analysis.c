@@ -57,7 +57,7 @@ void lsp_on_error(void *data, Token t, const char *msg)
     (void)data;
     (void)t;
     (void)msg;
-    // We do nothing here because lsp_on_diagnostic already captures everything via emit_json.
+    // We do nothing here: the diagnostics reach lsp_diagnose_consumer.
     // This function exists merely to satisfy the 'if (g_parser_ctx->on_error)' check
     // inside zpanic_at so the compiler recovers instead of exiting.
 }
@@ -85,6 +85,29 @@ void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int d
         list->tail->next = d;
         list->tail = d;
     }
+}
+
+// Consumer of the server's diagnostics. `data` is the DiagnosticList of the document
+// being checked, or NULL when nobody collects them (e.g. while indexing).
+void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d)
+{
+    if (!data)
+    {
+        return;
+    }
+    char hints[MAX_PATH_LEN];
+    str_join(hints, sizeof(hints), d->hints, "\n");
+    char msg[MAX_ERROR_MSG_LEN * 2];
+    if (hints[0])
+    {
+        snprintf(msg, sizeof(msg), "%s (Suggestion: %s)", d->message, hints);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg), "%s", d->message);
+    }
+    lsp_on_diagnostic(data, d->token, d->is_error ? LSP_SEVERITY_ERROR : LSP_SEVERITY_WARNING, msg,
+                      d->id);
 }
 
 void lsp_close_file(const char *uri)
@@ -139,21 +162,18 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
     DiagnosticList diagnostics = {0};
 
     // We attach the callback to 'g_project->ctx'.
-    void *old_data = g_project->ctx->error_callback_data;
     void (*old_cb_error)(void *, Token, const char *) = g_project->ctx->on_error;
-    void (*old_cb_diag)(void *, Token, int, const char *, int) = g_project->ctx->on_diagnostic;
+    void *old_consumer_data = lsp_compiler()->diag_consumer_data;
 
-    g_project->ctx->error_callback_data = &diagnostics;
     g_project->ctx->on_error = lsp_on_error;
-    g_project->ctx->on_diagnostic = lsp_on_diagnostic;
+    lsp_compiler()->diag_consumer_data = &diagnostics;
 
     // Update and Parse
     lsp_project_update_file(uri, json_src);
 
     // Restore
-    g_project->ctx->on_diagnostic = old_cb_diag;
     g_project->ctx->on_error = old_cb_error;
-    g_project->ctx->error_callback_data = old_data;
+    lsp_compiler()->diag_consumer_data = old_consumer_data;
 
     // Construct JSON Response (publishDiagnostics)
     cJSON *root = cJSON_CreateObject();

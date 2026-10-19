@@ -2761,7 +2761,7 @@ static int check_module_header(const ModuleHeader *entry, void *data)
     cJSON_AddItemToObject(
         diagnostic, "range",
         make_range(entry->top->line, entry->top->name_column, (int)strlen(entry->top->name)));
-    cJSON_AddNumberToObject(diagnostic, "severity", 2);
+    cJSON_AddNumberToObject(diagnostic, "severity", LSP_SEVERITY_WARNING);
     cJSON_AddStringToObject(diagnostic, "message", message);
     cJSON_AddItemToArray(check->diagnostics, diagnostic);
     return 0;
