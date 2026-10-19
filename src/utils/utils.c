@@ -386,11 +386,6 @@ char *load_file(const char *fn, const char *relative_to, CompilerConfig *cfg)
         fclose(f);
         return NULL;
     }
-    if (l < 0)
-    {
-        fclose(f);
-        return NULL;
-    }
     rewind(f);
     char *b = xmalloc((size_t)(l + 1));
     if (fread(b, 1, (size_t)(l), f) != (size_t)(l))
