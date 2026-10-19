@@ -148,7 +148,8 @@ typedef struct ZenDiagnostic
 
 /**
  * @brief Receives every diagnostic that is not silenced. `data` is the pointer
- * registered with the consumer.
+ * registered with the consumer. `d` and the strings it points to are only valid during
+ * the call: copy what you keep.
  */
 typedef void (*DiagConsumer)(void *data, const ZenDiagnostic *d);
 

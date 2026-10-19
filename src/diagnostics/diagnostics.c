@@ -183,7 +183,12 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
 
     ZenDiagnostic d = {is_error, fatal, diag_id, t, msg, hints};
 
-    if (diag_cfg()->json_output)
+    ZenCompiler *compiler = diag_compiler();
+    if (compiler->diag_consumer)
+    {
+        compiler->diag_consumer(compiler->diag_consumer_data, &d);
+    }
+    else if (diag_cfg()->json_output)
     {
         char joined_hints[MAX_PATH_LEN] = {0};
         const char *const *h = hints;

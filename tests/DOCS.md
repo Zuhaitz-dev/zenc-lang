@@ -242,6 +242,11 @@ git diff tests/compiler/diagnostics_output/
 - One `test_<module>.c` per compiler module, e.g. `test_diagnostics.c`.
 - A test is `UTEST(group, name) { ... }`; it registers itself, there is no list to
   update. `unit_main.c` only holds `UTEST_MAIN()`.
+- Include `unit_test.h`, not `utest.h`, after the compiler headers: the compiler's
+  `arena.h` redirects `malloc`/`realloc`/`calloc` to its arena, and utest must use
+  the C library ones (it frees them with `free()`), or the binary crashes at exit.
+- Prefer `EXPECT_*` when a test must undo something at the end (e.g.
+  `diag_set_parser_ctx(NULL)`): a failing `ASSERT_*` returns from the test at once.
 - `make test-unit` builds every `unit/*.c` with the compiler's objects (all but
   `main.o`) and the same warning flags, into `obj/tests/unit/run_unit`, and runs it.
 
