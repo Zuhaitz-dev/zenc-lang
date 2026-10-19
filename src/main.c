@@ -465,14 +465,14 @@ int main(int argc, char **argv)
         }
         else if (strncmp(arg, "-Wno-", 5) == 0)
         {
-            if (!set_diag_by_name(arg + 5, 0))
+            if (!set_diag_by_name(&g_config, arg + 5, 0))
             {
                 append_flag(g_config.gcc_flags, sizeof(g_config.gcc_flags), arg, NULL);
             }
         }
         else if (strncmp(arg, "-W", 2) == 0)
         {
-            if (!set_diag_by_name(arg + 2, 1))
+            if (!set_diag_by_name(&g_config, arg + 2, 1))
             {
                 append_flag(g_config.gcc_flags, sizeof(g_config.gcc_flags), arg, NULL);
                 if (!g_config.warn_as_errors && strcmp(arg, "-Werror") == 0)

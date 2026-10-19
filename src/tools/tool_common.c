@@ -71,11 +71,11 @@ void z_compiler_setup(void)
     }
 
     // Default diagnostics: Enable standard Zen C diagnostics
-    set_diag_by_name("unused", 1);
-    set_diag_by_name("safety", 1);
-    set_diag_by_name("logic", 1);
-    set_diag_by_name("conversion", 1);
-    set_diag_by_name("style", 1);
+    set_diag_by_name(&g_config, "unused", 1);
+    set_diag_by_name(&g_config, "safety", 1);
+    set_diag_by_name(&g_config, "logic", 1);
+    set_diag_by_name(&g_config, "conversion", 1);
+    set_diag_by_name(&g_config, "style", 1);
 
     codegen_init_backends();
 

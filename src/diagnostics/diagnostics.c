@@ -800,17 +800,17 @@ void zwarn_diag(DiagnosticID id, Token t, const char *msg, const char *hint)
     }
 }
 
-int set_diag_by_name(const char *name, int enabled)
+int set_diag_by_name(CompilerConfig *cfg, const char *name, int enabled)
 {
     if (strcmp(name, "interop") == 0)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         return 1;
     }
@@ -818,13 +818,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         return 1;
     }
@@ -832,13 +832,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_VAR);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_PARAM);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_VAR);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_PARAM);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_VAR);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_PARAM);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_VAR);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_PARAM);
         }
         return 1;
     }
@@ -846,15 +846,15 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
         }
         return 1;
     }
@@ -862,15 +862,15 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
         }
         return 1;
     }
@@ -878,13 +878,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_NARROWING);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_NARROWING);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_NARROWING);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_NARROWING);
         }
         return 1;
     }
@@ -892,13 +892,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_STYLE_SHADOWING);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_STYLE_FORMAT);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_STYLE_SHADOWING);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_STYLE_FORMAT);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_SHADOWING);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_FORMAT);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_SHADOWING);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_FORMAT);
         }
         return 1;
     }
@@ -906,11 +906,11 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask = 0xFFFFFFFFFFFFFFFF;
+            cfg->diag_mask = 0xFFFFFFFFFFFFFFFF;
         }
         else
         {
-            diag_cfg()->diag_mask = 0;
+            cfg->diag_mask = 0;
         }
         return 1;
     }
