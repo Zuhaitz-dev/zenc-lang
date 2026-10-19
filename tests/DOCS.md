@@ -239,7 +239,9 @@ git diff tests/compiler/diagnostics_output/
 [utest.h](https://github.com/sheredom/utest.h), vendored unmodified in
 `vendor/utest.h` (commit `706f357`, Unlicense, see `LICENSES/utest.txt`).
 
-- One `test_<module>.c` per compiler module, e.g. `test_diagnostics.c`.
+- One `test_<module>.c` per compiler module, in the folder that mirrors `src/`:
+  `src/utils/utils.c` is tested in `unit/utils/test_utils.c`. `unit_main.c` and
+  `unit_test.h` stay at the top of `unit/`.
 - A test is `UTEST(group, name) { ... }`; it registers itself, there is no list to
   update. `unit_main.c` only holds `UTEST_MAIN()`.
 - Include `unit_test.h`, not `utest.h`, after the compiler headers: the compiler's
@@ -247,8 +249,9 @@ git diff tests/compiler/diagnostics_output/
   the C library ones (it frees them with `free()`), or the binary crashes at exit.
 - Prefer `EXPECT_*` when a test must undo something at the end (e.g.
   `diag_set_parser_ctx(NULL)`): a failing `ASSERT_*` returns from the test at once.
-- `make test-unit` builds every `unit/*.c` with the compiler's objects (all but
-  `main.o`) and the same warning flags, into `obj/tests/unit/run_unit`, and runs it.
+- `make test-unit` builds every `.c` of `unit/` and its subfolders with the
+  compiler's objects (all but `main.o`) and the same warning flags, into
+  `obj/tests/unit/run_unit`, and runs it.
 
 ## Adding a New Test
 
