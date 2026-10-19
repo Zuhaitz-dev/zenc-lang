@@ -6,6 +6,7 @@
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup(&g_compiler);
-    return lsp_main(argc, argv);
+    ZenCompiler compiler = {0};
+    z_compiler_setup(&compiler);
+    return lsp_main(&compiler, argc, argv);
 }

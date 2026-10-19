@@ -104,10 +104,11 @@ static void probe_compiler_dirs(void)
         return;
     }
     g_compiler_dirs_probed = 1;
+    const CompilerConfig *cfg = &lsp_compiler()->config;
 
     // The configured compiler may carry its own arguments (e.g. "zig cc").
-    char compiler[sizeof(g_config.cc)];
-    snprintf(compiler, sizeof(compiler), "%s", g_config.cc[0] ? g_config.cc : "cc");
+    char compiler[sizeof(cfg->cc)];
+    snprintf(compiler, sizeof(compiler), "%s", cfg->cc[0] ? cfg->cc : "cc");
     char *argv[24];
     int argc = 0;
     for (char *word = strtok(compiler, " \t"); word && argc < 16; word = strtok(NULL, " \t"))
@@ -161,7 +162,7 @@ static void probe_compiler_dirs(void)
         line_start = line_end;
     }
 
-    fprintf(stderr, "zls: C compiler '%s' (exit %d) searches %d include directories\n", g_config.cc,
+    fprintf(stderr, "zls: C compiler '%s' (exit %d) searches %d include directories\n", cfg->cc,
             status, g_compiler_dirs.count);
     for (int i = 0; i < g_compiler_dirs.count; i++)
     {
@@ -388,15 +389,15 @@ static void collect_directive_dirs(const char *source, const char *file_path, Se
 // compiler searches them.
 static void collect_search_dirs(const char *source, const char *file_path, SearchDirList *dirs)
 {
+    const CompilerConfig *cfg = &lsp_compiler()->config;
     collect_directive_dirs(source, file_path, dirs);
-    for (size_t i = 0; i < g_config.include_paths.length; i++)
+    for (size_t i = 0; i < cfg->include_paths.length; i++)
     {
-        search_dirs_add(dirs, g_config.include_paths.data[i], "the configured include paths");
+        search_dirs_add(dirs, cfg->include_paths.data[i], "the configured include paths");
     }
     probe_compiler_dirs();
     char origin[MAX_PATH_LEN];
-    snprintf(origin, sizeof(origin), "the default directories of the C compiler (`%s`)",
-             g_config.cc);
+    snprintf(origin, sizeof(origin), "the default directories of the C compiler (`%s`)", cfg->cc);
     for (int i = 0; i < g_compiler_dirs.count; i++)
     {
         search_dirs_add(dirs, g_compiler_dirs.items[i], origin);

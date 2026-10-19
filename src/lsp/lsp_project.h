@@ -37,6 +37,11 @@ typedef struct
 extern LSPProject *g_project;
 extern int g_is_indexing;
 
+// The compiler the server works with: set once by lsp_main(), read by projects and
+// the C header support.
+void lsp_set_compiler(ZenCompiler *compiler);
+ZenCompiler *lsp_compiler(void);
+
 // Initialize the project with a root directory
 void lsp_project_init(const char *root_path);
 

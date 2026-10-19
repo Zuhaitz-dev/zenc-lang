@@ -16,8 +16,11 @@ int g_lsp_request_is_readonly = 1;
 int g_lsp_definition_link_support = 0;
 
 // Simple Main Loop for LSP.
-int lsp_main(int argc, char **argv)
+int lsp_main(ZenCompiler *compiler, int argc, char **argv)
 {
+    CompilerConfig *cfg = &compiler->config;
+    lsp_set_compiler(compiler);
+
     int verbose = 0;
     for (int i = 1; i < argc; i++)
     {
@@ -38,21 +41,21 @@ int lsp_main(int argc, char **argv)
         }
     }
 
-    g_config.mode_lsp = 1;
-    g_config.json_output = 1;
+    cfg->mode_lsp = 1;
+    cfg->json_output = 1;
 
     // Initialize root path from executable to find std/
     char self_path[MAX_PATH_LEN];
     z_get_executable_path(self_path, sizeof(self_path));
     if (self_path[0])
     {
-        g_config.root_path = xstrdup(self_path);
+        cfg->root_path = xstrdup(self_path);
     }
 
     // Everything the project allocates goes above this mark, so a rebuild can rewind to it.
     ZarenaMark base_mark = zarena_save(&g_arena);
     size_t base_total = g_arena.total_alloc;
-    ZenCompiler base_compiler = g_compiler;
+    ZenCompiler base_compiler = *compiler;
 
     while (1)
     {
