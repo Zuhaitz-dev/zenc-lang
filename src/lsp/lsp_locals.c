@@ -1,56 +1,30 @@
 // SPDX-License-Identifier: MIT
-#include "../constants.h"
-
 #include "lsp_locals.h"
 #include <string.h>
 
-static void enqueue_node_children(ASTNode *curr, ASTNode **queue, int *q_tail, int q_limit)
+// The first `let` called `name` in the list starting at `node`, children included, in source
+// order.
+static ASTNode *find_decl(ASTNode *node, const char *name)
 {
-    if (!curr)
+    for (; node; node = node->next)
     {
-        return;
-    }
-    if (curr->kind == NODE_BLOCK)
-    {
-        ASTNode *stmt = curr->block.statements;
-        while (stmt)
+        if (node->kind == NODE_VAR_DECL && node->var_decl.name &&
+            strcmp(node->var_decl.name, name) == 0)
         {
-            if (*q_tail < q_limit)
+            return node;
+        }
+
+        ASTChildren children = ast_children(node);
+        for (int i = 0; i < children.count; i++)
+        {
+            ASTNode *found = find_decl(*children.slots[i], name);
+            if (found)
             {
-                queue[(*q_tail)++] = stmt;
+                return found;
             }
-            stmt = stmt->next;
         }
     }
-    else if (curr->kind == NODE_IF)
-    {
-        if (curr->if_stmt.then_body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->if_stmt.then_body;
-        }
-        if (curr->if_stmt.else_body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->if_stmt.else_body;
-        }
-    }
-    else if (curr->kind == NODE_WHILE)
-    {
-        if (curr->while_stmt.body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->while_stmt.body;
-        }
-    }
-    else if (curr->kind == NODE_FOR)
-    {
-        if (curr->for_stmt.init && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->for_stmt.init;
-        }
-        if (curr->for_stmt.body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->for_stmt.body;
-        }
-    }
+    return NULL;
 }
 
 ASTNode *lsp_find_local_decl(ASTNode *func, const char *name)
@@ -59,10 +33,6 @@ ASTNode *lsp_find_local_decl(ASTNode *func, const char *name)
     {
         return NULL;
     }
-
-    ASTNode *queue[MAX_ERROR_MSG_LEN];
-    int q_head = 0, q_tail = 0;
-    queue[q_tail++] = func->func.body;
 
     // Also check params!
     if (func->func.param_names && func->func.arg_types)
@@ -76,53 +46,33 @@ ASTNode *lsp_find_local_decl(ASTNode *func, const char *name)
         }
     }
 
-    while (q_head < q_tail && q_tail < 1024)
-    {
-        ASTNode *curr = queue[q_head++];
-        if (curr->kind == NODE_VAR_DECL)
-        {
-            if (strcmp(curr->var_decl.name, name) == 0)
-            {
-                return curr;
-            }
-        }
-        else
-        {
-            enqueue_node_children(curr, queue, &q_tail, 1024);
-        }
-    }
-    return NULL;
+    return find_decl(func->func.body, name);
 }
 
-int lsp_has_loop_before(ASTNode *func, int line)
+static int has_loop_before(ASTNode *node, int line)
 {
-    ASTNode *queue[1024];
-    int q_head = 0, q_tail = 0;
-    if (func->func.body)
+    for (; node; node = node->next)
     {
-        queue[q_tail++] = func->func.body;
-    }
-
-    while (q_head < q_tail)
-    {
-        ASTNode *curr = queue[q_head++];
-        if (!curr)
+        // Approximate line check (Zen C AST stores line numbers in tokens)
+        if (node->token.line > 0 && node->token.line <= line &&
+            (node->kind == NODE_WHILE || node->kind == NODE_FOR || node->kind == NODE_LOOP))
         {
-            continue;
+            return 1;
         }
 
-        // Approximate line check (Zen C AST stores line numbers in tokens)
-        if (curr->token.line > 0 && curr->token.line <= line)
+        ASTChildren children = ast_children(node);
+        for (int i = 0; i < children.count; i++)
         {
-            if (curr->kind == NODE_WHILE || curr->kind == NODE_FOR || curr->kind == NODE_LOOP)
+            if (has_loop_before(*children.slots[i], line))
             {
                 return 1;
             }
         }
-
-        // Add children to queue
-        enqueue_node_children(curr, queue, &q_tail, 1024);
     }
-
     return 0;
+}
+
+int lsp_has_loop_before(ASTNode *func, int line)
+{
+    return func && has_loop_before(func->func.body, line);
 }
