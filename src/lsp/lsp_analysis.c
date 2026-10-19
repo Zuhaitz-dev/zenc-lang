@@ -5,6 +5,7 @@
 #include "../utils/utils.h"
 #include "lsp_project.h" // Includes lsp_index.h, parser.h
 #include "lsp_c_headers.h"
+#include "lsp_locals.h"
 #include "json_rpc.h"
 #include "../plugins/plugin_manager.h"
 #include <ctype.h>
@@ -754,97 +755,6 @@ void lsp_hover(const char *uri, int line, int col, int id)
     cJSON_Delete(c_hover_range);
 }
 
-static void enqueue_node_children(ASTNode *curr, ASTNode **queue, int *q_tail, int q_limit)
-{
-    if (!curr)
-    {
-        return;
-    }
-    if (curr->kind == NODE_BLOCK)
-    {
-        ASTNode *stmt = curr->block.statements;
-        while (stmt)
-        {
-            if (*q_tail < q_limit)
-            {
-                queue[(*q_tail)++] = stmt;
-            }
-            stmt = stmt->next;
-        }
-    }
-    else if (curr->kind == NODE_IF)
-    {
-        if (curr->if_stmt.then_body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->if_stmt.then_body;
-        }
-        if (curr->if_stmt.else_body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->if_stmt.else_body;
-        }
-    }
-    else if (curr->kind == NODE_WHILE)
-    {
-        if (curr->while_stmt.body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->while_stmt.body;
-        }
-    }
-    else if (curr->kind == NODE_FOR)
-    {
-        if (curr->for_stmt.init && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->for_stmt.init;
-        }
-        if (curr->for_stmt.body && *q_tail < q_limit)
-        {
-            queue[(*q_tail)++] = curr->for_stmt.body;
-        }
-    }
-}
-
-// Helper to find local in function
-static ASTNode *find_local_in_func(ASTNode *func, const char *name)
-{
-    if (!func || !func->func.body)
-    {
-        return NULL;
-    }
-
-    ASTNode *queue[MAX_ERROR_MSG_LEN];
-    int q_head = 0, q_tail = 0;
-    queue[q_tail++] = func->func.body;
-
-    // Also check params!
-    if (func->func.param_names && func->func.arg_types)
-    {
-        for (int i = 0; i < func->func.count; i++)
-        {
-            if (strcmp(func->func.param_names[i], name) == 0)
-            {
-                return NULL; // Args handled by the caller's symbol resolution path
-            }
-        }
-    }
-
-    while (q_head < q_tail && q_tail < 1024)
-    {
-        ASTNode *curr = queue[q_head++];
-        if (curr->kind == NODE_VAR_DECL)
-        {
-            if (strcmp(curr->var_decl.name, name) == 0)
-            {
-                return curr;
-            }
-        }
-        else
-        {
-            enqueue_node_children(curr, queue, &q_tail, 1024);
-        }
-    }
-    return NULL;
-}
-
 // Helper to resolve type of local var or arg
 static Type *resolve_local_type(ASTNode *func, const char *name)
 {
@@ -864,7 +774,7 @@ static Type *resolve_local_type(ASTNode *func, const char *name)
         }
     }
     // Check body vars
-    ASTNode *decl = find_local_in_func(func, name);
+    ASTNode *decl = lsp_find_local_decl(func, name);
     if (decl && decl->kind == NODE_VAR_DECL)
     {
         return decl->var_decl.type_info;
@@ -953,34 +863,10 @@ static LSPContext lsp_get_completion_context(const char *source, int line, int c
     }
 
     // AST-based check for loops
-    ASTNode *queue[1024];
-    int q_head = 0, q_tail = 0;
-    if (target_func->func.body)
+    if (lsp_has_loop_before(target_func, line))
     {
-        queue[q_tail++] = target_func->func.body;
+        return CTX_LOOP;
     }
-
-    while (q_head < q_tail)
-    {
-        ASTNode *curr = queue[q_head++];
-        if (!curr)
-        {
-            continue;
-        }
-
-        // Approximate line check (Zen C AST stores line numbers in tokens)
-        if (curr->token.line > 0 && curr->token.line <= line)
-        {
-            if (curr->kind == NODE_WHILE || curr->kind == NODE_FOR || curr->kind == NODE_LOOP)
-            {
-                return CTX_LOOP;
-            }
-        }
-
-        // Add children to queue
-        enqueue_node_children(curr, queue, &q_tail, 1024);
-    }
-
     return CTX_FUNCTION;
 }
 
@@ -1167,7 +1053,7 @@ void lsp_completion(const char *uri, int line, int col, int id)
                     }
                     else
                     {
-                        ASTNode *decl = find_local_in_func(target_func, base_name);
+                        ASTNode *decl = lsp_find_local_decl(target_func, base_name);
                         if (decl && decl->kind == NODE_VAR_DECL && decl->var_decl.type_str)
                         {
                             type_name = xstrdup(decl->var_decl.type_str);
