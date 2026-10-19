@@ -1,0 +1,5 @@
+   Compiling tests/compiler/diagnostics_output/warn_at_diag.zc...
+warning: Preprocessor directive '#define' is deprecated. Use 'def' instead.
+  --> tests/compiler/diagnostics_output/warn_at_diag.zc:4:1
+    Finished build in Xs with 0 errors and 0 warnings
+[exit 0]

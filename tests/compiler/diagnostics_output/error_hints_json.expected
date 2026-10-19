@@ -1,0 +1,5 @@
+   Compiling tests/compiler/diagnostics_output/error_hints_json.zc...
+{"file":"tests/compiler/diagnostics_output/error_hints_json.zc","line":10,"col":10,"level":"error","message":"Type mismatch: expected 'int32_t', but found 'string'","suggestion":"Check if you need an explicit cast\nEnsure the types match exactly (no implicit conversions for strict types)"}
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

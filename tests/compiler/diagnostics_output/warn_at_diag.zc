@@ -1,0 +1,6 @@
+// ARGS: build
+// zwarn_at_diag: warning with a diagnostic id
+
+#define LIMIT 10
+fn main() {
+}

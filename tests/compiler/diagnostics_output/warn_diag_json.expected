@@ -1,0 +1,5 @@
+   Compiling tests/compiler/diagnostics_output/warn_diag_json.zc...
+{"file":"tests/compiler/diagnostics_output/warn_diag_json.zc","line":5,"col":9,"level":"warning","message":"Unused variable 'unused_local'","suggestion":"Consider removing it or prefixing with '_'"}
+{"file":"tests/compiler/diagnostics_output/warn_diag_json.zc","line":0,"col":0,"level":"warning","message":"Unused parameter 'unused_param' in function 'helper'","suggestion":"Consider prefixing with '_' if intentionally unused"}
+    Finished build in Xs with 0 errors and 0 warnings
+[exit 0]

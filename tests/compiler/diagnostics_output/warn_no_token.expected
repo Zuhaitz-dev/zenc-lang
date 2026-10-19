@@ -1,0 +1,4 @@
+warning: Unknown build directive: 'nonsense: value'
+   Compiling tests/compiler/diagnostics_output/warn_no_token.zc...
+    Finished build in Xs with 0 errors and 1 warnings
+[exit 0]

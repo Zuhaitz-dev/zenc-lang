@@ -1,0 +1,7 @@
+// ARGS: transpile --json
+// zerror_at in JSON mode
+
+fn main() {
+    let x: const int = 10;
+    x = 20;
+}

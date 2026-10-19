@@ -1,0 +1,11 @@
+   Compiling tests/compiler/diagnostics_output/warn_suggestion.zc...
+warning: Unused parameter 'p' in function 'show'
+  --> tests/compiler/diagnostics_output/warn_suggestion.zc
+warning: Unknown type 'Pointt' (assuming external C struct)
+  --> tests/compiler/diagnostics_output/warn_suggestion.zc:8:12
+   |
+8  | fn show(p: Pointt*) {
+   |            ^ here
+   |
+   = note: Did you mean 'Point'?
+[exit 0]

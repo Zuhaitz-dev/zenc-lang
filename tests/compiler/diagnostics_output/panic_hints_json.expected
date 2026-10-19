@@ -1,0 +1,3 @@
+   Compiling tests/compiler/diagnostics_output/panic_hints_json.zc...
+{"file":"tests/compiler/diagnostics_output/panic_hints_json.zc","line":4,"col":1,"level":"error","message":"'const' cannot start a top-level declaration","suggestion":"For a compile-time constant use `def NAME = value;`\nFor a read-only global use `let NAME: const Type = value;`"}
+[exit 1]
