@@ -229,6 +229,11 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
         diag_render_text(NULL, &d);
     }
 
+    if (fatal && pctx && pctx->is_fault_tolerant)
+    {
+        pctx->had_error = 1;
+    }
+
     if (is_error && pctx && pctx->on_error)
     {
         char full_msg[MAX_PATH_LEN * 2];
@@ -240,14 +245,10 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
             strncat(full_msg, *h, sizeof(full_msg) - strlen(full_msg) - 1);
             h++;
         }
-        if (fatal && pctx->is_fault_tolerant)
-        {
-            pctx->had_error = 1;
-        }
         pctx->on_error(pctx->error_callback_data, t, full_msg);
     }
 
-    if (fatal && !(pctx && pctx->is_fault_tolerant && pctx->on_error) && !diag_cfg()->mode_lsp)
+    if (fatal && !(pctx && pctx->is_fault_tolerant) && !diag_cfg()->mode_lsp)
     {
         exit(1);
     }

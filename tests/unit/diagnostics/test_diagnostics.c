@@ -28,6 +28,17 @@ static void record(void *data, const ZenDiagnostic *d)
              d->hints && d->hints[0] ? d->hints[0] : "");
 }
 
+// Registers `rec` as the consumer of `compiler`, and `ctx`, pointing to `compiler`, as the
+// current parser context. Call diag_set_parser_ctx(NULL) at the end of the test.
+static void start_recording(ZenCompiler *compiler, Recorded *rec, ParserContext *ctx)
+{
+    compiler->diag_consumer = record;
+    compiler->diag_consumer_data = rec;
+    ctx->compiler = compiler;
+    ctx->config = &compiler->config;
+    diag_set_parser_ctx(ctx);
+}
+
 static void render_json(const ZenDiagnostic *d, char *out, size_t size)
 {
     FILE *f = tmpfile();
@@ -96,12 +107,8 @@ UTEST(diag_consumer, receives_an_error)
 {
     ZenCompiler compiler = {0};
     Recorded rec = {0};
-    compiler.diag_consumer = record;
-    compiler.diag_consumer_data = &rec;
     ParserContext ctx = {0};
-    ctx.compiler = &compiler;
-    ctx.config = &compiler.config;
-    diag_set_parser_ctx(&ctx);
+    start_recording(&compiler, &rec, &ctx);
 
     Token t = {0};
     t.line = 3;
@@ -121,12 +128,8 @@ UTEST(diag_consumer, receives_a_warning_with_its_hint)
 {
     ZenCompiler compiler = {0};
     Recorded rec = {0};
-    compiler.diag_consumer = record;
-    compiler.diag_consumer_data = &rec;
     ParserContext ctx = {0};
-    ctx.compiler = &compiler;
-    ctx.config = &compiler.config;
-    diag_set_parser_ctx(&ctx);
+    start_recording(&compiler, &rec, &ctx);
 
     zwarn_with_suggestion(TOKEN_UNKNOWN, "Something looks odd", "a hint");
 
@@ -173,4 +176,21 @@ UTEST(diag_render_json, warning_with_a_code)
              "\"message\":\"Unused variable 'x'\",\"code\":%d}\n",
              (int)DIAG_UNUSED_VAR);
     ASSERT_STREQ(expected, out);
+}
+
+UTEST(diag_consumer, fatal_error_does_not_exit_in_fault_tolerant_mode)
+{
+    ZenCompiler compiler = {0};
+    Recorded rec = {0};
+    ParserContext ctx = {0};
+    ctx.is_fault_tolerant = 1;
+    start_recording(&compiler, &rec, &ctx);
+
+    zpanic_at(TOKEN_UNKNOWN, "Something %s", "fatal");
+
+    EXPECT_EQ(1, rec.calls);
+    EXPECT_EQ(1, rec.fatal);
+    EXPECT_EQ(1, ctx.had_error);
+    EXPECT_EQ(1, compiler.error_count);
+    diag_set_parser_ctx(NULL);
 }
