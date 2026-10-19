@@ -1,0 +1,39 @@
+// language/features/control_flow_ext: test_defer_it
+// In `let x = value defer f(it);`, `it` names the variable anywhere in the
+// deferred expression, not only in calls, member accesses and arithmetic.
+
+fn record(out: int*, value: int) {
+    *out = value;
+}
+
+test "it as an argument" {
+    let out = 0;
+    {
+        let v = 5 defer record(&out, it);
+    }
+    assert out == 5;
+}
+
+test "it inside an index" {
+    let out = 0;
+    {
+        let v = [5, 6] defer record(&out, it[1]);
+    }
+    assert out == 6;
+}
+
+test "it inside a cast" {
+    let out = 0;
+    {
+        let v: i64 = 5 defer record(&out, (int)it);
+    }
+    assert out == 5;
+}
+
+test "it inside a ternary" {
+    let out = 0;
+    {
+        let v = 5 defer record(&out, it > 2 ? it : 0);
+    }
+    assert out == 5;
+}
