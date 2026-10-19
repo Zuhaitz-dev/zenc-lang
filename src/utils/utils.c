@@ -567,6 +567,40 @@ int is_safe_pkg_config_spec(const char *libs)
     return 1;
 }
 
+// Appends `prefix` followed by each word of `value` (separated by spaces) to the flags in `dst`,
+// as `//> include:`, `lib:` and `framework:` do with -I, -L and -framework.
+static void append_prefixed_words(char *dst, size_t dst_size, const char *value, const char *prefix)
+{
+    const char *dp = value;
+    while (*dp)
+    {
+        while (*dp && isspace((unsigned char)*dp))
+        {
+            dp++;
+        }
+        if (!*dp)
+        {
+            break;
+        }
+
+        char word[MAX_PATH_LEN];
+        size_t len = 0;
+        while (*dp && !isspace((unsigned char)*dp))
+        {
+            if (len < sizeof(word) - 1)
+            {
+                word[len++] = *dp;
+            }
+            dp++;
+        }
+        word[len] = '\0';
+
+        char flag[MAX_PATH_LEN + 32];
+        snprintf(flag, sizeof(flag), "%s%s", prefix, word);
+        append_flag(dst, dst_size, flag, NULL);
+    }
+}
+
 void scan_build_directives(ParserContext *ctx, const char *src)
 {
     ZenCompiler *compiler = ctx->compiler;
@@ -635,123 +669,18 @@ void scan_build_directives(ParserContext *ctx, const char *src)
             }
             else if (0 == strncmp(directive, "include:", 8))
             {
-                directive_val = directive + 8;
-                while (*directive_val && isspace((unsigned char)*directive_val))
-                {
-                    directive_val++;
-                }
-
-                char *dp = directive_val;
-                while (*dp)
-                {
-                    while (*dp && isspace((unsigned char)*dp))
-                    {
-                        dp++;
-                    }
-                    if (!*dp)
-                    {
-                        break;
-                    }
-
-                    char path[MAX_PATH_LEN];
-                    char *d = path;
-                    while (*dp && !isspace((unsigned char)*dp))
-                    {
-                        if (d - path < 1023)
-                        {
-                            *d++ = *dp++;
-                        }
-                        else
-                        {
-                            dp++;
-                        }
-                    }
-                    *d = '\0';
-
-                    char flags[MAX_PATH_LEN + 32];
-                    snprintf(flags, sizeof(flags), "-I%s", path);
-                    append_flag(compiler->cflags, sizeof(compiler->cflags), flags, NULL);
-                }
+                append_prefixed_words(compiler->cflags, sizeof(compiler->cflags), directive + 8,
+                                      "-I");
             }
             else if (strncmp(directive, "lib:", 4) == 0)
             {
-                directive_val = directive + 4;
-                while (*directive_val && isspace((unsigned char)*directive_val))
-                {
-                    directive_val++;
-                }
-
-                char *dp = directive_val;
-                while (*dp)
-                {
-                    while (*dp && isspace((unsigned char)*dp))
-                    {
-                        dp++;
-                    }
-                    if (!*dp)
-                    {
-                        break;
-                    }
-
-                    char path[MAX_PATH_LEN];
-                    char *d = path;
-                    while (*dp && !isspace((unsigned char)*dp))
-                    {
-                        if (d - path < 1023)
-                        {
-                            *d++ = *dp++;
-                        }
-                        else
-                        {
-                            dp++;
-                        }
-                    }
-                    *d = '\0';
-
-                    char flags[MAX_PATH_LEN + 32];
-                    snprintf(flags, sizeof(flags), "-L%s", path);
-                    append_flag(compiler->link_flags, sizeof(compiler->link_flags), flags, NULL);
-                }
+                append_prefixed_words(compiler->link_flags, sizeof(compiler->link_flags),
+                                      directive + 4, "-L");
             }
             else if (strncmp(directive, "framework:", 10) == 0)
             {
-                directive_val = directive + 10;
-                while (*directive_val && isspace((unsigned char)*directive_val))
-                {
-                    directive_val++;
-                }
-
-                char *dp = directive_val;
-                while (*dp)
-                {
-                    while (*dp && isspace((unsigned char)*dp))
-                    {
-                        dp++;
-                    }
-                    if (!*dp)
-                    {
-                        break;
-                    }
-
-                    char name[MAX_VAR_NAME_LEN];
-                    char *d = name;
-                    while (*dp && !isspace((unsigned char)*dp))
-                    {
-                        if (d - name < 255)
-                        {
-                            *d++ = *dp++;
-                        }
-                        else
-                        {
-                            dp++;
-                        }
-                    }
-                    *d = '\0';
-
-                    char flags[MAX_VAR_NAME_LEN + 32];
-                    snprintf(flags, sizeof(flags), "-framework %s", name);
-                    append_flag(compiler->link_flags, sizeof(compiler->link_flags), flags, NULL);
-                }
+                append_prefixed_words(compiler->link_flags, sizeof(compiler->link_flags),
+                                      directive + 10, "-framework ");
             }
             else if (strncmp(directive, "define:", 7) == 0)
             {
