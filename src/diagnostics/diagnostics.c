@@ -133,6 +133,26 @@ static void emit_json(const char *level, Token t, const char *msg, const char *s
     }
 }
 
+// Prints a diagnostic as text to `data`, a FILE * (stderr when NULL). It has the
+// DiagConsumer signature, so a tool can register it, and it is used when none is registered.
+void diag_render_text(void *data, const ZenDiagnostic *d)
+{
+    FILE *out = data ? (FILE *)data : stderr;
+
+    const char *label = d->is_error ? COLOR_RED "error: " : COLOR_YELLOW "warning: ";
+    fprintf(out, "%s" COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", label, d->message);
+    diag_print_location(out, d->token);
+    diag_print_context(out, d->token, d->is_error ? COLOR_RED : COLOR_YELLOW);
+
+    const char *kind = d->is_error ? "help" : "note";
+    const char *const *h = d->hints;
+    while (h && *h)
+    {
+        fprintf(out, COLOR_CYAN "   = %s: " COLOR_RESET "%s\n", kind, *h);
+        h++;
+    }
+}
+
 // The single path of every diagnostic: silence, count, print (text or JSON), notify the
 // LSP/REPL and, for a fatal error, stop. `hints` is NULL or a NULL-terminated array.
 static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char *msg,
@@ -161,6 +181,8 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
         diag_compiler()->warning_count++;
     }
 
+    ZenDiagnostic d = {is_error, fatal, diag_id, t, msg, hints};
+
     if (diag_cfg()->json_output)
     {
         char joined_hints[MAX_PATH_LEN] = {0};
@@ -179,18 +201,7 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
     }
     else
     {
-        const char *label = is_error ? COLOR_RED "error: " : COLOR_YELLOW "warning: ";
-        fprintf(stderr, "%s" COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", label, msg);
-        diag_print_location(stderr, t);
-        diag_print_context(stderr, t, is_error ? COLOR_RED : COLOR_YELLOW);
-
-        const char *kind = is_error ? "help" : "note";
-        const char *const *h = hints;
-        while (h && *h)
-        {
-            fprintf(stderr, COLOR_CYAN "   = %s: " COLOR_RESET "%s\n", kind, *h);
-            h++;
-        }
+        diag_render_text(NULL, &d);
     }
 
     if (is_error && pctx && pctx->on_error)
