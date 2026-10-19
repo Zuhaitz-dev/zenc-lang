@@ -22,6 +22,8 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
         struct_name = ctx->cg.current_impl_type;
     }
 
+    // The name written in the C: the struct's @link_name if it has one.
+    const char *c_name = struct_name;
     int is_zen_struct = 0;
     int is_union = 0;
     StructRef *sr = ctx->parsed_structs_list;
@@ -32,6 +34,10 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
             strcmp(sr->node->strct.name, struct_name) == 0)
         {
             is_zen_struct = 1;
+            if (sr->node->link_name)
+            {
+                c_name = sr->node->link_name;
+            }
             if (sr->node->strct.is_union)
             {
                 is_union = 1;
@@ -70,7 +76,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
     {
         if (in_func && !is_vector)
         {
-            EMIT(ctx, "({ %s _s = %s; ", struct_name, ctx->config->use_cpp ? "{}" : "{0}");
+            EMIT(ctx, "({ %s _s = %s; ", c_name, ctx->config->use_cpp ? "{}" : "{0}");
             ASTNode *f = node->struct_init.fields;
             while (f)
             {
@@ -119,7 +125,7 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
         }
         else
         {
-            EMIT(ctx, "%s { ", struct_name);
+            EMIT(ctx, "%s { ", c_name);
             ASTNode *f = node->struct_init.fields;
             int field_count = 0;
             ASTNode *tmp = f;
@@ -169,19 +175,19 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
     {
         if (is_vector)
         {
-            EMIT(ctx, "(%s){", struct_name);
+            EMIT(ctx, "(%s){", c_name);
         }
         else if (is_union)
         {
-            EMIT(ctx, "(union %s){", struct_name);
+            EMIT(ctx, "(union %s){", c_name);
         }
         else if (is_zen_struct)
         {
-            EMIT(ctx, "(struct %s){", struct_name);
+            EMIT(ctx, "(struct %s){", c_name);
         }
         else
         {
-            EMIT(ctx, "(%s){", struct_name);
+            EMIT(ctx, "(%s){", c_name);
         }
 
         ASTNode *f = node->struct_init.fields;
