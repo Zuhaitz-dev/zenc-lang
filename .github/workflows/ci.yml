@@ -182,16 +182,13 @@ jobs:
       run: |
         export ZC_HAS_JIT=${{ matrix.zc_has_jit }}
         export PATH="/usr/lib/ccache:$PATH"
-        WERROR_FLAG=""
-        if [ "${{ matrix.cc }}" = "gcc" ] && [ "${{ matrix.name }}" = "Linux GCC" ]; then
-          WERROR_FLAG="WERROR=1"
-        fi
+        # The Makefile builds with -Werror by default (WERROR ?= 1).
         if [ "${{ matrix.cc }}" = "zig cc" ]; then
-           make $WERROR_FLAG ZC_HAS_JIT=$ZC_HAS_JIT
+           make ZC_HAS_JIT=$ZC_HAS_JIT
         elif [ "${{ runner.os }}" = "Windows" ]; then
            ./build.bat
         else
-           make CC="${{ matrix.cc }}" $WERROR_FLAG ZC_HAS_JIT=$ZC_HAS_JIT
+           make CC="${{ matrix.cc }}" ZC_HAS_JIT=$ZC_HAS_JIT
         fi
 
     - name: Run Tests
