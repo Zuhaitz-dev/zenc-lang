@@ -48,8 +48,15 @@ typedef struct CodegenBackend
 /// Register a backend implementation.
 void codegen_register_backend(const CodegenBackend *backend);
 
-/// Get a registered backend by name. Returns the default "c" backend if name is NULL.
+/// Get a registered backend by name. Returns the default "c" backend if name is NULL or no
+/// backend has that name.
 const CodegenBackend *codegen_get_backend(const char *name);
+
+/// Get a registered backend by name, or NULL if no backend has that name.
+const CodegenBackend *codegen_find_backend(const char *name);
+
+/// The registered backends (`*count` of them), to list them.
+const CodegenBackend *const *codegen_backends(int *count);
 
 /// Initialize the default backends (called once at startup).
 void codegen_init_backends(void);

@@ -157,6 +157,22 @@ else
     check "unknown command reports error" 0
 fi
 
+out=$("$ZC" transpile "$workdir/smoke.zc" --backend astdump -o "$workdir/smoke_bad_backend" 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q "unknown backend 'astdump'" &&
+    echo "$out" | grep -q "did you mean 'ast-dump'" && [ ! -e "$workdir/smoke_bad_backend" ]; then
+    check "unknown backend reports error and suggests a name" 1
+else
+    check "unknown backend reports error and suggests a name" 0
+fi
+
+"$ZC" transpile "$workdir/smoke.zc" --backend ast-dump -o "$workdir/smoke_ast" >/dev/null 2>&1
+if [ -s "$workdir/smoke_ast" ]; then
+    check "a known backend is selected by name" 1
+else
+    check "a known backend is selected by name" 0
+fi
+
 # --- Robustness: pathological inputs must exit cleanly (never crash) -------
 
 # A crash (signal) yields exit code > 128; a clean compile or a normal
