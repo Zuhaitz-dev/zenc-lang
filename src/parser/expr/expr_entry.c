@@ -271,6 +271,24 @@ static void find_declared_vars(ASTNode *node, char ***decls, int *count)
         }
     }
 
+    // The variable of `for i in ...`.
+    if (node->kind == NODE_FOR_RANGE && node->for_range.var_name)
+    {
+        add_name(decls, count, node->for_range.var_name);
+    }
+
+    // The names of `let (a, b) = ...`.
+    if (node->kind == NODE_DESTRUCT_VAR)
+    {
+        for (int i = 0; i < node->destruct.count; i++)
+        {
+            if (node->destruct.names[i])
+            {
+                add_name(decls, count, node->destruct.names[i]);
+            }
+        }
+    }
+
     // The locals of a nested lambda are its own, and those of a comptime block live while
     // compiling.
     if (node->kind == NODE_LAMBDA || node->kind == NODE_COMPTIME)

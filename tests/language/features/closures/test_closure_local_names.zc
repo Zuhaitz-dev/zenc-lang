@@ -1,0 +1,50 @@
+// closures: test_closure_local_names
+// Names a lambda declares in its own body are its locals, not captures:
+// loop variables and destructured names as well as `let`s.
+
+import "std/option.zc"
+
+test "the variable of a for-in loop" {
+    let k = 1;
+    let f = fn(x: int) -> int {
+        let r = 0;
+        for i in 0..3 {
+            r = r + i + k;
+        }
+        return r + x;
+    };
+    assert f(2) == 8;
+}
+
+test "destructured names" {
+    let k = 1;
+    let f = fn(x: int) -> int {
+        let (a, b) = (x, k);
+        return a + b;
+    };
+    assert f(2) == 3;
+}
+
+test "the variable of a C-style for loop" {
+    let k = 1;
+    let f = fn(x: int) -> int {
+        let r = 0;
+        for (let i = 0; i < 3; i++) {
+            r = r + i;
+        }
+        return r + x + k;
+    };
+    assert f(2) == 6;
+}
+
+test "a match binding" {
+    let k = 1;
+    let f = fn(x: int) -> int {
+        let o: Option<int> = Option<int>::Some(x);
+        match o {
+            Some(v) => { return v + k; },
+            None => { return 0; },
+        }
+    };
+    assert f(2) == 3;
+}
