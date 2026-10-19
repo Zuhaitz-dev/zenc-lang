@@ -50,8 +50,8 @@ int lsp_main(int argc, char **argv)
     }
 
     // Everything the project allocates goes above this mark, so a rebuild can rewind to it.
-    ZarenaMark base_mark = zarena_save(&g_compiler.arena);
-    size_t base_total = g_compiler.arena.total_alloc;
+    ZarenaMark base_mark = zarena_save(&g_arena);
+    size_t base_total = g_arena.total_alloc;
     ZenCompiler base_compiler = g_compiler;
 
     while (1)
@@ -100,7 +100,7 @@ int lsp_main(int argc, char **argv)
         // goto-def, etc.) we restore the mark after, preventing the arena from
         // growing unboundedly. Write requests (didOpen, didChange, etc.)
         // modify persistent project data and keep the arena growth.
-        ZarenaMark arena_mark = zarena_save(&g_compiler.arena);
+        ZarenaMark arena_mark = zarena_save(&g_arena);
         g_lsp_request_is_readonly = 1;
 
         // Process JSON-RPC.
@@ -108,7 +108,7 @@ int lsp_main(int argc, char **argv)
 
         if (g_lsp_request_is_readonly)
         {
-            zarena_restore(&g_compiler.arena, arena_mark);
+            zarena_restore(&g_arena, arena_mark);
             clear_registered_traits();
         }
         else if (g_project)
@@ -125,7 +125,7 @@ int lsp_main(int argc, char **argv)
             size_t project_size = built_total - base_total;
             size_t limit =
                 project_size > LSP_REBUILD_MIN_GROWTH ? project_size : LSP_REBUILD_MIN_GROWTH;
-            size_t total = g_compiler.arena.total_alloc;
+            size_t total = g_arena.total_alloc;
             if (total > built_total && total - built_total > limit)
             {
                 lsp_project_rebuild(base_mark, &base_compiler);

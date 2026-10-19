@@ -26,7 +26,7 @@ static void free_everything(void)
     zvec_free_Str(&g_compiler.config.c_files);
     zvec_free_Str(&g_compiler.config.extra_files);
     zvec_free_Str(&g_compiler.config.backend_opts);
-    zarena_free(&g_compiler.arena);
+    zarena_free(&g_arena);
 }
 
 // LibFuzzer entry point — called by the fuzzer runtime
@@ -42,7 +42,7 @@ static void initialize(void)
     g_compiler.config.use_typecheck = 1;
     g_compiler.config.quiet = 1;
 
-    zarena_init(&g_compiler.arena);
+    zarena_init(&g_arena);
 
     init_builtins();
 
@@ -69,7 +69,7 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
     g_compiler.error_count = 0;
     g_compiler.warning_count = 0;
 
-    char *src = zarena_alloc_zero(&g_compiler.arena, size + 1);
+    char *src = zarena_alloc_zero(&g_arena, size + 1);
     if (!src)
         return 0;
     memcpy(src, data, size);
@@ -98,7 +98,7 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
     ctx.cg.hoist_out = fopen("/dev/null", "w");
     if (!ctx.cg.hoist_out)
     {
-        zarena_reset(&g_compiler.arena);
+        zarena_reset(&g_arena);
         return 0;
     }
 
@@ -119,7 +119,7 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
     }
 
     fclose(ctx.cg.hoist_out);
-    zarena_reset(&g_compiler.arena);
+    zarena_reset(&g_arena);
 
     // Reset parser globals that point into the reclaimed arena.
     clear_registered_traits();

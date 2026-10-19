@@ -17,6 +17,7 @@
 #include "platform/os.h"
 
 extern ZenCompiler g_compiler;
+extern zarena g_arena;
 
 #define g_config g_compiler.config
 #define g_link_flags g_compiler.link_flags

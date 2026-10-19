@@ -107,7 +107,7 @@ void lsp_project_index_workspace(void)
     g_is_indexing = 0;
 
     g_workspace_indexed = 1;
-    g_built_total = g_compiler.arena.total_alloc;
+    g_built_total = g_arena.total_alloc;
 }
 
 static char *libc_strdup(const char *s)
@@ -195,7 +195,7 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
         fclose(g_project->ctx->cg.hoist_out);
     }
 
-    zarena_restore(&g_compiler.arena, base);
+    zarena_restore(&g_arena, base);
 #if ZARENA_ASAN_REDZONE
     // Under ASan, a stale pointer into the rewound region becomes a reported error
     // instead of silently reading whatever the rebuild writes there.
@@ -208,9 +208,7 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
 
     // The compiler state saved with the mark only points below it. Globals that may
     // point above it are reset.
-    zarena arena = g_compiler.arena;
     g_compiler = *base_compiler;
-    g_compiler.arena = arena;
     g_project = NULL;
     curr_func_ret = NULL;
     clear_registered_traits();
@@ -226,7 +224,7 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
         lsp_project_update_file(document->uri, document->source);
     }
 
-    g_built_total = g_compiler.arena.total_alloc;
+    g_built_total = g_arena.total_alloc;
     fprintf(stderr, "zls: project rebuilt, arena in use: %zu KB\n", g_built_total / 1024);
 }
 
