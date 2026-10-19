@@ -429,6 +429,21 @@ void append_flag(char *dest, size_t max_size, const char *prefix, const char *va
     }
 }
 
+void str_join(char *out, size_t size, const char *const *parts, const char *sep)
+{
+    out[0] = '\0';
+    const char *const *p = parts;
+    while (p && *p)
+    {
+        if (p != parts)
+        {
+            strncat(out, sep, size - strlen(out) - 1);
+        }
+        strncat(out, *p, size - strlen(out) - 1);
+        p++;
+    }
+}
+
 // Helper for environment expansion
 static void expand_env_vars(char *dest, size_t dest_size, const char *src)
 {
