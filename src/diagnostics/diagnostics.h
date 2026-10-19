@@ -14,6 +14,7 @@
 #define DIAGNOSTICS_H
 
 #include "token.h"
+#include "utils/utils.h"
 #include <stdarg.h>
 #include "../compat/c23_compat.h"
 
@@ -155,6 +156,8 @@ typedef void (*DiagConsumer)(void *data, const ZenDiagnostic *d);
 
 /** @brief Consumer that prints diagnostics as text to `data`, a FILE * (stderr if NULL). */
 void diag_render_text(void *data, const ZenDiagnostic *d);
+/** @brief Consumer that prints diagnostics as JSON lines to `data`, a FILE * (stderr if NULL). */
+void diag_render_json(void *data, const ZenDiagnostic *d);
 
 int is_diag_enabled(DiagnosticID id);
 void zwarn_diag(DiagnosticID id, Token t, const char *msg, const char *hint);

@@ -153,6 +153,35 @@ void diag_render_text(void *data, const ZenDiagnostic *d)
     }
 }
 
+// Prints a diagnostic as one JSON line to `data`, a FILE * (stderr when NULL), for tools
+// that run zc --json. It has the DiagConsumer signature.
+void diag_render_json(void *data, const ZenDiagnostic *d)
+{
+    FILE *out = data ? (FILE *)data : stderr;
+    char joined_hints[MAX_PATH_LEN];
+    str_join(joined_hints, sizeof(joined_hints), d->hints, "\n");
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "file", diag_filename(d->token));
+    cJSON_AddNumberToObject(root, "line", d->token.line);
+    cJSON_AddNumberToObject(root, "col", d->token.col);
+    cJSON_AddStringToObject(root, "level", d->is_error ? "error" : "warning");
+    cJSON_AddStringToObject(root, "message", d->message);
+    if (d->id != DIAG_NONE)
+    {
+        cJSON_AddNumberToObject(root, "code", d->id);
+    }
+    if (joined_hints[0])
+    {
+        cJSON_AddStringToObject(root, "suggestion", joined_hints);
+    }
+
+    char *json = cJSON_PrintUnformatted(root);
+    fprintf(out, "%s\n", json);
+    zfree(json);
+    cJSON_Delete(root);
+}
+
 // The single path of every diagnostic: silence, count, print (text or JSON), notify the
 // LSP/REPL and, for a fatal error, stop. `hints` is NULL or a NULL-terminated array.
 static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char *msg,
@@ -191,16 +220,7 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
     else if (diag_cfg()->json_output)
     {
         char joined_hints[MAX_PATH_LEN] = {0};
-        const char *const *h = hints;
-        while (h && *h)
-        {
-            if (joined_hints[0])
-            {
-                strncat(joined_hints, "\n", sizeof(joined_hints) - strlen(joined_hints) - 1);
-            }
-            strncat(joined_hints, *h, sizeof(joined_hints) - strlen(joined_hints) - 1);
-            h++;
-        }
+        str_join(joined_hints, sizeof(joined_hints), hints, "\n");
         emit_json(is_error ? "error" : "warning", t, msg, joined_hints[0] ? joined_hints : NULL,
                   diag_id);
     }

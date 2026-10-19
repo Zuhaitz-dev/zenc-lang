@@ -28,6 +28,16 @@ static void record(void *data, const ZenDiagnostic *d)
              d->hints && d->hints[0] ? d->hints[0] : "");
 }
 
+static void render_json(const ZenDiagnostic *d, char *out, size_t size)
+{
+    FILE *f = tmpfile();
+    diag_render_json(f, d);
+    rewind(f);
+    size_t n = fread(out, 1, size - 1, f);
+    out[n] = '\0';
+    fclose(f);
+}
+
 // Renders `d` with diag_render_text into a temporary file and copies what it wrote to
 // `out`. A file is not a terminal, so the colour codes are left out.
 static void render_text(const ZenDiagnostic *d, char *out, size_t size)
@@ -126,4 +136,41 @@ UTEST(diag_consumer, receives_a_warning_with_its_hint)
     EXPECT_STREQ("a hint", rec.first_hint);
     EXPECT_EQ(1, compiler.warning_count);
     diag_set_parser_ctx(NULL);
+}
+
+UTEST(diag_render_json, error_with_hints)
+{
+    Token t = {0};
+    t.line = 2;
+    t.col = 9;
+    t.file = "demo.zc";
+    const char *hints[] = {"first hint", "second hint", NULL};
+    ZenDiagnostic d = {1, 1, DIAG_NONE, t, "Something went wrong", hints};
+
+    char out[1024];
+    render_json(&d, out, sizeof(out));
+
+    ASSERT_STREQ("{\"file\":\"demo.zc\",\"line\":2,\"col\":9,\"level\":\"error\","
+                 "\"message\":\"Something went wrong\","
+                 "\"suggestion\":\"first hint\\nsecond hint\"}\n",
+                 out);
+}
+
+UTEST(diag_render_json, warning_with_a_code)
+{
+    Token t = {0};
+    t.line = 4;
+    t.col = 1;
+    t.file = "demo.zc";
+    ZenDiagnostic d = {0, 0, DIAG_UNUSED_VAR, t, "Unused variable 'x'", NULL};
+
+    char out[1024];
+    render_json(&d, out, sizeof(out));
+
+    char expected[256];
+    snprintf(expected, sizeof(expected),
+             "{\"file\":\"demo.zc\",\"line\":4,\"col\":1,\"level\":\"warning\","
+             "\"message\":\"Unused variable 'x'\",\"code\":%d}\n",
+             (int)DIAG_UNUSED_VAR);
+    ASSERT_STREQ(expected, out);
 }
