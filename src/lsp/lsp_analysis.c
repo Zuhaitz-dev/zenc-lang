@@ -86,7 +86,7 @@ void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d)
     }
     char hints[MAX_PATH_LEN];
     str_join(hints, sizeof(hints), d->hints, "\n");
-    char msg[MAX_ERROR_MSG_LEN * 2];
+    char msg[MAX_ERROR_MSG_LEN + sizeof(hints) + 32]; // message, hints and the text around
     if (hints[0])
     {
         snprintf(msg, sizeof(msg), "%s (Suggestion: %s)", d->message, hints);
