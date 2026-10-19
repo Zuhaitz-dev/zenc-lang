@@ -20,8 +20,6 @@
 // Forward declaration
 struct ParserContext;
 
-// Globals are now managed via g_compiler (see zprep.h)
-
 // ** Core Error Functions **
 
 /**

@@ -20,11 +20,12 @@ void diag_set_parser_ctx(ParserContext *ctx)
 }
 
 // Diagnostics take no compiler argument: they use (config) and update (error and
-// warning counts) the compiler of the registered parser context, or g_compiler if
-// none is set.
+// warning counts) the compiler of the registered parser context. Before a context is
+// registered they fall back to a private compiler that nothing reads.
 static ZenCompiler *diag_compiler(void)
 {
-    return d_ctx.parser_ctx ? d_ctx.parser_ctx->compiler : &g_compiler;
+    static ZenCompiler no_context;
+    return d_ctx.parser_ctx ? d_ctx.parser_ctx->compiler : &no_context;
 }
 
 static CompilerConfig *diag_cfg(void)
@@ -757,7 +758,7 @@ int is_diag_enabled(DiagnosticID id)
     {
         return 0;
     }
-    // Check bitmask in g_config
+    // Check the bit of this diagnostic in the config's mask
     return (diag_cfg()->diag_mask & ((uint64_t)1 << id)) != 0;
 }
 

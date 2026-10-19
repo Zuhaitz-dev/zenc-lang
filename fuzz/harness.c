@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-extern ZenCompiler g_compiler;
+static ZenCompiler compiler;
 extern char *curr_func_ret;
 
 static int initialized = 0;
@@ -21,11 +21,11 @@ static int initialized = 0;
 static void free_everything(void)
 {
     zptr_plugin_mgr_cleanup();
-    zvec_free_Str(&g_compiler.config.include_paths);
-    zvec_free_Str(&g_compiler.config.cfg_defines);
-    zvec_free_Str(&g_compiler.config.c_files);
-    zvec_free_Str(&g_compiler.config.extra_files);
-    zvec_free_Str(&g_compiler.config.backend_opts);
+    zvec_free_Str(&compiler.config.include_paths);
+    zvec_free_Str(&compiler.config.cfg_defines);
+    zvec_free_Str(&compiler.config.c_files);
+    zvec_free_Str(&compiler.config.extra_files);
+    zvec_free_Str(&compiler.config.backend_opts);
     zarena_free(&g_arena);
 }
 
@@ -37,10 +37,10 @@ static void initialize(void)
     if (initialized)
         return;
 
-    memset(&g_compiler, 0, sizeof(g_compiler));
-    g_compiler.config.mode_check = 1;
-    g_compiler.config.use_typecheck = 1;
-    g_compiler.config.quiet = 1;
+    memset(&compiler, 0, sizeof(compiler));
+    compiler.config.mode_check = 1;
+    compiler.config.use_typecheck = 1;
+    compiler.config.quiet = 1;
 
     zarena_init(&g_arena);
 
@@ -66,8 +66,8 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
 
     initialize();
 
-    g_compiler.error_count = 0;
-    g_compiler.warning_count = 0;
+    compiler.error_count = 0;
+    compiler.warning_count = 0;
 
     char *src = zarena_alloc_zero(&g_arena, size + 1);
     if (!src)
@@ -77,8 +77,8 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
 
     ParserContext ctx;
     memset(&ctx, 0, sizeof(ctx));
-    ctx.compiler = &g_compiler;
-    ctx.config = &g_compiler.config;
+    ctx.compiler = &compiler;
+    ctx.config = &compiler.config;
     ctx.current_filename = "fuzz_input.zc";
     module_state_init(&ctx.imports);
     token_set_parser_ctx(&ctx);
@@ -125,11 +125,11 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
     clear_registered_traits();
 
     // Reset config vectors (free system-heap buffers, clear pointers)
-    zvec_free_Str(&g_compiler.config.include_paths);
-    zvec_free_Str(&g_compiler.config.cfg_defines);
-    zvec_free_Str(&g_compiler.config.c_files);
-    zvec_free_Str(&g_compiler.config.extra_files);
-    zvec_free_Str(&g_compiler.config.backend_opts);
+    zvec_free_Str(&compiler.config.include_paths);
+    zvec_free_Str(&compiler.config.cfg_defines);
+    zvec_free_Str(&compiler.config.c_files);
+    zvec_free_Str(&compiler.config.extra_files);
+    zvec_free_Str(&compiler.config.backend_opts);
 
     return 0;
 }

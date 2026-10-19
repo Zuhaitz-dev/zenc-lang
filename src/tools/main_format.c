@@ -11,7 +11,8 @@
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup(&g_compiler);
+    ZenCompiler compiler = {0};
+    z_compiler_setup(&compiler);
 
     const char *input = NULL;
     int check = 0;

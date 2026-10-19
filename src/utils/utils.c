@@ -404,8 +404,7 @@ char *load_file(const char *fn, const char *relative_to, CompilerConfig *cfg)
     return b;
 }
 
-// ** Global Compiler State **
-ZenCompiler g_compiler = {0};
+// ** Global Memory Arena **
 zarena g_arena = {0};
 
 void append_flag(char *dest, size_t max_size, const char *prefix, const char *val)
