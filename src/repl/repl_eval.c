@@ -2,7 +2,7 @@
 /**
  * @file repl_eval.c
  * @brief Evaluation helpers: code synthesis, header detection, documentation,
- *        session symbol extraction, and error callbacks.
+ *        session symbol extraction, and error counting.
  */
 
 #include "repl_state.h"
@@ -20,7 +20,6 @@ void repl_parser_ctx_init(ParserContext *ctx, ZenCompiler *compiler)
     ctx->current_filename = "<repl>";
     ctx->cg.is_repl = 1;
     ctx->is_fault_tolerant = 1;
-    ctx->on_error = repl_error_callback;
     module_state_init(&ctx->imports);
     token_set_parser_ctx(ctx);
     diag_set_parser_ctx(ctx);
@@ -31,16 +30,13 @@ typedef struct
     int count;
 } ReplErrorCounter;
 
-static void repl_counting_error_callback(void *data, Token t, const char *msg)
+// Prints a diagnostic as text and counts the errors in `data`, a ReplErrorCounter.
+static void repl_counting_consumer(void *data, const ZenDiagnostic *d)
 {
-    ReplErrorCounter *c = (ReplErrorCounter *)data;
-    if (c)
+    diag_render_text(NULL, d);
+    if (d->is_error)
     {
-        c->count++;
-    }
-    else
-    {
-        repl_error_callback(NULL, t, msg);
+        ((ReplErrorCounter *)data)->count++;
     }
 }
 
@@ -50,18 +46,21 @@ char *repl_transpile(ZenCompiler *compiler, const char *zen_c_code)
     repl_parser_ctx_init(&ctx, compiler);
     ctx.cg.skip_preamble = 0;
 
-    /* Track parser errors via the callback: zpanic_at/zpanic_with_* all
-     * invoke on_error in fault-tolerant mode, and parse_program resets
-     * had_error during recovery, so a callback counter is the reliable
-     * signal for "this program failed to parse". */
+    /* Count the parse errors with a consumer: parse_program resets had_error
+     * during recovery, so a counter is the reliable signal for "this program
+     * failed to parse". */
     ReplErrorCounter errs = {0};
-    ctx.on_error = repl_counting_error_callback;
-    ctx.error_callback_data = &errs;
+    DiagConsumer old_consumer = compiler->diag_consumer;
+    void *old_consumer_data = compiler->diag_consumer_data;
+    compiler->diag_consumer = repl_counting_consumer;
+    compiler->diag_consumer_data = &errs;
 
     Lexer lex;
     lexer_init(&lex, zen_c_code, ctx.config, ctx.current_filename);
 
     ASTNode *root = parse_program(&ctx, &lex);
+    compiler->diag_consumer = old_consumer;
+    compiler->diag_consumer_data = old_consumer_data;
     if (!root || errs.count > 0)
     {
         return NULL;
@@ -103,13 +102,6 @@ int is_header_line(const char *line)
         }
     }
     return 0;
-}
-
-void repl_error_callback(void *data, Token t, const char *msg)
-{
-    (void)data;
-    (void)t;
-    fprintf(stderr, "\033[1;31merror:\033[0m %s\n", msg);
 }
 
 int is_definition_of(CompilerConfig *cfg, const char *code, const char *name)

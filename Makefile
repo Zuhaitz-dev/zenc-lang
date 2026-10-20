@@ -540,6 +540,7 @@ test: $(TARGET) $(PLUGINS)
 	./tests/scripts/run_repl_tests.sh
 	./tests/scripts/run_cli_tests.sh
 	./tests/scripts/run_diagnostic_output_tests.sh
+	$(MAKE) test-unit
 	$(MAKE) test-misra
 
 test-misra: $(TARGET)
@@ -560,6 +561,17 @@ test-lsp: $(TARGET) $(PLUGINS) zc-lsp
 	$(CC) $(CFLAGS) -DZC_NO_ARENA tests/compiler/lsp/lsp_test_runner.c src/utils/cJSON.c -o tests/compiler/lsp/test_runner
 	@echo "=> Running LSP Tests"
 	./tests/compiler/lsp/test_runner
+
+# Unit tests in C of the compiler's internals (tests/unit/, with utest.h). They link
+# the compiler objects, without main.o: tests/unit/unit_main.c provides main().
+UNIT_TEST_SRCS = $(wildcard tests/unit/*.c tests/unit/*/*.c)
+
+test-unit: $(TOOL_BASE_OBJS)
+	@echo "=> Building unit tests"
+	@$(MKDIR) $(OBJ_DIR)/tests/unit
+	$(CC) $(CFLAGS) -isystem tests/vendor -I tests/unit $(UNIT_TEST_SRCS) $(TOOL_BASE_OBJS) -o $(OBJ_DIR)/tests/unit/run_unit $(LIBS)
+	@echo "=> Running unit tests"
+	./$(OBJ_DIR)/tests/unit/run_unit
 
 test-backends: $(TARGET)
 	@echo "=> Testing all output backends"
@@ -730,4 +742,4 @@ fuzz-clean:
 	rm -f $(FUZZ_TARGET) $(FUZZ_CMPLOG_TARGET) $(FUZZ_HARNESS)
 	rm -rf obj-fuzz obj-fuzz-cmplog
 
-.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-tcc test-filcc test-lsp test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE
+.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-tcc test-filcc test-lsp test-unit test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE

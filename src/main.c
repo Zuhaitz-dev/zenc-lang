@@ -182,7 +182,7 @@ int main(int argc, char **argv)
         }
         else if (strcmp(arg, "--json") == 0)
         {
-            cfg->json_output = 1;
+            compiler.diag_consumer = diag_render_json;
         }
         else if (strcmp(arg, "--keep-comments") == 0)
         {

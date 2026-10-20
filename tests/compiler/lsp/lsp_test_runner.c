@@ -1204,6 +1204,41 @@ static void test_diagnostics()
     }
 }
 
+static void test_diagnostic_hints(void)
+{
+    printf("Running test_diagnostic_hints...\n");
+    // A top-level 'const' is a fatal error with two hints; the published message carries
+    // them after the error.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+                 "{\"textDocument\": {\"uri\": \"file:///tmp/test_hints.zc\", \"languageId\": "
+                 "\"zenc\", \"version\": 1, \"text\": \"const LIMIT = 10;\\n\"}}}");
+
+    for (int i = 0; i < 5; i++)
+    {
+        char *msg = read_message();
+        if (!msg)
+        {
+            break;
+        }
+        if (strstr(msg, "publishDiagnostics") && strstr(msg, "test_hints.zc"))
+        {
+            int ok = strstr(msg, "'const' cannot start a top-level declaration") &&
+                     strstr(msg, "(Suggestion: For a compile-time constant");
+            if (!ok)
+            {
+                printf("FAIL: test_diagnostic_hints: %s\n", msg);
+                exit(1);
+            }
+            printf("PASS: test_diagnostic_hints\n");
+            free(msg);
+            return;
+        }
+        free(msg);
+    }
+    printf("FAIL: test_diagnostic_hints: no diagnostics for test_hints.zc\n");
+    exit(1);
+}
+
 static void test_semantic_tokens()
 {
     printf("Running test_semantic_tokens...\n");
@@ -1473,6 +1508,7 @@ int main()
     test_completion();
     test_struct_completion();
     test_diagnostics();
+    test_diagnostic_hints();
     test_semantic_tokens();
     test_definition();
     test_declaration();

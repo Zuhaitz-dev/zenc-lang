@@ -51,14 +51,6 @@ static void initialize(void)
     initialized = 1;
 }
 
-// No-op error callback for fault tolerance
-static void fuzz_noop_error(void *data, Token t, const char *msg)
-{
-    (void)data;
-    (void)t;
-    (void)msg;
-}
-
 __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     if (size == 0)
@@ -93,7 +85,6 @@ __attribute__((used)) int LLVMFuzzerTestOneInput(const uint8_t *data, size_t siz
     // Enable fault tolerance so zpanic_at returns instead of exit()-ing
     ctx.is_fault_tolerant = 1;
     ctx.had_error = 0;
-    ctx.on_error = fuzz_noop_error;
 
     ctx.cg.hoist_out = fopen("/dev/null", "w");
     if (!ctx.cg.hoist_out)

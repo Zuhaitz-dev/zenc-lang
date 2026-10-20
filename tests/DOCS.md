@@ -2,12 +2,19 @@
 
 ## Directory Structure
 
+Almost every test is end-to-end: a `.zc` program compiled (and usually run) with
+`zc`, or a runner that drives a `zc` binary from outside (`compiler/lsp/`,
+`scripts/`). `unit/` is the exception: C tests that call the compiler's internal
+functions directly.
+
 ```
 tests/
 ├── bench/                 # Performance benchmarks (run manually)
 ├── compiler/
 │   ├── analysis/          # Static analysis and type-checker tests
 │   ├── codegen/           # Code generation verification
+│   ├── diagnostics/       # Programs that must fail with a diagnostic
+│   ├── diagnostics_output/ # Exact diagnostic output (see below)
 │   ├── interop/           # C/C++/CUDA/ObjC interop
 │   ├── lsp/               # Language server protocol tests
 │   ├── parser/            # Parser-specific tests
@@ -54,7 +61,9 @@ tests/
 │   └── types/             # Primitive types, type literals
 ├── misra/                 # MISRA compliance rules (156 files)
 ├── scripts/               # Test runner scripts and helpers
-└── stdlib/                # Standard library tests
+├── stdlib/                # Standard library tests
+├── unit/                  # Unit tests in C of compiler internals (see below)
+└── vendor/                # Third-party test code, unmodified (utest.h)
     ├── collections/       # Vec, slice, map iteration
     ├── networking/        # DNS, HTTP, WebSocket, URL
     ├── serialization/     # JSON, Base64
@@ -205,10 +214,44 @@ import "std/result.zc"
 make test          # Run all language/compiler/stdlib tests (C mode)
 make test-misra    # Run MISRA compliance suite
 make test-lsp      # Run LSP protocol tests
+make test-unit     # Run the C unit tests (also part of make test)
 
 # Filter by name pattern:
 ZC_TEST_FILTER="string" make test    # Only tests with "string" in the path
 ```
+
+## Diagnostic Output Tests
+
+`compiler/diagnostics_output/` checks what `zc` prints, not only that it fails. Each
+`<name>.zc` starts with `// ARGS: <command> [options]` (e.g. `// ARGS: build --json`);
+`tests/scripts/run_diagnostic_output_tests.sh` runs `zc` with them and compares the
+output and exit code with `<name>.expected`. After an intended change to the
+diagnostics, regenerate the expected files and review their diff:
+
+```sh
+UPDATE=1 tests/scripts/run_diagnostic_output_tests.sh
+git diff tests/compiler/diagnostics_output/
+```
+
+## Unit Tests (C)
+
+`unit/` tests internal functions of the compiler with
+[utest.h](https://github.com/sheredom/utest.h), vendored unmodified in
+`vendor/utest.h` (commit `706f357`, Unlicense, see `LICENSES/utest.txt`).
+
+- One `test_<module>.c` per compiler module, in the folder that mirrors `src/`:
+  `src/utils/utils.c` is tested in `unit/utils/test_utils.c`. `unit_main.c` and
+  `unit_test.h` stay at the top of `unit/`.
+- A test is `UTEST(group, name) { ... }`; it registers itself, there is no list to
+  update. `unit_main.c` only holds `UTEST_MAIN()`.
+- Include `unit_test.h`, not `utest.h`, after the compiler headers: the compiler's
+  `arena.h` redirects `malloc`/`realloc`/`calloc` to its arena, and utest must use
+  the C library ones (it frees them with `free()`), or the binary crashes at exit.
+- Prefer `EXPECT_*` when a test must undo something at the end (e.g.
+  `diag_set_parser_ctx(NULL)`): a failing `ASSERT_*` returns from the test at once.
+- `make test-unit` builds every `.c` of `unit/` and its subfolders with the
+  compiler's objects (all but `main.o`) and the same warning flags, into
+  `obj/tests/unit/run_unit`, and runs it.
 
 ## Adding a New Test
 

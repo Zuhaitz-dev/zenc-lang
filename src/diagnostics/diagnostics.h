@@ -14,6 +14,7 @@
 #define DIAGNOSTICS_H
 
 #include "token.h"
+#include "utils/utils.h"
 #include <stdarg.h>
 #include "../compat/c23_compat.h"
 
@@ -132,6 +133,31 @@ typedef enum
     // ...
     DIAG_MAX
 } DiagnosticID;
+
+/**
+ * @brief A diagnostic as data: what a consumer receives to present it.
+ */
+typedef struct ZenDiagnostic
+{
+    int is_error;             ///< 1 for an error, 0 for a warning.
+    int fatal;                ///< 1 if the error stops the compilation (zpanic_*).
+    int id;                   ///< DiagnosticID, or DIAG_NONE.
+    Token token;              ///< Where it happened (TOKEN_UNKNOWN if nowhere).
+    const char *message;      ///< The formatted message.
+    const char *const *hints; ///< NULL, or a NULL-terminated array of hints.
+} ZenDiagnostic;
+
+/**
+ * @brief Receives every diagnostic that is not silenced. `data` is the pointer
+ * registered with the consumer. `d` and the strings it points to are only valid during
+ * the call: copy what you keep.
+ */
+typedef void (*DiagConsumer)(void *data, const ZenDiagnostic *d);
+
+/** @brief Consumer that prints diagnostics as text to `data`, a FILE * (stderr if NULL). */
+void diag_render_text(void *data, const ZenDiagnostic *d);
+/** @brief Consumer that prints diagnostics as JSON lines to `data`, a FILE * (stderr if NULL). */
+void diag_render_json(void *data, const ZenDiagnostic *d);
 
 int is_diag_enabled(DiagnosticID id);
 void zwarn_diag(DiagnosticID id, Token t, const char *msg, const char *hint);
