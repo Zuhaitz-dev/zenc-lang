@@ -15,6 +15,8 @@
 int pipe_in[2];
 int pipe_out[2];
 pid_t child_pid;
+// Checks that report a failure and carry on; main() exits with 1 if any did.
+static int failures = 0;
 
 static ZC_NORETURN void fail(const char *msg)
 {
@@ -1223,6 +1225,7 @@ static void test_completion()
     else
     {
         printf("FAIL: test_completion (local_idx not found): %s\n", resp);
+        failures++;
     }
 
     // Check for 'arg_val'
@@ -1279,6 +1282,7 @@ static void test_struct_completion()
     else
     {
         printf("FAIL: test_struct_completion (field x not found): %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1328,6 +1332,7 @@ static void test_diagnostics()
     if (!found)
     {
         printf("FAIL: test_diagnostics. No diagnostics received.\n");
+        failures++;
     }
 }
 
@@ -1408,6 +1413,7 @@ static void test_semantic_tokens()
     else
     {
         printf("FAIL: test_semantic_tokens (no data): %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1454,6 +1460,7 @@ static void test_definition()
     else
     {
         printf("FAIL: test_definition (wrong location): %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1486,6 +1493,7 @@ static void test_references()
     else
     {
         printf("FAIL: test_references (missing refs): %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1515,6 +1523,7 @@ static void test_rename()
     else
     {
         printf("FAIL: test_rename (missing edits): %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1564,6 +1573,7 @@ static void test_outline()
     else
     {
         printf("FAIL: test_outline (missing symbols): %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1599,6 +1609,7 @@ static void test_formatting()
     else
     {
         printf("FAIL: test_formatting (missing edits): %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1618,6 +1629,7 @@ static void test_signature_help()
     else
     {
         printf("FAIL: test_signature_help: %s\n", resp);
+        failures++;
     }
     free(resp);
 }
@@ -1793,6 +1805,11 @@ int main()
     test_index_gitignore();
     test_project_config();
     test_index_exclude();
+    if (failures > 0)
+    {
+        fprintf(stderr, "TEST FAIL: %d LSP check(s) failed\n", failures);
+        return 1;
+    }
     printf("All LSP tests passed!\n");
     return 0;
 }

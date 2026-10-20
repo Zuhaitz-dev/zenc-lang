@@ -1,1 +1,3 @@
 *.zc linguist-language=C
+# Compared byte for byte with zc's output: keep LF on every platform.
+tests/compiler/diagnostics_output/* text eol=lf

@@ -203,6 +203,14 @@ jobs:
           ./tests/scripts/run_tests.sh --cc "${{ matrix.cc }}" --no-source -j 2
         fi
 
+    - name: Run Diagnostic Output Tests
+      shell: bash
+      run: ./tests/scripts/run_diagnostic_output_tests.sh
+
+    - name: Run Unit Tests
+      if: matrix.name == 'Linux GCC'
+      run: make CC="${{ matrix.cc }}" ZC_HAS_JIT=${{ matrix.zc_has_jit }} test-unit
+
     - name: Upload Failed Test Artifacts
       if: failure()
       uses: actions/upload-artifact@v4
