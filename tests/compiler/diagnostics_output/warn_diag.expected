@@ -1,0 +1,13 @@
+   Compiling tests/compiler/diagnostics_output/warn_diag.zc...
+warning: Unused variable 'unused_local'
+  --> tests/compiler/diagnostics_output/warn_diag.zc:5:9
+   |
+5  |     let unused_local = 5;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+warning: Unused parameter 'unused_param' in function 'helper'
+  --> tests/compiler/diagnostics_output/warn_diag.zc
+   = note: Consider prefixing with '_' if intentionally unused
+    Finished build in Xs with 0 errors and 2 warnings
+[exit 0]

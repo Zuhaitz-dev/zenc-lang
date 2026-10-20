@@ -1,0 +1,7 @@
+// ARGS: transpile
+// zerror_at: recoverable error
+
+fn main() {
+    let x: const int = 10;
+    x = 20;
+}

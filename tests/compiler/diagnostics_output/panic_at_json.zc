@@ -1,0 +1,6 @@
+// ARGS: transpile --json
+// zpanic_at in JSON mode
+
+fn main() {
+    let = 5;
+}

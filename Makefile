@@ -539,6 +539,7 @@ test: $(TARGET) $(PLUGINS)
 	./tests/scripts/run_example_build.sh $(filter %.zc,$(only))
 	./tests/scripts/run_repl_tests.sh
 	./tests/scripts/run_cli_tests.sh
+	./tests/scripts/run_diagnostic_output_tests.sh
 	$(MAKE) test-misra
 
 test-misra: $(TARGET)

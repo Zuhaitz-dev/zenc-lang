@@ -23,9 +23,6 @@ struct ParserContext;
 // ** Core Error Functions **
 
 /**
- * @brief Fatal error (exits).
- */
-/**
  * @brief Fatal system error (e.g. OOM), prints "Fatal: " prefix.
  */
 void zfatal(const char *fmt, ...);
@@ -34,7 +31,6 @@ void zfatal(const char *fmt, ...);
  * @brief Fatal error with token location (exits unless fault-tolerant).
  */
 ZEN_FORMAT_PRINTF(2, 3) void zpanic_at(Token t, const char *fmt, ...);
-void zpanic_at_diag(int diag_id, Token t, const char *fmt, ...);
 
 /**
  * @brief Fatal error with suggestion (exits unless fault-tolerant).

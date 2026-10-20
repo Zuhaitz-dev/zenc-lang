@@ -1,0 +1,7 @@
+// ARGS: transpile --json
+// zpanic_with_hints in JSON mode
+
+const LIMIT = 10;
+
+fn main() {
+}

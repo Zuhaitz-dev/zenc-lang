@@ -1,0 +1,3 @@
+   Compiling tests/compiler/diagnostics_output/panic_at_json.zc...
+{"file":"tests/compiler/diagnostics_output/panic_at_json.zc","line":5,"col":9,"level":"error","message":"Variable '=' requires a type or initializer"}
+[exit 1]

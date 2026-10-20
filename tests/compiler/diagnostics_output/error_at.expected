@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/error_at.zc...
+error: Cannot assign to const variable 'x'
+  --> tests/compiler/diagnostics_output/error_at.zc:6:7
+   |
+6  |     x = 20;
+   |       ^ here
+   |
+[exit 1]

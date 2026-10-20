@@ -1,0 +1,6 @@
+// ARGS: build
+// zwarn: warning without a source location
+
+//> nonsense: value
+fn main() {
+}

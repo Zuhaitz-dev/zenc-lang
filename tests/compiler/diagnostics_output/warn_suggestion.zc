@@ -1,0 +1,12 @@
+// ARGS: transpile
+// zwarn_with_suggestion: unknown type with a close match
+
+struct Point {
+    x: int;
+}
+
+fn show(p: Pointt*) {
+}
+
+fn main() {
+}

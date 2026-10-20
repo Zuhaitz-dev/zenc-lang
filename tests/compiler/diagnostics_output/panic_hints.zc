@@ -1,0 +1,7 @@
+// ARGS: transpile
+// zpanic_with_hints: two hints
+
+const LIMIT = 10;
+
+fn main() {
+}

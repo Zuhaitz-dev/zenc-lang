@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/warn_assign_cond.zc...
+warning: Assignment in condition
+  --> tests/compiler/diagnostics_output/warn_assign_cond.zc:6:11
+   |
+6  |     if (x = 2) {
+   |           ^ here
+   |
+   = note: Did you mean '=='?
+    Finished build in Xs with 0 errors and 1 warnings
+[exit 0]

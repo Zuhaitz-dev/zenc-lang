@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/panic_at.zc...
+error: Variable '=' requires a type or initializer
+  --> tests/compiler/diagnostics_output/panic_at.zc:5:9
+   |
+5  |     let = 5;
+   |         ^ here
+   |
+[exit 1]
