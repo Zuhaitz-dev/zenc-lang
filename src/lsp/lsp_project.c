@@ -260,7 +260,7 @@ static void scan_file(const char *path)
         return;
     }
 
-    char *src = load_file(path, g_project->ctx->current_filename);
+    char *src = load_file(path, g_project->ctx->current_filename, g_project->ctx->config);
     if (!src)
     {
         return;

@@ -191,14 +191,16 @@ void print_command_help(const char *command)
 }
 
 void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp_source_file,
-                            CompilerConfig *cfg)
+                            ZenCompiler *compiler)
 {
+    CompilerConfig *cfg = &compiler->config;
+
     // Compiler
     arg_list_add_from_string(list, cfg->cc);
 
     // GCC Flags
     arg_list_add_from_string(list, cfg->gcc_flags);
-    arg_list_add_from_string(list, g_cflags);
+    arg_list_add_from_string(list, compiler->cflags);
 
     // Suppress warnings triggered by transpiled code
     // nvcc rejects these GCC-specific flags, so skip them for CUDA
@@ -273,7 +275,7 @@ void build_compile_arg_list(ArgList *list, const char *outfile, const char *temp
     }
 
     // Linker flags
-    arg_list_add_from_string(list, g_link_flags);
+    arg_list_add_from_string(list, compiler->link_flags);
     if (z_is_windows())
     {
         arg_list_add(list, "-lws2_32");

@@ -128,7 +128,7 @@ int driver_compile(ZenCompiler *compiler)
     ctx.hook_plugin_init_api = (void (*)(void *, const char *, int, CompilerConfig *))zptr_init_api;
 #endif
 
-    char *src = load_file(compiler->config.input_file, ctx.current_filename);
+    char *src = load_file(compiler->config.input_file, ctx.current_filename, &compiler->config);
     if (!src)
     {
         fprintf(stderr, COLOR_BOLD COLOR_RED "error" COLOR_RESET ": could not read file '%s'\n",
@@ -200,7 +200,7 @@ int driver_compile(ZenCompiler *compiler)
             }
             mark_file_imported(&ctx, path);
 
-            char *extra_src = load_file(path, ctx.current_filename);
+            char *extra_src = load_file(path, ctx.current_filename, &compiler->config);
             if (!extra_src)
             {
                 zerror_at(TOKEN_UNKNOWN, "could not read file '%s'", extra_path);
@@ -385,7 +385,7 @@ int driver_compile(ZenCompiler *compiler)
                                                        : (z_is_windows() ? "a.exe" : "a.out");
     ArgList compile_args;
     arg_list_init(&compile_args);
-    build_compile_arg_list(&compile_args, outfile, temp_source_buf, &compiler->config);
+    build_compile_arg_list(&compile_args, outfile, temp_source_buf, compiler);
 
     if (compiler->config.verbose)
     {

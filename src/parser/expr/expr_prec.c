@@ -2129,7 +2129,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                             return NULL;
                         }
                         concrete[argc] = type_to_string(inner_t);
-                        unmangled[argc] = type_to_c_string(inner_t);
+                        unmangled[argc] = type_to_c_string(inner_t, ctx->config->misra_mode);
                         argc++;
                         if (lexer_peek(l).kind == TOK_COMMA)
                         {

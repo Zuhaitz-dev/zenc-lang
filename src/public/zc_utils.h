@@ -39,9 +39,10 @@ char *xstrdup(const char *s);
 #include "emitter.h"
 
 // File I/O
+struct CompilerConfig;
 
 /** @brief Load a file into a heap-allocated buffer. Caller must free. */
-char *load_file(const char *fn, const char *relative_to);
+char *load_file(const char *fn, const char *relative_to, struct CompilerConfig *cfg);
 /** @brief Resolve an import path using include paths and root config. Caller must free. */
 char *z_resolve_path(const char *fn, const char *relative_to, struct CompilerConfig *cfg);
 

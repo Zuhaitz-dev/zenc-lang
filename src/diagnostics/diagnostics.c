@@ -19,9 +19,17 @@ void diag_set_parser_ctx(ParserContext *ctx)
     d_ctx.parser_ctx = ctx;
 }
 
+// Diagnostics take no compiler argument: they use (config) and update (error and
+// warning counts) the compiler of the registered parser context, or g_compiler if
+// none is set.
+static ZenCompiler *diag_compiler(void)
+{
+    return d_ctx.parser_ctx ? d_ctx.parser_ctx->compiler : &g_compiler;
+}
+
 static CompilerConfig *diag_cfg(void)
 {
-    return d_ctx.parser_ctx ? d_ctx.parser_ctx->config : &g_compiler.config;
+    return &diag_compiler()->config;
 }
 
 static const char *diag_filename(Token t)
@@ -159,7 +167,7 @@ void zwarn(const char *fmt, ...)
         emit_json("warning", TOKEN_UNKNOWN, msg, NULL, DIAG_NONE);
         return;
     }
-    g_warning_count++;
+    diag_compiler()->warning_count++;
     va_list a;
     va_start(a, fmt);
     fprintf(stderr, COLOR_YELLOW "warning: " COLOR_RESET COLOR_BOLD);
@@ -212,7 +220,7 @@ void zwarn_at(Token t, const char *fmt, ...)
         return;
     }
     // Header: 'warning: message'.
-    g_warning_count++;
+    diag_compiler()->warning_count++;
     va_list a;
     va_start(a, fmt);
     fprintf(stderr, COLOR_YELLOW "warning: " COLOR_RESET COLOR_BOLD);
@@ -261,7 +269,7 @@ void zwarn_with_suggestion(Token t, const char *msg, const char *suggestion)
     }
 
     // Header: 'warning: message'.
-    g_warning_count++;
+    diag_compiler()->warning_count++;
     fprintf(stderr, COLOR_YELLOW "warning: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", msg);
 
     // Context.
@@ -329,7 +337,7 @@ void zpanic_at(Token t, const char *fmt, ...)
         diag_print_location(stderr, t);
     }
 
-    g_error_count++;
+    diag_compiler()->error_count++;
     if (d_ctx.parser_ctx && d_ctx.parser_ctx->is_fault_tolerant && d_ctx.parser_ctx->on_error)
     {
         // Construct error message buffer
@@ -372,7 +380,7 @@ void zpanic_with_suggestion(Token t, const char *msg, const char *suggestion)
                      suggestion ? suggestion : "");
             d_ctx.parser_ctx->had_error = 1;
             d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
-            g_error_count++;
+            diag_compiler()->error_count++;
             return;
         }
         if (diag_cfg()->mode_lsp)
@@ -384,7 +392,7 @@ void zpanic_with_suggestion(Token t, const char *msg, const char *suggestion)
     // Header.
     fprintf(stderr, COLOR_RED "error: " COLOR_RESET COLOR_BOLD "%s" COLOR_RESET "\n", msg);
 
-    g_error_count++;
+    diag_compiler()->error_count++;
 
     // Context.
     if (t.start && t.col > 0)
@@ -532,7 +540,7 @@ void zerror_at(Token t, const char *fmt, ...)
         vsnprintf(msg, sizeof(msg), fmt, a);
         va_end(a);
         emit_json("error", t, msg, NULL, DIAG_NONE);
-        g_error_count++;
+        diag_compiler()->error_count++;
         if (d_ctx.parser_ctx && d_ctx.parser_ctx->on_error)
         {
             d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, msg);
@@ -569,7 +577,7 @@ void zerror_at(Token t, const char *fmt, ...)
 
         d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, msg);
     }
-    g_error_count++;
+    diag_compiler()->error_count++;
 }
 
 void zerror_with_hints(Token t, const char *msg, const char *const *hints)
@@ -602,7 +610,7 @@ void zerror_with_hints(Token t, const char *msg, const char *const *hints)
             }
             d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
         }
-        g_error_count++;
+        diag_compiler()->error_count++;
         return;
     }
 
@@ -641,7 +649,7 @@ void zerror_with_hints(Token t, const char *msg, const char *const *hints)
         }
         d_ctx.parser_ctx->on_error(d_ctx.parser_ctx->error_callback_data, t, full_msg);
     }
-    g_error_count++;
+    diag_compiler()->error_count++;
 }
 
 // Specific error types with helpful messages.

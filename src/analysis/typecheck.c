@@ -1182,12 +1182,12 @@ int check_program(ParserContext *ctx, ASTNode *root)
         misra_audit_identifier_uniqueness(tc.pctx);
     }
 
-    if (g_error_count > 0)
+    if (ctx->compiler->error_count > 0)
     {
         fprintf(stderr,
                 COLOR_BOLD COLOR_RED "     error" COLOR_RESET
                                      ": semantic analysis found %d error%s\n",
-                g_error_count, g_error_count == 1 ? "" : "s");
+                ctx->compiler->error_count, ctx->compiler->error_count == 1 ? "" : "s");
         return 1;
     }
 
@@ -1214,5 +1214,5 @@ int check_moves_only(ParserContext *ctx, ASTNode *root)
         ctx->move_state = NULL;
     }
 
-    return g_error_count;
+    return ctx->compiler->error_count;
 }

@@ -453,7 +453,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     emitter_indent(&ctx->cg.emitter);
     if (ctx->config->misra_mode && node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
     {
-        char *safe_ret_type = type_to_c_string(node->func.ret_type_info);
+        char *safe_ret_type = type_to_c_string(node->func.ret_type_info, ctx->config->misra_mode);
         EMIT(ctx, "%s _misra_ret = 0;\n", safe_ret_type);
         zfree(safe_ret_type);
     }
@@ -752,7 +752,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
         if (node->type_info &&
             (!node->var_decl.init_expr || node->var_decl.init_expr->kind != NODE_AWAIT))
         {
-            tname = type_to_c_string(node->type_info);
+            tname = type_to_c_string(node->type_info, ctx->config->misra_mode);
             // Async functions now return Async*; correct the type name
             // so the emitted C uses "Async*" instead of "Async" or "Async<...>".
             if (tname && strncmp(tname, "Async", 5) == 0 && node->var_decl.init_expr &&
@@ -808,7 +808,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 if (ctx->config->use_cpp && node->type_info &&
                     (node->type_info->kind == TYPE_POINTER || node->type_info->kind == TYPE_ENUM))
                 {
-                    char *ct = type_to_c_string(node->type_info);
+                    char *ct = type_to_c_string(node->type_info, ctx->config->misra_mode);
                     EMIT(ctx, "(%s)(", ct);
                     codegen_expression(ctx, node->var_decl.init_expr);
                     EMIT(ctx, ")");

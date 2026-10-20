@@ -769,7 +769,7 @@ int is_boolean_type(Type *t);
 int is_float_type(Type *t);
 int is_composite_expression(ASTNode *node);
 char *type_to_string(Type *t);
-char *type_to_c_string(Type *t);
+char *type_to_c_string(Type *t, int misra_mode);
 char *infer_type(struct ParserContext *ctx, struct ASTNode *node);
 char *get_field_type_str(struct ParserContext *ctx, const char *struct_name,
                          const char *field_name);
