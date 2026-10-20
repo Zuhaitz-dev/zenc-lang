@@ -34,7 +34,7 @@ static int cmd_plot(ReplState *state, const char *args)
     zfree(plot_logic);
 
     /* Execution */
-    char *c_code = repl_transpile(full_code);
+    char *c_code = repl_transpile(state->compiler, full_code);
     if (c_code)
     {
         repl_jit_execute(c_code, state->config);
@@ -160,7 +160,7 @@ static int cmd_show(ReplState *state, const char *args)
 
     for (int i = state->history_len - 1; i >= 0; i--)
     {
-        if (is_definition_of(state->history[i], name))
+        if (is_definition_of(state->config, state->history[i], name))
         {
             printf("  \033[90m// Found in history:\033[0m\n");
             printf("  ");
@@ -192,11 +192,11 @@ static int cmd_show(ReplState *state, const char *args)
     }
 
     ParserContext ctx;
-    repl_parser_ctx_init(&ctx);
+    repl_parser_ctx_init(&ctx, state->compiler);
     ctx.cg.skip_preamble = 1;
     ctx.is_fault_tolerant = 1;
     Lexer l;
-    lexer_init(&l, show_code, &g_compiler.config, ctx.current_filename);
+    lexer_init(&l, show_code, ctx.config, ctx.current_filename);
     ASTNode *nodes = parse_program(&ctx, &l);
 
     ASTNode *search = nodes;
@@ -590,12 +590,12 @@ static int cmd_vars_funcs_structs(ReplState *state, const char *args)
     zfree(main_code);
 
     ParserContext ctx;
-    repl_parser_ctx_init(&ctx);
+    repl_parser_ctx_init(&ctx, state->compiler);
     ctx.cg.skip_preamble = 1;
     ctx.is_fault_tolerant = 1;
 
     Lexer l;
-    lexer_init(&l, code, &g_compiler.config, ctx.current_filename);
+    lexer_init(&l, code, ctx.config, ctx.current_filename);
     ASTNode *nodes = parse_program(&ctx, &l);
 
     ASTNode *search = nodes;

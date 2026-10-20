@@ -28,10 +28,10 @@ static void *arena_alloc(zarena *a, size_t size)
 // Header stored 16 bytes before the returned pointer, used by xrealloc.
 #define XMALLOC_HDR_SIZE 16
 
-// Backward compatibility using global g_compiler.arena
+// All compiler allocations come from the global arena g_arena.
 static void *arena_alloc_raw(size_t size)
 {
-    return arena_alloc(&g_compiler.arena, size);
+    return arena_alloc(&g_arena, size);
 }
 
 #include <time.h>
@@ -366,9 +366,9 @@ char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cf
     return NULL;
 }
 
-char *load_file(const char *fn, const char *relative_to)
+char *load_file(const char *fn, const char *relative_to, CompilerConfig *cfg)
 {
-    char *resolved = z_resolve_path(fn, relative_to, &g_compiler.config);
+    char *resolved = z_resolve_path(fn, relative_to, cfg);
     if (!resolved)
     {
         return NULL;
@@ -404,8 +404,8 @@ char *load_file(const char *fn, const char *relative_to)
     return b;
 }
 
-// ** Global Compiler State **
-ZenCompiler g_compiler = {0};
+// ** Global Memory Arena **
+zarena g_arena = {0};
 
 void append_flag(char *dest, size_t max_size, const char *prefix, const char *val)
 {
@@ -426,6 +426,21 @@ void append_flag(char *dest, size_t max_size, const char *prefix, const char *va
     if (val)
     {
         strncat(dest, val, max_size - current_len - 1);
+    }
+}
+
+void str_join(char *out, size_t size, const char *const *parts, const char *sep)
+{
+    out[0] = '\0';
+    const char *const *p = parts;
+    while (p && *p)
+    {
+        if (p != parts)
+        {
+            strncat(out, sep, size - strlen(out) - 1);
+        }
+        strncat(out, *p, size - strlen(out) - 1);
+        p++;
     }
 }
 
@@ -501,9 +516,65 @@ static int is_os_active(const char *os_name)
     return 0;
 }
 
+// Applies `${VAR}` expansion and the optional OS prefix (`linux:`, `windows:`, `macos:`,
+// `darwin:`) to the text that follows `//>`, and writes the directive itself
+// (e.g. "include: ./path") into `out`. Returns 0 when the directive targets another OS.
+int resolve_build_directive(const char *raw, char *out, size_t out_size)
+{
+    char line[2048];
+    expand_env_vars(line, sizeof(line), raw);
+
+    const char *directive = line;
+    char *colon = (char *)strchr(line, ':');
+    if (colon)
+    {
+        *colon = 0; // split the string temporarily
+        if (0 == strcmp(line, "linux") || 0 == strcmp(line, "windows") ||
+            0 == strcmp(line, "macos") || 0 == strcmp(line, "darwin"))
+        {
+            if (!is_os_active(line))
+            {
+                return 0;
+            }
+            directive = colon + 1;
+            while (*directive && isspace((unsigned char)*directive))
+            {
+                directive++;
+            }
+        }
+        else
+        {
+            // Not an OS prefix, restore the colon
+            *colon = ':';
+        }
+    }
+
+    snprintf(out, out_size, "%s", directive);
+    return 1;
+}
+
+int is_safe_pkg_config_spec(const char *libs)
+{
+    // Only a strict whitelist of characters is allowed: alphanumeric, spaces, and safe
+    // non-alphanumeric. This rejects characters like ;, &, |, $, `, (, ), <, >, etc.
+    if (!libs || !*libs)
+    {
+        return 0;
+    }
+    for (int i = 0; libs[i]; i++)
+    {
+        if (!isalnum((unsigned char)libs[i]) && libs[i] != '-' && libs[i] != '_' &&
+            libs[i] != ' ' && libs[i] != '.' && libs[i] != '+')
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 void scan_build_directives(ParserContext *ctx, const char *src)
 {
-    (void)ctx;
+    ZenCompiler *compiler = ctx->compiler;
     const char *p = src;
     while (*p)
     {
@@ -539,37 +610,12 @@ void scan_build_directives(ParserContext *ctx, const char *src)
             }
 
             char line[2048];
-            expand_env_vars(line, sizeof(line), raw_line);
-
-            char *directive = line;
-            char *colon = (char *)strchr(line, ':');
-            if (colon)
+            if (!resolve_build_directive(raw_line, line, sizeof(line)))
             {
-                *colon = 0; // split the string temporarily
-                if (0 == strcmp(line, "linux") || 0 == strcmp(line, "windows") ||
-                    0 == strcmp(line, "macos") || 0 == strcmp(line, "darwin"))
-                {
-                    if (is_os_active(line))
-                    {
-                        directive = colon + 1;
-                        while (*directive && isspace((unsigned char)*directive))
-                        {
-                            directive++;
-                        }
-                    }
-                    else
-                    {
-                        // OS specified but not active, skip this directive completely
-                        goto next_line;
-                    }
-                }
-                else
-                {
-                    // Not an OS prefix, restore the colon
-                    *colon = ':';
-                    directive = line;
-                }
+                // OS specified but not active, skip this directive completely
+                goto next_line;
             }
+            char *directive = line;
 
             char *directive_val = NULL;
             // Process Directive
@@ -580,7 +626,8 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                 {
                     directive_val++;
                 }
-                append_flag(g_link_flags, sizeof(g_link_flags), directive_val, NULL);
+                append_flag(compiler->link_flags, sizeof(compiler->link_flags), directive_val,
+                            NULL);
             }
             else if (0 == strncmp(directive, "cflags:", 7))
             {
@@ -589,7 +636,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                 {
                     directive_val++;
                 }
-                append_flag(g_cflags, sizeof(g_cflags), directive_val, NULL);
+                append_flag(compiler->cflags, sizeof(compiler->cflags), directive_val, NULL);
             }
             else if (0 == strncmp(directive, "include:", 8))
             {
@@ -628,7 +675,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
 
                     char flags[MAX_PATH_LEN + 32];
                     snprintf(flags, sizeof(flags), "-I%s", path);
-                    append_flag(g_cflags, sizeof(g_cflags), flags, NULL);
+                    append_flag(compiler->cflags, sizeof(compiler->cflags), flags, NULL);
                 }
             }
             else if (strncmp(directive, "lib:", 4) == 0)
@@ -668,7 +715,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
 
                     char flags[MAX_PATH_LEN + 32];
                     snprintf(flags, sizeof(flags), "-L%s", path);
-                    append_flag(g_link_flags, sizeof(g_link_flags), flags, NULL);
+                    append_flag(compiler->link_flags, sizeof(compiler->link_flags), flags, NULL);
                 }
             }
             else if (strncmp(directive, "framework:", 10) == 0)
@@ -708,7 +755,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
 
                     char flags[MAX_VAR_NAME_LEN + 32];
                     snprintf(flags, sizeof(flags), "-framework %s", name);
-                    append_flag(g_link_flags, sizeof(g_link_flags), flags, NULL);
+                    append_flag(compiler->link_flags, sizeof(compiler->link_flags), flags, NULL);
                 }
             }
             else if (strncmp(directive, "define:", 7) == 0)
@@ -746,7 +793,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                     }
                     *d = '\0';
 
-                    append_flag(g_cflags, sizeof(g_cflags), "-D", def_val);
+                    append_flag(compiler->cflags, sizeof(compiler->cflags), "-D", def_val);
 
                     char *name = xstrdup(def_val);
                     char *eq = (char *)strchr(name, '=');
@@ -786,27 +833,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                 char *libs = directive + 11;
 
                 // Security check for malicious pkg-config commands containing shell injections.
-                // We only allow a strict whitelist of characters: alphanumeric, spaces, and safe
-                // non-alphanumeric. This prevents characters like ;, &, |, $, `, (, ), <, >, etc.
-                int is_safe = 1;
-                if (!libs || !*libs)
-                {
-                    is_safe = 0;
-                }
-                else
-                {
-                    for (int i = 0; libs[i]; i++)
-                    {
-                        if (!isalnum((unsigned char)libs[i]) && libs[i] != '-' && libs[i] != '_' &&
-                            libs[i] != ' ' && libs[i] != '.' && libs[i] != '+')
-                        {
-                            is_safe = 0;
-                            break;
-                        }
-                    }
-                }
-
-                if (!is_safe)
+                if (!is_safe_pkg_config_spec(libs))
                 {
                     zwarn("Security Alert: Execution of 'pkg-config:' directive with invalid chars "
                           "(%s) was BLOCKED.",
@@ -828,7 +855,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                         {
                             buf[l - 1] = 0;
                         }
-                        append_flag(g_cflags, sizeof(g_cflags), buf, NULL);
+                        append_flag(compiler->cflags, sizeof(compiler->cflags), buf, NULL);
                     }
                     arg_list_free(&args);
 
@@ -844,7 +871,7 @@ void scan_build_directives(ParserContext *ctx, const char *src)
                         {
                             buf[l - 1] = 0;
                         }
-                        append_flag(g_link_flags, sizeof(g_link_flags), buf, NULL);
+                        append_flag(compiler->link_flags, sizeof(compiler->link_flags), buf, NULL);
                     }
                     arg_list_free(&args);
                 }

@@ -74,22 +74,24 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
                 if (s)
                 {
                     s->is_const_value = 1;
-                    s->const_int_val = (int)val;
+                    s->const_int_val = val;
                     s->is_def = 1;
 
-                    // Auto-infer type for def if unknown
+                    // Auto-infer type for def if unknown: `int`, or `i64` when the
+                    // value does not fit in 32 bits.
                     if (!s->type_name || strcmp(s->type_name, "unknown") == 0)
                     {
+                        int is_wide = val < INT32_MIN || val > INT32_MAX;
                         if (s->type_name)
                         {
                             zfree(s->type_name);
                         }
-                        s->type_name = xstrdup("int");
+                        s->type_name = xstrdup(is_wide ? "i64" : "int");
                         if (s->type_info)
                         {
                             zfree(s->type_info);
                         }
-                        s->type_info = type_new(TYPE_INT);
+                        s->type_info = type_new(is_wide ? TYPE_I64 : TYPE_INT);
                         s->type_info->is_const = 1;
                     }
                 }

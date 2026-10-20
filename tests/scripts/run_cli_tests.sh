@@ -106,6 +106,57 @@ else
     check "zc transpile emits C source" 0
 fi
 
+# --- Program output ----------------------------------------------------------
+
+# Runs a program and compares its exact standard output (stdin from $3).
+output_check() {
+    local name="$1"
+    local code="$2"
+    local input="$3"
+    local expected="$4"
+    printf '%s\n' "$code" > "$workdir/output.zc"
+    "$ZC" build -w "$workdir/output.zc" -o "$workdir/output_bin" >/dev/null 2>&1
+    local actual
+    actual=$(printf '%s' "$input" | "$workdir/output_bin" 2>/dev/null)
+    if [ "$actual" = "$expected" ]; then
+        check "$name" 1
+    else
+        check "$name" 0
+    fi
+}
+
+output_check "bare strings print without semicolons" 'fn main() {
+    let x = 3
+    "first"
+    "x is {x}"
+    "last"
+}' "" "first
+x is 3
+last"
+
+out=$("$ZC" build "$workdir/smoke.zc" -o "$workdir/smoke_build" 2>&1)
+if [ -x "$workdir/smoke_build" ]; then
+    check "zc build compiles a program" 1
+else
+    check "zc build compiles a program" 0
+fi
+
+out=$("$ZC" "$workdir/smoke.zc" -o "$workdir/smoke_implicit" 2>&1)
+if [ -x "$workdir/smoke_implicit" ]; then
+    check "zc <file> builds without a command" 1
+else
+    check "zc <file> builds without a command" 0
+fi
+
+out=$("$ZC" frobnicate "$workdir/smoke.zc" -o "$workdir/smoke_unknown" 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q "unknown command 'frobnicate'" &&
+    [ ! -e "$workdir/smoke_unknown" ]; then
+    check "unknown command reports error" 1
+else
+    check "unknown command reports error" 0
+fi
+
 # --- Robustness: pathological inputs must exit cleanly (never crash) -------
 
 # A crash (signal) yields exit code > 128; a clean compile or a normal
@@ -192,6 +243,56 @@ fn main() {
     let y = f<$garg>(1);
     println \"y\";
 }"
+
+# --- Diagnostics: errors reported by Zen C, not by the C compiler ------------
+
+# Builds a program that must fail with a Zen C error matching $3 (and never
+# reach the C compiler).
+diag_check() {
+    local name="$1"
+    local code="$2"
+    local pattern="$3"
+    printf '%s\n' "$code" > "$workdir/diag.zc"
+    local out
+    out=$("$ZC" build "$workdir/diag.zc" -o "$workdir/diag_out" 2>&1)
+    if echo "$out" | grep -q "$pattern" && ! echo "$out" | grep -q "C compilation failed"; then
+        check "$name" 1
+    else
+        check "$name" 0
+    fi
+}
+
+diag_check "redefined function is a Zen C error" 'fn twice() -> int { return 1; }
+fn twice() -> int { return 2; }
+fn main() { println "{twice()}"; }' "Redefinition of function 'twice'"
+
+diag_check "redefined method is a Zen C error" 'struct Counter { value: int; }
+impl Counter { fn get(self) -> int { return 1; } }
+impl Counter { fn get(self) -> int { return 2; } }
+fn main() { let c = Counter { value: 0 }; println "{c.get()}"; }' "Redefinition of method 'Counter::get'"
+
+# --- Imported files: diagnostics and #line name the imported file -----------
+
+mkdir -p "$workdir/imported"
+printf 'fn make() -> int {\n    let x: int = "text";\n    return 1;\n}\n' > "$workdir/imported/broken.zc"
+printf 'import "imported/broken.zc"\nfn main() {\n    println "{make()}";\n}\n' > "$workdir/imported_main.zc"
+out=$("$ZC" build "$workdir/imported_main.zc" -o "$workdir/imported_out" 2>&1)
+if echo "$out" | grep -q "imported/broken.zc:2:" && ! echo "$out" | grep -q "imported_main.zc:"; then
+    check "error in an imported file is reported at its own path" 1
+else
+    check "error in an imported file is reported at its own path" 0
+fi
+
+mkdir -p "$workdir/lib"
+printf 'struct Counter { hits: int; }\nimpl Counter {\n    fn bump(self) { self.hits = self.hits + 1; }\n}\n' > "$workdir/lib/counter.zc"
+printf 'import "lib/counter.zc"\nfn main() {\n    let c = Counter { hits: 0 };\n    c.bump();\n    println "{c.hits}";\n}\n' > "$workdir/lib_main.zc"
+"$ZC" build --emit-c "$workdir/lib_main.zc" -o "$workdir/lib_out" >/dev/null 2>&1
+line=$(awk '/#line/{l=$0} /^ZC_FUNC void Counter__bump\(Counter\* self\)$/{print l; exit}' "$workdir/lib_out.c" 2>/dev/null)
+if echo "$line" | grep -q 'lib/counter.zc"'; then
+    check "emit-c #line of an imported method names the imported file" 1
+else
+    check "emit-c #line of an imported method names the imported file" 0
+fi
 
 echo "----------------------------------------"
 echo "Results (CLI):"

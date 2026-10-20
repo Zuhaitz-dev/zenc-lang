@@ -102,7 +102,7 @@ char *z_resolve_path(const char *fn, const char *relative_to, CompilerConfig *cf
 /**
  * @brief Load a file into memory.
  */
-char *load_file(const char *fn, const char *relative_to);
+char *load_file(const char *fn, const char *relative_to, CompilerConfig *cfg);
 
 // Diagnostics (minimal)
 

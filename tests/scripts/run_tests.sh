@@ -120,7 +120,7 @@ fi
 if [ ${#TEST_FILES[@]} -gt 0 ]; then
     mapfile -t TEST_LIST < <(printf "%s\n" "${TEST_FILES[@]}" | grep "$TEST_DIR"/)
 else
-    mapfile -t TEST_LIST < <(find "$TEST_DIR" -name "*.zc" -not -name "_*.zc" -not -path "*/backends/*" | sort)
+    mapfile -t TEST_LIST < <(find "$TEST_DIR" -name "*.zc" -not -name "_*.zc" -not -path "*/backends/*" -not -path "*/diagnostics_output/*" | sort)
     if [ $USE_CPP -eq 1 ] && [ -d "$TEST_DIR/backends/cpp" ]; then
         mapfile -t CPP_TESTS < <(find "$TEST_DIR/backends/cpp" -name "test_*.zc" | sort)
         TEST_LIST=("${TEST_LIST[@]}" "${CPP_TESTS[@]}")

@@ -1,0 +1,10 @@
+   Compiling tests/compiler/diagnostics_output/panic_hints.zc...
+error: 'const' cannot start a top-level declaration
+  --> tests/compiler/diagnostics_output/panic_hints.zc:4:1
+   |
+4  | const LIMIT = 10;
+   | ^ here
+   |
+   = help: For a compile-time constant use `def NAME = value;`
+   = help: For a read-only global use `let NAME: const Type = value;`
+[exit 1]

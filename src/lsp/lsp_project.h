@@ -37,6 +37,11 @@ typedef struct
 extern LSPProject *g_project;
 extern int g_is_indexing;
 
+// The compiler the server works with: set once by lsp_main(), read by projects and
+// the C header support.
+void lsp_set_compiler(ZenCompiler *compiler);
+ZenCompiler *lsp_compiler(void);
+
 // Initialize the project with a root directory
 void lsp_project_init(const char *root_path);
 
@@ -52,6 +57,9 @@ void lsp_project_update_file(const char *uri, const char *src);
 // Remember the latest text of an open document (outside the arena) so a rebuild can
 // re-apply it.
 void lsp_project_track_document(const char *uri, const char *src);
+
+// Forget a document the client closed: a rebuild reads it from disk again.
+void lsp_project_untrack_document(const char *uri);
 
 // Arena usage right after the last full build (workspace indexing or rebuild).
 size_t lsp_project_built_total(void);
@@ -82,10 +90,19 @@ ReferenceResult *lsp_project_find_references(const char *name);
 // Semantic Tokens
 char *lsp_semantic_tokens_full(const char *uri);
 
+/** Severity of a published diagnostic, as the LSP specification numbers it. */
+typedef enum
+{
+    LSP_SEVERITY_ERROR = 1,
+    LSP_SEVERITY_WARNING = 2,
+    LSP_SEVERITY_INFORMATION = 3,
+    LSP_SEVERITY_HINT = 4
+} LspDiagnosticSeverity;
+
 // LSP analysis functions (declared here for cross-file visibility)
-void lsp_on_error(void *data, Token t, const char *msg);
-void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int diag_id);
+void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d);
 void lsp_check_file(const char *uri, const char *src, int id);
+void lsp_close_file(const char *uri);
 void lsp_goto_definition(const char *uri, int line, int col, int id);
 void lsp_hover(const char *uri, int line, int col, int id);
 void lsp_completion(const char *uri, int line, int col, int id);

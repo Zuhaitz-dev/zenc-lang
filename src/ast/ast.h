@@ -276,6 +276,11 @@ struct ASTNode
             int elide_from_idx;      // Index of parameter for lifetime elision (-1 if none)
 
             Attribute *attributes; // Custom attributes
+
+            // Declaration context (to parse a deferred body)
+            char *module_prefix;  // C prefix of the declaring module (NULL if none)
+            char *impl_struct;    // Type of the enclosing impl block (NULL for free function)
+            const char *filename; // Source file that declares the function
         } func;
 
         struct
@@ -420,6 +425,8 @@ struct ASTNode
         {
             char *op;
             ASTNode *operand;
+            int owns_temp; ///< `&_rval` of a temporary that the enclosing call must drop.
+            int temp_id;   ///< While emitting that call: 1 + id of the named temporary.
         } unary;
 
         struct
@@ -556,12 +563,18 @@ struct ASTNode
             char *content;
             char **used_symbols;
             int used_symbol_count;
+            struct ASTNode **interp_exprs; ///< Parsed `{...}` expressions of an f-string.
+            int interp_expr_count;
         } raw_stmt;
 
         struct
         {
             char *name;
             ASTNode *body;
+
+            // Declaration context
+            char *module_prefix;  // C prefix of the declaring module
+            const char *filename; // Source file that declares the test
         } test_stmt;
 
         struct
@@ -756,7 +769,7 @@ int is_boolean_type(Type *t);
 int is_float_type(Type *t);
 int is_composite_expression(ASTNode *node);
 char *type_to_string(Type *t);
-char *type_to_c_string(Type *t);
+char *type_to_c_string(Type *t, int misra_mode);
 char *infer_type(struct ParserContext *ctx, struct ASTNode *node);
 char *get_field_type_str(struct ParserContext *ctx, const char *struct_name,
                          const char *field_name);

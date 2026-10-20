@@ -1,0 +1,4 @@
+// Imported by both _left.zc and _right.zc: parsed once, defined once.
+fn shared_answer() -> int {
+    return 42;
+}

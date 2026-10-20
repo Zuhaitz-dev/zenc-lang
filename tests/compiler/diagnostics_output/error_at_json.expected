@@ -1,0 +1,3 @@
+   Compiling tests/compiler/diagnostics_output/error_at_json.zc...
+{"file":"tests/compiler/diagnostics_output/error_at_json.zc","line":6,"col":7,"level":"error","message":"Cannot assign to const variable 'x'"}
+[exit 1]

@@ -6,6 +6,7 @@
 #include "utils/utils.h"
 #include "ast/ast.h"
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,15 +35,8 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             self_node->var_ref.name = xstrdup("self");
             self_node->token = dot_tok;
 
-            Type *inner_type = type_new(TYPE_STRUCT);
-            if (ctx->current_impl_struct)
-            {
-                inner_type->name = xstrdup(ctx->current_impl_struct);
-            }
-            else
-            {
-                inner_type->name = xstrdup("Self");
-            }
+            Type *inner_type =
+                type_from_name(ctx, ctx->current_impl_struct ? ctx->current_impl_struct : "Self");
             self_node->type_info = type_new_ptr(inner_type);
             if (ctx->current_impl_struct)
             {
@@ -1022,7 +1016,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 changed = 1;
             }
 
-            if (lexer_peek(l).kind == TOK_LANGLE)
+            if (lexer_peek(l).kind == TOK_LANGLE && tokens_could_be_generic_args(l))
             {
                 Lexer lookahead = *l;
                 lexer_next(&lookahead);
@@ -2003,11 +1997,35 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                 sym->is_used = 1;
 
                 // Constant Folding for 'def', emits literal
+                long long value = sym->const_int_val;
+                // The literal takes the declared primitive type (`def X: u64`) without
+                // the symbol's const qualifier; anything else stays `int`.
+                Type *value_type = type_new(TYPE_INT);
+                if (sym->type_info && is_integer_type(sym->type_info) &&
+                    sym->type_info->kind != TYPE_ALIAS && sym->type_info->kind != TYPE_STRUCT)
+                {
+                    value_type = type_new(sym->type_info->kind);
+                }
                 node = ast_create(NODE_EXPR_LITERAL);
                 node->token = t;
-                node->literal.kind = LITERAL_INT; // INT (assumed for now from const_int_val)
-                node->literal.int_val = (unsigned long long)(sym->const_int_val);
-                node->type_info = type_new(TYPE_INT);
+                node->literal.kind = LITERAL_INT;
+                node->type_info = value_type;
+                if (value < 0 && value != LLONG_MIN && !is_unsigned_type(value_type))
+                {
+                    // A literal holds the magnitude: emit `-N`, as the source would
+                    // spell it, so the value stays signed in the generated C.
+                    node->literal.int_val = (unsigned long long)(-value);
+                    ASTNode *neg = ast_create(NODE_EXPR_UNARY);
+                    neg->token = t;
+                    neg->unary.op = xstrdup("-");
+                    neg->unary.operand = node;
+                    neg->type_info = value_type;
+                    node = neg;
+                }
+                else
+                {
+                    node->literal.int_val = (unsigned long long)value;
+                }
                 // No need for resolution
             }
             else

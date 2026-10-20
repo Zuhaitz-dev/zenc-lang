@@ -1,0 +1,89 @@
+// language/features/memory: `@derive(Clone)` clones each field that owns
+// resources instead of copying the struct bit by bit, so the original and the
+// clone can both be dropped (a shallow copy freed the same buffer twice).
+import "std/string.zc"
+import "std/vec.zc"
+
+let drops: int = 0;
+
+struct Handle {
+    id: int;
+}
+
+impl Handle {
+    fn clone(self) -> Handle {
+        return Handle { id: self.id + 100 };
+    }
+}
+
+impl Drop for Handle {
+    fn drop(self) {
+        drops += 1;
+    }
+}
+
+@derive(Clone)
+struct Person {
+    age: int;
+    name: String;
+    tags: Vec<int>;
+}
+
+struct Point {
+    x: int;
+    y: int;
+}
+
+@derive(Clone)
+struct Cell {
+    count: int;
+    handle: Handle;
+    label: char*;
+    origin: Point;
+}
+
+@derive(Clone)
+struct Shelf {
+    cell: Cell;
+    names: Vec<String>;
+}
+
+test "cloned string and vector fields are independent" {
+    let person = Person { age: 30, name: String::from("ada"), tags: Vec<int>::new() };
+    person.tags.push(1);
+    let copy = person.clone();
+    copy.name.append_c("!");
+    copy.tags.push(2);
+    copy.age = 31;
+    assert(strcmp(person.name.c_str(), "ada") == 0, "original name untouched");
+    assert(strcmp(copy.name.c_str(), "ada!") == 0, "clone name changed");
+    assert(person.tags.length() == 1, "original vector untouched");
+    assert(copy.tags.length() == 2, "clone vector changed");
+    assert(person.age == 30, "plain field copied");
+}
+
+test "fields with a clone method are cloned, the rest copied" {
+    drops = 0;
+    {
+        let cell = Cell { count: 2, handle: Handle { id: 1 }, label: "box", origin: Point { x: 3, y: 4 } };
+        let other = cell.clone();
+        assert(other.count == 2, "plain field copied");
+        assert(other.origin.x == 3 && other.origin.y == 4, "struct without clone copied");
+        assert(other.handle.id == 101, "clone() called on the field");
+        assert(strcmp(other.label, "box") == 0, "pointer field copied");
+    }
+    assert(drops == 2, "original and clone each dropped once");
+}
+
+test "a field whose type derives Clone is cloned through it" {
+    drops = 0;
+    {
+        let shelf = Shelf {
+            cell: Cell { count: 1, handle: Handle { id: 7 }, label: "top", origin: Point { x: 0, y: 0 } },
+            names: Vec<String>::new(),
+        };
+        let other = shelf.clone();
+        assert(other.cell.handle.id == 107, "nested derived clone");
+    }
+    assert(drops == 2, "nested handles dropped once each");
+}

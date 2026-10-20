@@ -157,7 +157,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
                 {
                     return NULL;
                 }
-                char *field_type_str = type_to_c_string(ft);
+                char *field_type_str = type_to_c_string(ft, ctx->config->misra_mode);
                 z_parse_expect(l, TOK_SEMICOLON, "Expected ;");
 
                 ASTNode *nf = ast_create(NODE_FIELD);
@@ -243,7 +243,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
             {
                 return NULL;
             }
-            char *f_type = type_to_c_string(ft);
+            char *f_type = type_to_c_string(ft, ctx->config->misra_mode);
 
             ASTNode *f = ast_create(NODE_FIELD);
             ATTACH_DOC_COMMENT(ctx, f);

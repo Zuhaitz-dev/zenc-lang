@@ -1,0 +1,10 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a statement is not an expression, also in an f-string
+// used as a value. `{x; y}` used to become `x`.
+
+fn main() {
+    let x = 1;
+    let y = 2;
+    let s = "[{x; y}]";
+    println "{s}";
+}

@@ -202,4 +202,17 @@ int z_run_command(char *const argv[]);
  */
 int z_run_command_capture(char *const argv[], char *buffer, size_t size);
 
+/**
+ * @brief Run a command securely and capture its output, with stdin closed.
+ *
+ * Unlike z_run_command_capture(), the child's stdin is the null device, so it can never
+ * read its parent's input (e.g. the LSP protocol stream), and output is read until EOF.
+ * @param argv NULL-terminated array of arguments.
+ * @param buffer Buffer to store output; longer output is truncated.
+ * @param size Size of the buffer.
+ * @param capture_stderr If non-zero, stderr is captured into the same buffer.
+ * @return Exit code of the process, or -1 on error.
+ */
+int z_run_command_capture_ex(char *const argv[], char *buffer, size_t size, int capture_stderr);
+
 #endif // ZC_PLATFORM_OS_H

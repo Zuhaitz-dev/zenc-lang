@@ -81,7 +81,8 @@ static int struct_depends_on(ParserContext *ctx, ASTNode *s1, const char *target
         {
             if (variant->kind == NODE_ENUM_VARIANT && variant->variant.payload)
             {
-                char *type_str = type_to_c_string(variant->variant.payload);
+                char *type_str =
+                    type_to_c_string(variant->variant.payload, ctx->config->misra_mode);
                 if (type_str)
                 {
                     if (strchr(type_str, '*'))

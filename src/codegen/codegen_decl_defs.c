@@ -121,7 +121,7 @@ static void emit_type_aliases_internal(ParserContext *ctx, ASTNode *node, Visite
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);
             }
-            char *c_type_str = type_to_c_string(node->type_info);
+            char *c_type_str = type_to_c_string(node->type_info, ctx->config->misra_mode);
             // Quick fix for raw function pointers and arrays in typedefs:
             // Since type_to_c_string returns `int (*)(int)`, simple replacement isn't valid
             // C. But Zen C doesn't officially support raw function pointer aliases. We'll just
@@ -175,7 +175,7 @@ void emit_global_aliases(ParserContext *ctx)
     {
         if (ta->type_info)
         {
-            char *c_type_str = type_to_c_string(ta->type_info);
+            char *c_type_str = type_to_c_string(ta->type_info, ctx->config->misra_mode);
             if (c_type_str)
             {
                 if (strstr(c_type_str, "(*)"))
@@ -259,7 +259,8 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
                         }
                         else
                         {
-                            char *tstr = type_to_c_string(v->variant.payload);
+                            char *tstr =
+                                type_to_c_string(v->variant.payload, ctx->config->misra_mode);
                             EMIT(ctx, "%s %s__%s(%s v);\n", final_name, final_name, v->variant.name,
                                  tstr);
                             zfree(tstr);
@@ -297,7 +298,7 @@ static void collect_lambda_return_types(ParserContext *ctx, ASTNode *node, char 
         char *tstr = NULL;
         if (val->type_info && val->type_info->kind != TYPE_UNKNOWN)
         {
-            tstr = type_to_c_string(val->type_info);
+            tstr = type_to_c_string(val->type_info, ctx->config->misra_mode);
         }
         else
         {
@@ -368,6 +369,25 @@ static void collect_lambda_return_types(ParserContext *ctx, ASTNode *node, char 
 // When the lambda's return type was not propagated from a call signature (e.g.
 // lambdas inside f-string interpolations, which skip the normal type-check pass),
 // infer it from the body's return statements.
+// Emits one field of a closure context struct. A function pointer type needs the
+// field name inside its declarator (`int32_t (*f)(int32_t)`), which
+// emit_var_decl_type does.
+static void emit_lambda_ctx_field(ParserContext *ctx, const char *tstr, const char *name,
+                                  int by_ref)
+{
+    if (strstr(tstr, "(*"))
+    {
+        size_t decl_sz = strlen(name) + 2;
+        char *decl_name = xmalloc(decl_sz);
+        snprintf(decl_name, decl_sz, "%s%s", by_ref ? "*" : "", name);
+        emit_var_decl_type(ctx, tstr, decl_name);
+        EMIT(ctx, ";\n");
+        zfree(decl_name);
+        return;
+    }
+    EMIT(ctx, by_ref ? "%s* %s;\n" : "%s %s;\n", tstr, name);
+}
+
 static void infer_lambda_return_type(ParserContext *ctx, ASTNode *node)
 {
     if (node->type_info && node->type_info->inner && node->type_info->inner->kind != TYPE_UNKNOWN)
@@ -422,13 +442,14 @@ void emit_lambda_defs(ParserContext *ctx)
                     char *tstr = NULL;
                     if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
                     {
-                        tstr = type_to_c_string(node->lambda.captured_types_info[i]);
+                        tstr = type_to_c_string(node->lambda.captured_types_info[i],
+                                                ctx->config->misra_mode);
                     }
                     else
                     {
                         tstr = xstrdup(node->lambda.captured_types[i]);
                     }
-                    EMIT(ctx, "%s* %s;\n", tstr, node->lambda.captured_vars[i]);
+                    emit_lambda_ctx_field(ctx, tstr, node->lambda.captured_vars[i], 1);
                     zfree(tstr);
                 }
                 else
@@ -436,13 +457,14 @@ void emit_lambda_defs(ParserContext *ctx)
                     char *tstr = NULL;
                     if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
                     {
-                        tstr = type_to_c_string(node->lambda.captured_types_info[i]);
+                        tstr = type_to_c_string(node->lambda.captured_types_info[i],
+                                                ctx->config->misra_mode);
                     }
                     else
                     {
                         tstr = xstrdup(node->lambda.captured_types[i]);
                     }
-                    EMIT(ctx, "%s %s;\n", tstr, node->lambda.captured_vars[i]);
+                    emit_lambda_ctx_field(ctx, tstr, node->lambda.captured_vars[i], 0);
                     zfree(tstr);
 
                     char *tname = node->lambda.captured_types[i];
@@ -497,7 +519,7 @@ void emit_lambda_defs(ParserContext *ctx)
         if (node->type_info && node->type_info->inner &&
             node->type_info->inner->kind != TYPE_UNKNOWN)
         {
-            ret_type_str = type_to_c_string(node->type_info->inner);
+            ret_type_str = type_to_c_string(node->type_info->inner, ctx->config->misra_mode);
         }
 
         if (strcmp(ret_type_str, "unknown") == 0)
@@ -526,7 +548,8 @@ void emit_lambda_defs(ParserContext *ctx)
             if (node->type_info && node->type_info->args && node->type_info->args[i] &&
                 node->type_info->args[i]->kind != TYPE_UNKNOWN)
             {
-                param_type_str = type_to_c_string(node->type_info->args[i]);
+                param_type_str =
+                    type_to_c_string(node->type_info->args[i], ctx->config->misra_mode);
             }
 
             if (!node->lambda.is_bare || i > 0)

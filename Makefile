@@ -54,7 +54,11 @@ CONSTEXPR_SUPPORTED := $(shell echo "constexpr int x = 42; int main(void){return
 ifneq ($(CONSTEXPR_SUPPORTED),)
 DEFINES += -DHAS_CONSTEXPR
 endif
-CFLAGS = -std=$(C_STD) -g -Wall -Wextra -Wshadow -Wformat=2 -Wmissing-prototypes -Wstrict-prototypes -Wnull-dereference -Wundef -Wfloat-equal -Wmissing-field-initializers -Wsign-compare -Wtype-limits -Wuninitialized -Wdouble-promotion -Wtautological-compare -Wshift-negative-value -Wdangling-else -Wreturn-local-addr -Wconversion -Wno-float-conversion -Wswitch-default -Wvla -Wimplicit-fallthrough -Wredundant-decls -Wcast-align -Wpacked -Wdisabled-optimization -fstack-protector-strong $(DEPFLAGS) $(TCC_EXTRA) $(if $(filter 1,$(WERROR)),-Werror -Wno-error=sign-conversion,) -I./src -I./src/ast -I./src/parser -I./src/codegen -I./plugins -I./src/zen -I./src/utils -I./src/lexer -I./src/analysis -I./src/lsp -I./src/diagnostics $(DEFINES)
+# Warning for returning the address of a local: GCC (and clang >= 14) call it
+# -Wreturn-local-addr, older clang only -Wreturn-stack-address. An unknown warning
+# option is an error under -Werror, so use the name the compiler accepts.
+RETURN_ADDR_WARN := $(shell echo "int x;" | $(CC) -Werror -Wreturn-local-addr -x c - -c -o /dev/null 2>/dev/null && echo -Wreturn-local-addr || (echo "int x;" | $(CC) -Werror -Wreturn-stack-address -x c - -c -o /dev/null 2>/dev/null && echo -Wreturn-stack-address))
+CFLAGS = -std=$(C_STD) -g -Wall -Wextra -Wshadow -Wformat=2 -Wmissing-prototypes -Wstrict-prototypes -Wnull-dereference -Wundef -Wfloat-equal -Wmissing-field-initializers -Wsign-compare -Wtype-limits -Wuninitialized -Wdouble-promotion -Wtautological-compare -Wshift-negative-value -Wdangling-else $(RETURN_ADDR_WARN) -Wconversion -Wno-float-conversion -Wswitch-default -Wvla -Wimplicit-fallthrough -Wredundant-decls -Wcast-align -Wpacked -Wdisabled-optimization -fstack-protector-strong $(DEPFLAGS) $(TCC_EXTRA) $(if $(filter 1,$(WERROR)),-Werror -Wno-error=sign-conversion,) -I./src -I./src/ast -I./src/parser -I./src/codegen -I./plugins -I./src/zen -I./src/utils -I./src/lexer -I./src/analysis -I./src/lsp -I./src/diagnostics $(DEFINES)
 
 # Detect Clang by macro (works even when CC=cc on macOS, or CC=clang on Linux)
 # Uses recursive = so it re-evaluates with target-specific CC overrides (e.g. msan: CC=clang)
@@ -87,7 +91,17 @@ else
     LIBS = -lm -lpthread -ldl
 endif
 
-ZC_HAS_JIT ?= 1
+# The REPL's JIT needs libtcc. Unless ZC_HAS_JIT is given (1 forces it, 0 turns
+# it off), it is enabled only when a small program using libtcc compiles and links.
+ifeq ($(origin ZC_HAS_JIT),undefined)
+    ifeq ($(findstring tcc,$(CC)),tcc)
+        ZC_HAS_JIT := 1
+    else
+        TCC_PROBE_HASH := \#
+        TCC_PROBE_DIRS := $(if $(wildcard /usr/local/lib/libtcc.a),-I/usr/local/include -L/usr/local/lib)
+        ZC_HAS_JIT := $(shell printf '$(TCC_PROBE_HASH)include <libtcc.h>\nint main(void) { tcc_delete(tcc_new()); return 0; }\n' | $(CC) -x c - -o /dev/null $(TCC_PROBE_DIRS) -ltcc >/dev/null 2>&1 && echo 1 || echo 0)
+    endif
+endif
 ZC_RUN ?= ./zc
 ifeq ($(ZC_HAS_JIT), 1)
     CFLAGS += -DZC_HAS_JIT
@@ -129,7 +143,7 @@ DEFINES += -DZC_HAS_ASTDUMP_BACKEND=$(ZC_BACKENDS)
 
 # Source files read from src-sources.txt, filtered by feature selection.
 ALL_SRCS := $(shell cat src-sources.txt)
-ZC_FILTER_LSP = $(if $(filter-out 1,$(ZC_LSP)),src/lsp/lsp_main.c src/lsp/lsp_analysis.c src/lsp/lsp_semantic.c src/lsp/lsp_index.c src/lsp/lsp_formatter.c src/lsp/lsp_project.c src/lsp/json_rpc.c)
+ZC_FILTER_LSP = $(if $(filter-out 1,$(ZC_LSP)),src/lsp/lsp_main.c src/lsp/lsp_analysis.c src/lsp/lsp_semantic.c src/lsp/lsp_index.c src/lsp/lsp_formatter.c src/lsp/lsp_project.c src/lsp/lsp_c_headers.c src/lsp/json_rpc.c)
 ZC_FILTER_REPL = $(if $(filter-out 1,$(ZC_REPL)),src/repl/% src/platform/console.c)
 ZC_FILTER_PLUGINS = $(if $(filter-out 1,$(ZC_PLUGINS)),src/plugins/% src/parser/utils/utils_plugins.c)
 ZC_FILTER_BACKENDS = $(if $(filter-out 1,$(ZC_BACKENDS)),src/codegen/codegen_backend_cpp.c src/codegen/codegen_backend_cuda.c src/codegen/codegen_backend_objc.c src/codegen/codegen_backend_json.c src/codegen/codegen_backend_lisp.c src/codegen/codegen_backend_dot.c src/codegen/codegen_backend_astdump.c)
@@ -525,6 +539,8 @@ test: $(TARGET) $(PLUGINS)
 	./tests/scripts/run_example_build.sh $(filter %.zc,$(only))
 	./tests/scripts/run_repl_tests.sh
 	./tests/scripts/run_cli_tests.sh
+	./tests/scripts/run_diagnostic_output_tests.sh
+	$(MAKE) test-unit
 	$(MAKE) test-misra
 
 test-misra: $(TARGET)
@@ -545,6 +561,17 @@ test-lsp: $(TARGET) $(PLUGINS) zc-lsp
 	$(CC) $(CFLAGS) -DZC_NO_ARENA tests/compiler/lsp/lsp_test_runner.c src/utils/cJSON.c -o tests/compiler/lsp/test_runner
 	@echo "=> Running LSP Tests"
 	./tests/compiler/lsp/test_runner
+
+# Unit tests in C of the compiler's internals (tests/unit/, with utest.h). They link
+# the compiler objects, without main.o: tests/unit/unit_main.c provides main().
+UNIT_TEST_SRCS = $(wildcard tests/unit/*.c tests/unit/*/*.c)
+
+test-unit: $(TOOL_BASE_OBJS)
+	@echo "=> Building unit tests"
+	@$(MKDIR) $(OBJ_DIR)/tests/unit
+	$(CC) $(CFLAGS) -isystem tests/vendor -I tests/unit $(UNIT_TEST_SRCS) $(TOOL_BASE_OBJS) -o $(OBJ_DIR)/tests/unit/run_unit $(LIBS)
+	@echo "=> Running unit tests"
+	./$(OBJ_DIR)/tests/unit/run_unit
 
 test-backends: $(TARGET)
 	@echo "=> Testing all output backends"
@@ -715,4 +742,4 @@ fuzz-clean:
 	rm -f $(FUZZ_TARGET) $(FUZZ_CMPLOG_TARGET) $(FUZZ_HARNESS)
 	rm -rf obj-fuzz obj-fuzz-cmplog
 
-.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-tcc test-filcc test-lsp test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE
+.PHONY: all clean install uninstall install-ape uninstall-ape install-tools format format-check lint bench test test-misra test-tcc test-filcc test-lsp test-unit test-asan test-plugins zig clang filcc ape windows asan tsan msan lsan analyzer coverage coverage-report core lite minimal fuzz-build fuzz-run fuzz-clean test-fuzz-regression zc-lsp zc-repl zc-doc zc-format FORCE

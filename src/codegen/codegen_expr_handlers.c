@@ -592,7 +592,8 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                     char *c_type = NULL;
                     if (node->binary.left->type_info)
                     {
-                        c_type = type_to_c_string(node->binary.left->type_info);
+                        c_type =
+                            type_to_c_string(node->binary.left->type_info, ctx->config->misra_mode);
                     }
                     if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
                     {
@@ -633,8 +634,110 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// Struct with Drop held by an argument that references a temporary the call owns.
+static char *owned_temp_drop_type(ParserContext *ctx, ASTNode *arg)
+{
+    if (arg->kind != NODE_EXPR_UNARY || !arg->unary.owns_temp || arg->unary.temp_id > 0)
+    {
+        return NULL;
+    }
+    ASTNode *operand = arg->unary.operand;
+    char *tname = NULL;
+    if (operand->type_info && operand->type_info->kind == TYPE_STRUCT && operand->type_info->name)
+    {
+        tname = operand->type_info->name;
+    }
+    else
+    {
+        tname = infer_type(ctx, operand);
+    }
+    if (!tname || strchr(tname, '*'))
+    {
+        return NULL;
+    }
+    if (strncmp(tname, "struct ", 7) == 0)
+    {
+        tname += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, tname);
+    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
+    {
+        return tname;
+    }
+    return NULL;
+}
+
+// Emits a call that borrows temporaries with Drop (e.g. `a + make()` on an overloaded
+// operator): each temporary gets a name, and is dropped once the call has returned.
+static int emit_call_dropping_temporaries(ParserContext *ctx, ASTNode *node)
+{
+    int has_temp = 0;
+    ASTNode *arg = node->call.args;
+    while (arg)
+    {
+        if (owned_temp_drop_type(ctx, arg))
+        {
+            has_temp = 1;
+        }
+        arg = arg->next;
+    }
+    if (!has_temp || !node->type_info)
+    {
+        return 0;
+    }
+
+    int returns_value = node->type_info->kind != TYPE_VOID;
+    EMIT(ctx, "({ ");
+    arg = node->call.args;
+    while (arg)
+    {
+        char *drop_type = owned_temp_drop_type(ctx, arg);
+        if (drop_type)
+        {
+            int id = ctx->cg.tmp_counter++;
+            EMIT(ctx, "%s _z_temp_%d = ", drop_type, id);
+            codegen_expression(ctx, arg->unary.operand);
+            EMIT(ctx, "; ");
+            arg->unary.temp_id = id + 1;
+        }
+        arg = arg->next;
+    }
+
+    // ZC_AUTO_INIT, not ZC_AUTO: tcc has no __auto_type, so there it is __typeof__.
+    int result_id = ctx->cg.tmp_counter++;
+    if (returns_value)
+    {
+        EMIT(ctx, "ZC_AUTO_INIT(_z_result_%d, ", result_id);
+    }
+    handle_expr_call(ctx, node);
+    EMIT(ctx, "%s", returns_value ? "); " : "; ");
+
+    arg = node->call.args;
+    while (arg)
+    {
+        if (arg->kind == NODE_EXPR_UNARY && arg->unary.temp_id > 0)
+        {
+            int id = arg->unary.temp_id - 1;
+            arg->unary.temp_id = 0;
+            EMIT(ctx, "%s__Drop__glue(&_z_temp_%d); ", owned_temp_drop_type(ctx, arg), id);
+        }
+        arg = arg->next;
+    }
+    if (returns_value)
+    {
+        EMIT(ctx, "_z_result_%d; ", result_id);
+    }
+    EMIT(ctx, "})");
+    return 1;
+}
+
 void handle_expr_call(ParserContext *ctx, ASTNode *node)
 {
+    if (emit_call_dropping_temporaries(ctx, node))
+    {
+        return;
+    }
+
     emit_source_mapping(ctx, node);
 
     if (node->call.callee->kind == NODE_EXPR_MEMBER)
@@ -1038,7 +1141,7 @@ skip_method_mangling:
         EMIT(ctx, "; ");
 
         Type *ft = callee_ti;
-        char *ret = type_to_c_string(ft->inner);
+        char *ret = type_to_c_string(ft->inner, ctx->config->misra_mode);
         if (strcmp(ret, "string") == 0)
         {
             zfree(ret);
@@ -1053,7 +1156,7 @@ skip_method_mangling:
         EMIT(ctx, "((%s (*)(void*", ret);
         for (int i = 0; i < ft->count; i++)
         {
-            char *as = type_to_c_string(ft->args[i]);
+            char *as = type_to_c_string(ft->args[i], ctx->config->misra_mode);
             if (strcmp(as, "unknown") == 0)
             {
                 zfree(as);
@@ -1218,7 +1321,7 @@ skip_callee_gen:
                 if (param_t && param_t->kind == TYPE_ARRAY && param_t->array_size == 0 && arg_t &&
                     arg_t->kind == TYPE_ARRAY && arg_t->array_size > 0)
                 {
-                    char *inner = type_to_c_string(param_t->inner);
+                    char *inner = type_to_c_string(param_t->inner, ctx->config->misra_mode);
                     EMIT(ctx, "(Slice__%s){.data = ", inner);
                     codegen_expression(ctx, arg);
                     EMIT(ctx, ", .len = %d, .cap = %d}", arg_t->array_size, arg_t->array_size);
@@ -1283,7 +1386,7 @@ skip_callee_gen:
                     Type *param_t = sig->arg_types[arg_idx];
                     if (param_t && (param_t->kind == TYPE_POINTER || param_t->kind == TYPE_ENUM))
                     {
-                        char *c_type = type_to_c_string(param_t);
+                        char *c_type = type_to_c_string(param_t, ctx->config->misra_mode);
                         EMIT(ctx, "(%s)(", c_type);
                         codegen_expression_with_move(ctx, arg);
                         EMIT(ctx, ")");

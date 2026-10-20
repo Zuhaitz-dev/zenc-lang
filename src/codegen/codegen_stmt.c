@@ -14,6 +14,40 @@
 #include "codegen_internal.h"
 #include "zprep_plugin.h"
 
+// Name of the struct with Drop that a call statement produces and discards, or NULL.
+static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
+{
+    if (node->kind != NODE_EXPR_CALL)
+    {
+        return NULL;
+    }
+
+    char *tname = NULL;
+    if (node->type_info && node->type_info->kind == TYPE_STRUCT && node->type_info->name)
+    {
+        tname = node->type_info->name;
+    }
+    else
+    {
+        tname = infer_type(ctx, node);
+    }
+    if (!tname || strchr(tname, '*'))
+    {
+        return NULL;
+    }
+    if (strncmp(tname, "struct ", 7) == 0)
+    {
+        tname += 7;
+    }
+
+    ASTNode *def = find_struct_def(ctx, tname);
+    if (def && def->kind == NODE_STRUCT && def->type_info && def->type_info->traits.has_drop)
+    {
+        return tname;
+    }
+    return NULL;
+}
+
 void codegen_node_single(ParserContext *ctx, ASTNode *node)
 {
     if (!node)
@@ -585,11 +619,12 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
             else if (arr->array_literal.elements && arr->array_literal.elements->type_info)
             {
-                elem_type = type_to_c_string(arr->array_literal.elements->type_info);
+                elem_type = type_to_c_string(arr->array_literal.elements->type_info,
+                                             ctx->config->misra_mode);
             }
             else if (arr->type_info && arr->type_info->inner)
             {
-                elem_type = type_to_c_string(arr->type_info->inner);
+                elem_type = type_to_c_string(arr->type_info->inner, ctx->config->misra_mode);
             }
             else
             {
@@ -701,7 +736,8 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 emitter_indent(&ctx->cg.emitter);
                 if (ctx->cg.current_func_ret_type_info)
                 {
-                    char *tstr = type_to_c_string(ctx->cg.current_func_ret_type_info);
+                    char *tstr = type_to_c_string(ctx->cg.current_func_ret_type_info,
+                                                  ctx->config->misra_mode);
                     EMIT(ctx, "%s", tstr);
                     zfree(tstr);
                 }
@@ -993,8 +1029,21 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         break;
 
     default:
-        codegen_expression(ctx, node);
-        EMIT(ctx, ";\n");
+    {
+        char *discard_type = discarded_drop_type(ctx, node);
+        if (discard_type)
+        {
+            // The result is never bound to a name: drop it right away.
+            int id = ctx->cg.tmp_counter++;
+            EMIT(ctx, "{ %s _z_discard_%d = ", discard_type, id);
+            codegen_expression(ctx, node);
+            EMIT(ctx, "; %s__Drop__glue(&_z_discard_%d); }\n", discard_type, id);
+        }
+        else
+        {
+            codegen_expression(ctx, node);
+            EMIT(ctx, ";\n");
+        }
         if (node->kind == NODE_EXPR_CALL && node->call.callee &&
             ctx->cg.pending_closure_free_count > 0)
         {
@@ -1018,6 +1067,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
         }
         emit_pending_closure_frees(ctx);
+    }
     }
 }
 

@@ -637,7 +637,7 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (node->cast.expr && node->cast.expr->type_info && node->cast.target_type)
         {
             Type *source_type = resolve_alias(node->cast.expr->type_info);
-            Type *target_type = type_from_string_helper(node->cast.target_type);
+            Type *target_type = type_from_string_helper(tc->pctx, node->cast.target_type);
 
             if (tc->pctx->config->misra_mode && target_type)
             {
@@ -899,6 +899,20 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
     case NODE_RAW_STMT:
         misra_check_raw_block(tc->pctx, node->token);
+        if (node->raw_stmt.interp_expr_count > 0)
+        {
+            // The `{...}` expressions of an f-string were parsed and typed when the
+            // string was; check them only for moves (use after move, consumed values).
+            int prev_move_checks_only = tc->move_checks_only;
+            tc->move_checks_only = 1;
+            ASTNode **expr = node->raw_stmt.interp_exprs;
+            ASTNode **end = expr + node->raw_stmt.interp_expr_count;
+            for (; expr < end; expr++)
+            {
+                check_node(tc, *expr, depth + 1);
+            }
+            tc->move_checks_only = prev_move_checks_only;
+        }
         break;
     case NODE_PREPROC_DIRECTIVE:
         // Rule Zen 1.4 is already handled by parser_audit_preprocessor
@@ -1168,12 +1182,12 @@ int check_program(ParserContext *ctx, ASTNode *root)
         misra_audit_identifier_uniqueness(tc.pctx);
     }
 
-    if (g_error_count > 0)
+    if (ctx->compiler->error_count > 0)
     {
         fprintf(stderr,
                 COLOR_BOLD COLOR_RED "     error" COLOR_RESET
                                      ": semantic analysis found %d error%s\n",
-                g_error_count, g_error_count == 1 ? "" : "s");
+                ctx->compiler->error_count, ctx->compiler->error_count == 1 ? "" : "s");
         return 1;
     }
 
@@ -1200,5 +1214,5 @@ int check_moves_only(ParserContext *ctx, ASTNode *root)
         ctx->move_state = NULL;
     }
 
-    return g_error_count;
+    return ctx->compiler->error_count;
 }

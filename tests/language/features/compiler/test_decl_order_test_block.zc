@@ -1,0 +1,24 @@
+// language/features/compiler: test blocks that use declarations further down the file
+test "default argument of a function declared later" {
+    assert(later() == 5, "the default value should be used");
+}
+
+test "default argument of a method declared later" {
+    let a = Account { balance: 100 };
+    assert(a.deposit() == 110, "100 + default 10 should be 110");
+}
+
+// Declared after the test blocks above, which already use them.
+fn later(x: int = 5) -> int {
+    return x;
+}
+
+struct Account {
+    balance: int;
+}
+
+impl Account {
+    fn deposit(self, amount: int = 10) -> int {
+        return self.balance + amount;
+    }
+}

@@ -12,7 +12,42 @@
 #include "utils/utils.h"
 #include "ast/primitives.h"
 
-ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
+// Anything the top-level loop does not recognise is an error: skipping it
+// silently made declarations vanish (`const X: T = v;`, `extern let x: T;`).
+static void report_unexpected_toplevel(Token t)
+{
+    const char *hints[] = {"Top-level declarations start with fn, struct, enum, union, "
+                           "trait, impl, let, def, alias, import, extern, raw, test...",
+                           NULL};
+    char msg[MAX_SHORT_MSG_LEN];
+    snprintf(msg, sizeof(msg), "Unexpected '%.*s' at top level", (int)t.len, t.start);
+    zpanic_with_hints(t, msg, hints);
+}
+
+// An interpolated string runs at run time, so it cannot initialize a global:
+// the C would put a statement expression (`({ ... })`) at file scope. Only that
+// is rejected: `embed "file" as string` is a raw statement too, but a constant.
+static void check_global_initializers(ASTNode *decls)
+{
+    for (ASTNode *d = decls; d; d = d->next)
+    {
+        if (d->kind != NODE_VAR_DECL)
+        {
+            continue;
+        }
+        ASTNode *init = d->var_decl.init_expr;
+        if (init && init->kind == NODE_RAW_STMT && init->raw_stmt.content &&
+            strncmp(init->raw_stmt.content, "({", 2) == 0)
+        {
+            zerror_at(init->token,
+                      "A global cannot be initialized with an interpolated string (it is built "
+                      "at run time); move it into a function, or write literal braces as "
+                      "'{{' and '}}'");
+        }
+    }
+}
+
+static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
 {
     ASTNode *h = 0, *tl = 0;
     while (1)
@@ -213,6 +248,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
                 if (next.kind == TOK_IDENT && next.len == 3 && strncmp(next.start, "let", 3) == 0)
                 {
                     s = parse_var_decl(ctx, l, attrs.is_export);
+                    check_global_initializers(s);
                     if (s)
                     {
                         s->var_decl.is_static = 1;
@@ -231,6 +267,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
             else if (t.len == 3 && strncmp(t.start, "let", 3) == 0)
             {
                 s = parse_var_decl(ctx, l, attrs.is_export);
+                check_global_initializers(s);
             }
             else if (t.len == 6 && strncmp(t.start, "extern", 6) == 0)
             {
@@ -375,7 +412,9 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
             }
             else
             {
-                lexer_next(l);
+                report_unexpected_toplevel(t);
+                lexer_next(l); // fault-tolerant (LSP): resync on the next declaration
+                continue;
             }
         }
         else if (t.kind == TOK_OPAQUE)
@@ -435,9 +474,15 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
         {
             s = parse_test(ctx, l);
         }
+        else if (t.kind == TOK_SEMICOLON)
+        {
+            lexer_next(l); // a stray `;` between declarations is harmless
+        }
         else
         {
-            lexer_next(l);
+            report_unexpected_toplevel(t);
+            lexer_next(l); // fault-tolerant (LSP): resync on the next declaration
+            continue;
         }
 
         if (s && s->kind == NODE_FUNCTION)
@@ -556,6 +601,21 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
         }
     }
     return h;
+}
+
+ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
+{
+    ctx->parse_depth++;
+    ASTNode *nodes = parse_top_level_nodes(ctx, l);
+    ctx->parse_depth--;
+
+    // Back at the outermost level: every declaration has been read, imports
+    // included, so the deferred bodies can see all of them.
+    if (ctx->parse_depth == 0)
+    {
+        parse_pending_bodies(ctx);
+    }
+    return nodes;
 }
 
 ASTNode *parse_program(ParserContext *ctx, Lexer *l)

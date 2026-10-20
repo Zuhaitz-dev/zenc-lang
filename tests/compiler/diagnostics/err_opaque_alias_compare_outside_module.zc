@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// compiler/diagnostics: outside the module that defines it, an opaque alias does
+// not compare with its underlying type.
+import "../../language/features/opaque-types/_opaque_id_lib.zc"
+
+fn main() {
+    let user = UserId::of(7);
+    println "{user == 7}";
+}

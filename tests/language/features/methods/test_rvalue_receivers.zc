@@ -1,0 +1,34 @@
+// language/features/methods: a temporary used where a pointer is needed (a
+// `self` receiver, or the left side of an overloaded `==`) goes through a
+// temporary copy, also when it is a field of a call result or a bare variant.
+import "std/vec.zc"
+
+@derive(Copy)
+struct Handle<K> { value: u32; }
+
+impl Handle<K> {
+    fn of(raw: u32) -> Handle<K> { return Handle<K> { value: raw }; }
+    fn eq(self, other: Handle<K>) -> bool { return self.value == other.value; }
+}
+
+struct PairKind {}
+alias PairId = Handle<PairKind>;
+
+struct Pair { id: PairId; }
+
+enum Shape { None = 0, Circle, Square }
+
+impl Shape {
+    fn is_circle(self) -> bool { return *self == Shape::Circle; }
+}
+
+test "overloaded == on a field of a call result" {
+    let pairs = Vec<Pair>::new();
+    pairs.push(Pair { id: PairId::of(1) });
+    assert(pairs.get(0).id == PairId::of(1), "field of a call result");
+}
+
+test "method on a variant written without ()" {
+    assert(Shape::Circle.is_circle(), "bare variant receiver");
+    assert(!Shape::Square.is_circle(), "another bare variant receiver");
+}

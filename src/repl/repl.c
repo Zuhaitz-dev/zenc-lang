@@ -24,14 +24,16 @@ static const char *get_home(void)
     return h;
 }
 
-void repl_state_init(ReplState *state, const char *self_path, CompilerConfig *cfg)
+void repl_state_init(ReplState *state, const char *self_path, ZenCompiler *compiler)
 {
+    CompilerConfig *cfg = &compiler->config;
     memset(state, 0, sizeof(*state));
     (void)self_path;
     state->history_cap = 64;
     state->history = malloc((size_t)(state->history_cap) * sizeof(char *));
     state->history_len = 0;
 
+    state->compiler = compiler;
     state->config = cfg;
 
     /* Resolve the main `zc` compiler binary: it ships next to zc-repl and is
@@ -172,10 +174,10 @@ static void repl_load_init_script(ReplState *state)
     fclose(f);
 }
 
-void run_repl(const char *self_path, int argc, char **argv)
+void run_repl(ZenCompiler *compiler, const char *self_path, int argc, char **argv)
 {
     ReplState state;
-    repl_state_init(&state, self_path, &g_compiler.config);
+    repl_state_init(&state, self_path, compiler);
     repl_load_history(&state);
 
     char *cmd_to_run = NULL;
@@ -373,11 +375,11 @@ static int repl_process_line(ReplState *state, char *line_buf, int *brace_depth,
         sprintf(check_buf, "%s;", raw_input); /* TODO: check buffer size */
 
         ParserContext pctx;
-        repl_parser_ctx_init(&pctx);
+        repl_parser_ctx_init(&pctx, state->compiler);
         pctx.cg.skip_preamble = 1;
         pctx.suppress_errors = 1;
         Lexer l;
-        lexer_init(&l, check_buf, &g_compiler.config, pctx.current_filename);
+        lexer_init(&l, check_buf, pctx.config, pctx.current_filename);
         ASTNode *node = parse_statement(&pctx, &l);
         zfree(check_buf);
 
@@ -404,7 +406,7 @@ static int repl_process_line(ReplState *state, char *line_buf, int *brace_depth,
     strcat(full_code, " }");
 
     /* Execution */
-    char *c_code = repl_transpile(full_code);
+    char *c_code = repl_transpile(state->compiler, full_code);
     if (c_code)
     {
         if (repl_jit_execute(c_code, state->config) != 0)

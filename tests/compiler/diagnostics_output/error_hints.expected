@@ -1,0 +1,12 @@
+   Compiling tests/compiler/diagnostics_output/error_hints.zc...
+error: Type mismatch: expected 'int32_t', but found 'string'
+  --> tests/compiler/diagnostics_output/error_hints.zc:10:10
+   |
+10 |     take(s);
+   |          ^ here
+   |
+   = help: Check if you need an explicit cast
+   = help: Ensure the types match exactly (no implicit conversions for strict types)
+     error: semantic analysis found 1 error
+       Check failed with 1 errors
+[exit 1]

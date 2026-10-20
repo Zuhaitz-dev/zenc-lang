@@ -1,0 +1,14 @@
+// EXPECT: FAIL
+// compiler/diagnostics: `"""..."""` interpolates, so a code block inside it is
+// read as an interpolation. It must be rejected by Zen C (escape the braces
+// with `{{ }}` or use `r"""`), not reach the C compiler.
+
+fn main() {
+    let world = "world";
+    let script = """
+  fn hello() {
+      println "hello, {world}!";
+  }
+""";
+    println "{script}";
+}

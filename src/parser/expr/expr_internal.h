@@ -13,8 +13,24 @@ typedef struct
 
 // From expr_helpers.c
 int token_is_field_name(Token t);
+/**
+ * Cheap token scan run (with the lexer on a `<`) before speculatively parsing
+ * `name<...>` as generic arguments. Returns 0 when the tokens cannot form a
+ * type list closed by `>`, so the `<` is a comparison: `count < limits[i] {`,
+ * `k < *j`, `k < (n + 1)`. Speculative type parsing is not free of side
+ * effects: it reports errors (array sizes, prefix pointers) and registers
+ * tuple types.
+ */
+int tokens_could_be_generic_args(Lexer *l);
 void check_move_usage(ParserContext *ctx, ASTNode *node, Token t);
 CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig);
+/**
+ * An opaque alias is a distinct type outside the file that defines it: rejects
+ * an argument of another type where one is expected (another alias, or the
+ * underlying type), or an alias where its underlying type is expected, as
+ * `let` does.
+ */
+void check_opaque_alias_argument(ParserContext *ctx, Type *expected, ASTNode *arg);
 void check_format_string(ASTNode *call, Token t);
 
 // From expr_entry.c

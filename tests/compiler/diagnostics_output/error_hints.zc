@@ -1,0 +1,11 @@
+// ARGS: check
+// zerror_with_hints (typechecker, tc_error_with_hints)
+
+fn take(a: int) -> int {
+    return a;
+}
+
+fn main() {
+    let s = "text";
+    take(s);
+}

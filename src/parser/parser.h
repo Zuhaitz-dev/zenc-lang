@@ -359,6 +359,20 @@ static inline void module_state_init(ModuleState *ms)
 }
 
 /**
+ * @brief A function body whose parsing is postponed until all declarations are known.
+ */
+typedef struct PendingBody
+{
+    ASTNode *node;           ///< Function or test whose body is still missing.
+    char *name;              ///< Function name as written.
+    Lexer body_start;        ///< Lexer positioned at the body's opening '{'.
+    Scope *scope;            ///< Scope holding the parameters.
+    int in_method_with_self; ///< `.field` shorthand allowed in this body.
+    int self_is_pointer;     ///< `self` is a pointer in this body.
+    struct PendingBody *next;
+} PendingBody;
+
+/**
  * @brief Global compilation state and symbol table.
  *
  * ParserContext maintains the state of the compiler during parsing and analysis.
@@ -419,6 +433,11 @@ struct ParserContext
     int in_method_with_self;       ///< 1 if parsing body of method with self parameter.
     int self_is_pointer;           ///< 1 if self is a pointer receiver (self*).
 
+    // Deferred function bodies
+    PendingBody *pending_bodies;      ///< First body waiting to be parsed (FIFO).
+    PendingBody *pending_bodies_tail; ///< Last one, to append in O(1).
+    int parse_depth;                  ///< Nesting of parse_program_nodes; bodies are parsed at 0.
+
     // Internal tracking
     DeprecatedFunc *deprecated_funcs; ///< Registry of deprecated functions.
 
@@ -426,10 +445,6 @@ struct ParserContext
     int is_fault_tolerant; ///< 1 if parser should recover from errors (LSP mode).
     int suppress_errors;   ///< 1 to swallow parser errors silently (probe parses).
     int had_error; ///< Set by zpanic_at when fault-tolerant; checked by parser loops to bail out.
-    void *error_callback_data;                              ///< User data for error callback.
-    void (*on_error)(void *data, Token t, const char *msg); ///< Callback for reporting errors.
-    void (*on_diagnostic)(void *data, Token t, int severity, const char *msg,
-                          int diag_id); ///< Unified diagnostic callback
 
     // LSP: Flat symbol list (persists after parsing for LSP queries)
     ZenSymbol *all_symbols; ///< comprehensive list of all symbols seen.
@@ -472,6 +487,10 @@ struct ParserContext
     int is_speculative;     ///< Flag to suppress side effects during speculative parsing.
     int silent_warnings;    ///< Suppress warnings (e.g., during codegen interpolation).
     char *last_doc_comment; ///< Last seen doc-comment (for association).
+
+    // `{...}` expressions parsed by the last process_printf_sugar call (take_fstring_exprs).
+    ASTNode **last_fstring_exprs;
+    int last_fstring_expr_count;
 
     // Flow Analysis (Move Semantics)
     struct MoveState *move_state;
@@ -576,6 +595,14 @@ void register_type_usage(ParserContext *ctx, const char *name, Token t);
 int validate_types(ParserContext *ctx);
 
 /**
+ * @brief Reports functions and methods defined twice under the same C name.
+ *
+ * Prototypes, externs, generic templates, `@cfg` definitions and definitions
+ * inside a preprocessor `#if` block are not counted. Returns 0 on error.
+ */
+int validate_function_definitions(ParserContext *ctx, ASTNode *root);
+
+/**
  * @brief Traverses all parsed structs and propagates `has_drop` from fields to their parent
  * structs.
  */
@@ -614,6 +641,12 @@ void token_set_parser_ctx(ParserContext *ctx);
  * @brief Consumes tokens until a semicolon is found.
  */
 char *consume_until_semicolon(Lexer *l);
+
+/**
+ * @brief Skips a `{ ... }` block, braces included. The next token must be `{`.
+ * @return 1 on success, 0 if the file ends before the block is closed.
+ */
+int skip_braced_block(Lexer *l);
 
 /**
  * @brief Consumes and rewrites tokens.
@@ -787,6 +820,8 @@ char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out
 char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *content, int newline,
                            const char *target, char ***used_syms, int *count, int check_symbols,
                            int is_raw, int is_expr);
+/** @brief Moves the expressions of the last process_printf_sugar call into a NODE_RAW_STMT. */
+void take_fstring_exprs(ParserContext *ctx, ASTNode *node);
 
 /**
  * @brief Checks if a token is a reserved keyword.
@@ -826,6 +861,8 @@ char *token_get_string_content(Token t);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_async, int is_extern,
                         const char *link_name, int is_export);
+void push_pending_body(ParserContext *ctx, PendingBody *pending);
+void parse_pending_bodies(ParserContext *ctx);
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_packed, int align,
                       const char *link_name, int is_export);
 ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_export);
@@ -841,11 +878,13 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults,
                              ASTNode ***default_values, int *count, Type ***arg_types,
                              char ***param_names, int *is_varargs, char ***ctype_overrides);
 Type *parse_type_formal(ParserContext *ctx, Lexer *l);
-Type *type_from_string_helper(const char *c);
+Type *type_from_string_helper(ParserContext *ctx, const char *c);
+Type *type_from_name(ParserContext *ctx, const char *name);
 FuncSig *find_func(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name);
 EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
                                      const char *variant_name);
+int expr_is_rvalue(ParserContext *ctx, ASTNode *e);
 TypeAlias *find_type_alias_node(ParserContext *ctx, const char *name);
 char *extract_module_name(const char *path);
 char *module_prefix_for(ParserContext *ctx, const char *path);
@@ -922,6 +961,8 @@ void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
 void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);
 
 // core/ declarations
+// Rejects a name `@derive` does not know, listing the ones it does.
+void check_derivable_trait(Token t, const char *name);
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count);
 
 // decl/ declarations

@@ -24,6 +24,120 @@ int token_is_field_name(Token t)
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
+static int token_is_only_stars(Token t)
+{
+    if (t.kind != TOK_OP || t.len == 0)
+    {
+        return 0;
+    }
+    for (const char *c = t.start; c < t.start + t.len; c++)
+    {
+        if (*c != '*')
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int tokens_could_be_generic_args(Lexer *l)
+{
+    Lexer scan = *l;
+    lexer_next(&scan); // eat <
+
+    Token first = lexer_peek(&scan);
+    if (first.kind != TOK_IDENT && first.kind != TOK_LPAREN && first.kind != TOK_LBRACKET)
+    {
+        return 0;
+    }
+
+    int angles = 1;
+    int parens = 0;
+    int brackets = 0;
+    while (1)
+    {
+        Token tk = lexer_next(&scan);
+        if (tk.kind == TOK_EOF || tk.kind == TOK_LBRACE || tk.kind == TOK_RBRACE)
+        {
+            return 0;
+        }
+
+        // An array size is an expression: accept anything up to the matching ']'.
+        if (brackets > 0)
+        {
+            if (tk.kind == TOK_LBRACKET)
+            {
+                brackets++;
+            }
+            else if (tk.kind == TOK_RBRACKET)
+            {
+                brackets--;
+            }
+            continue;
+        }
+
+        switch (tk.kind)
+        {
+        default:
+            // Literals, `{`, `;`, `=`, `&&`, `.`... cannot appear in a type list.
+            return 0;
+        case TOK_IDENT:
+        case TOK_COMMA:
+        case TOK_DCOLON:
+        case TOK_ELLIPSIS:
+            break;
+        case TOK_LANGLE:
+            angles++;
+            break;
+        case TOK_RANGLE:
+            angles--;
+            if (angles == 0)
+            {
+                return parens == 0;
+            }
+            break;
+        case TOK_LPAREN:
+            parens++;
+            break;
+        case TOK_RPAREN:
+            if (parens == 0)
+            {
+                return 0;
+            }
+            parens--;
+            break;
+        case TOK_LBRACKET:
+            brackets++;
+            break;
+        case TOK_ARROW:
+            if (tk.start[0] != '-')
+            {
+                return 0;
+            }
+            break;
+        case TOK_OP:
+            if (token_is_only_stars(tk))
+            {
+                break;
+            }
+            if (tk.len == 2 && strncmp(tk.start, ">>", 2) == 0)
+            {
+                angles -= 2;
+                if (angles == 0)
+                {
+                    return parens == 0;
+                }
+                if (angles < 0)
+                {
+                    return 0;
+                }
+                break;
+            }
+            return 0;
+        }
+    }
+}
+
 int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
 {
     if (!a || !b)
@@ -40,6 +154,15 @@ int check_opaque_alias_compat(ParserContext *ctx, Type *a, Type *b)
     {
         RECURSION_EXIT(ctx);
         return 1;
+    }
+
+    // Two opaque aliases are the same type only if they are the same alias, even
+    // in the module that defines both: there each converts to its underlying
+    // type, not to the other.
+    if (a_is_opaque && b_is_opaque)
+    {
+        RECURSION_EXIT(ctx);
+        return a->name && b->name && strcmp(a->name, b->name) == 0;
     }
 
     if (a_is_opaque)
@@ -178,6 +301,40 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
     }
 }
 
+// Kinds the type check of `let` lets through whatever the other side is.
+static int skips_value_check(Type *t)
+{
+    return t->kind == TYPE_POINTER || t->kind == TYPE_FUNCTION || t->kind == TYPE_STRUCT ||
+           t->kind == TYPE_ARRAY;
+}
+
+void check_opaque_alias_argument(ParserContext *ctx, Type *expected, ASTNode *arg)
+{
+    Type *got = arg ? arg->type_info : NULL;
+    if (!expected || !got || expected->kind == TYPE_GENERIC || got->kind == TYPE_GENERIC)
+    {
+        return;
+    }
+    int expected_opaque = expected->kind == TYPE_ALIAS && expected->alias.is_opaque_alias;
+    int got_opaque = got->kind == TYPE_ALIAS && got->alias.is_opaque_alias;
+    if (!expected_opaque && !got_opaque)
+    {
+        return;
+    }
+    if (skips_value_check(expected) || skips_value_check(got))
+    {
+        return;
+    }
+    if (type_eq(expected, got) || check_opaque_alias_compat(ctx, expected, got))
+    {
+        return;
+    }
+    char *want = type_to_string(expected);
+    char *have = type_to_string(got);
+    zpanic_at(arg->token, "Type validation failed. Expected '%s', but got '%s'", want, have);
+    return;
+}
+
 CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
 {
     CallArgs res = {NULL, NULL, NULL, 0, 0};
@@ -237,6 +394,10 @@ CallArgs parse_call_args(ParserContext *ctx, Lexer *l, FuncSig *sig)
                 if (expected && expected->name && is_trait(expected->name))
                 {
                     arg = transform_to_trait_object(ctx, expected->name, arg);
+                }
+                else if (!res.has_named)
+                {
+                    check_opaque_alias_argument(ctx, expected, arg);
                 }
             }
 

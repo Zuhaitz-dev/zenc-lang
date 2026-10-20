@@ -69,6 +69,8 @@ typedef struct
 
     int aborted; /**< Flag set if user hit Ctrl+C to abort line. */
 
+    /* Compiler of the session: parser contexts point to it */
+    struct ZenCompiler *compiler;
     /* Compiler configuration for JIT and subprocess calls */
     struct CompilerConfig *config;
 } ReplState;
@@ -90,22 +92,21 @@ char *repl_readline(ReplState *state, const char *prompt, int indent_level);
 char *repl_complete(ReplState *state, const char *buf, int pos);
 
 int is_header_line(const char *line);
-void repl_parser_ctx_init(ParserContext *ctx);
-int is_definition_of(const char *code, const char *name);
+void repl_parser_ctx_init(ParserContext *ctx, ZenCompiler *compiler);
+int is_definition_of(CompilerConfig *cfg, const char *code, const char *name);
 int is_command(const char *buf, const char *cmd);
 void repl_get_code(char **history, int len, char **out_global, char **out_main);
-void repl_error_callback(void *data, Token t, const char *msg);
 void repl_load_docs(ReplState *state);
 const ReplDoc *repl_find_doc(ReplState *state, const char *name);
 void repl_update_symbols(ReplState *state);
 void repl_extract_c_code(const char *filename);
 char *repl_generate_plot_code(const char *expr);
-char *repl_transpile(const char *zen_c_code);
+char *repl_transpile(ZenCompiler *compiler, const char *zen_c_code);
 
 int repl_dispatch_command(ReplState *state, const char *cmd_buf);
 void repl_print_help(void);
 
-void repl_state_init(ReplState *state, const char *self_path, CompilerConfig *cfg);
+void repl_state_init(ReplState *state, const char *self_path, ZenCompiler *compiler);
 void repl_state_free(ReplState *state);
 void repl_save_history(ReplState *state);
 void repl_history_add(ReplState *state, const char *line);

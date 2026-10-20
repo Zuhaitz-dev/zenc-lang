@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/panic_suggestion.zc...
+error: Operator '+' expects 'Vec2' as right operand, found 'int'
+  --> tests/compiler/diagnostics_output/panic_suggestion.zc:18:13
+   |
+18 |     let b = a + 3;
+   |             ^ here
+   |
+   = help: The overloaded operator only accepts the type of its parameter
+[exit 1]

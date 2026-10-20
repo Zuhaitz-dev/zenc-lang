@@ -1,0 +1,7 @@
+// ARGS: build
+// zwarn_at: warning with source context
+
+fn main() {
+    repeat 3 {
+    }
+}

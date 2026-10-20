@@ -370,14 +370,25 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
                 char *tstr = NULL;
                 if (node->lambda.captured_types_info && node->lambda.captured_types_info[i])
                 {
-                    tstr = type_to_c_string(node->lambda.captured_types_info[i]);
+                    tstr = type_to_c_string(node->lambda.captured_types_info[i],
+                                            ctx->config->misra_mode);
                 }
                 else
                 {
                     tstr = xstrdup(node->lambda.captured_types[i]);
                 }
 
-                EMIT(ctx, "*(%s*)(&_z_ctx_%d->%s) = ", tstr, lid, node->lambda.captured_vars[i]);
+                const char *cap_name = node->lambda.captured_vars[i];
+                if (strstr(tstr, "(*"))
+                {
+                    // A function pointer type cannot be spelled as a cast target by
+                    // appending '*'; assign the field directly.
+                    EMIT(ctx, "_z_ctx_%d->%s = ", lid, cap_name);
+                }
+                else
+                {
+                    EMIT(ctx, "*(%s*)(&_z_ctx_%d->%s) = ", tstr, lid, cap_name);
+                }
                 zfree(tstr);
 
                 ASTNode *var_node = ast_create(NODE_EXPR_VAR);
@@ -526,7 +537,7 @@ void handle_va_copy(ParserContext *ctx, ASTNode *node)
 
 void handle_va_arg(ParserContext *ctx, ASTNode *node)
 {
-    char *type_str = type_to_c_string(node->va_arg_val.type_info);
+    char *type_str = type_to_c_string(node->va_arg_val.type_info, ctx->config->misra_mode);
     EMIT(ctx, "va_arg(");
     codegen_expression(ctx, node->va_arg_val.ap);
     EMIT(ctx, ", %s)", type_str);

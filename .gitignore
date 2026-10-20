@@ -30,6 +30,7 @@ rule_*
 *_suite.c
 *_suite.cpp
 test_runner
+*.dSYM/
 
 # Development scratch files
 main.c

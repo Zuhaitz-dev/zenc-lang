@@ -1,0 +1,16 @@
+// EXPECT: FAIL
+// features/move: a moved field used inside a string interpolation
+
+import "std/vec.zc"
+
+struct Bag {
+    items: Vec<int>
+}
+
+fn main() {
+    let bag = Bag { items: Vec<int>::new() }
+    bag.items.push(1)
+    let taken = bag.items
+    println "{taken.len}"
+    println "{bag.items.len}"
+}

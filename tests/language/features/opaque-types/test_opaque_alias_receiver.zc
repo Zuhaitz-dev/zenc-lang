@@ -1,0 +1,64 @@
+// language/features/opaque-types: test_opaque_alias_receiver
+// `self` in an impl of an opaque alias, and values of the alias that come out
+// of a generic container, have the alias type: they compare with the alias and
+// call its methods.
+import "std/option.zc"
+import "std/vec.zc"
+import "_opaque_id_lib.zc"
+
+opaque alias Meters = u32;
+
+impl Meters {
+    fn of(raw: u32) -> Meters {
+        return raw;
+    }
+
+    fn value(self) -> u32 {
+        return *self;
+    }
+
+    fn equals(self, other: Meters) -> bool {
+        return *self == other;
+    }
+
+    fn longer_than(self, other: Meters) -> bool {
+        return *self > other;
+    }
+
+    fn plus(self, extra: u32) -> Meters {
+        return *self + extra;
+    }
+}
+
+test "self compares with the alias inside its impl" {
+    let a = Meters::of(3);
+    let b = Meters::of(3);
+    let c = Meters::of(4);
+    assert(a.equals(b), "equal values");
+    assert(!a.equals(c), "different values");
+    assert(c.longer_than(a), "ordering");
+    assert(a.plus(1).equals(c), "arithmetic on self");
+}
+
+test "a method on a value unwrapped from an Option" {
+    let found = Option<Meters>::Some(Meters::of(7));
+    let got = found.unwrap();
+    assert(got.value() == 7, "method on the unwrapped value");
+    assert(found.unwrap().value() == 7, "method on the unwrap call");
+}
+
+test "a method on a value read from a Vec" {
+    let all = Vec<Meters>::new();
+    all.push(Meters::of(5));
+    let first = all.get(0);
+    assert(first.value() == 5, "method on the element");
+    assert(all.contains(Meters::of(5)), "contains compares the alias");
+}
+
+test "an opaque alias from another module" {
+    let a = UserId::of(9);
+    let b = UserId::of(9);
+    assert(a.same(b), "comparison inside the impl of the other module");
+    let found = Option<UserId>::Some(a);
+    assert(found.unwrap().raw() == 9, "method on the unwrapped value");
+}

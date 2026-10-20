@@ -1,0 +1,6 @@
+// ARGS: transpile
+// zpanic_at: fatal syntax error
+
+fn main() {
+    let = 5;
+}

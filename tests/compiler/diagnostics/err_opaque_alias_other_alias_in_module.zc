@@ -1,0 +1,14 @@
+// EXPECT: FAIL
+// compiler/diagnostics: in the module that defines it, an opaque alias converts
+// to and from its underlying type, but not to another alias over the same type.
+opaque alias UserId = u32;
+opaque alias ItemId = u32;
+
+fn item_number(item: ItemId) -> u32 {
+    return item;
+}
+
+fn main() {
+    let user: UserId = 7;
+    println "{item_number(user)}";
+}

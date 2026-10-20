@@ -1,0 +1,11 @@
+// ARGS: check --json
+// zerror_with_hints in JSON mode
+
+fn take(a: int) -> int {
+    return a;
+}
+
+fn main() {
+    let s = "text";
+    take(s);
+}

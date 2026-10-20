@@ -119,6 +119,11 @@ impl String {
         return self.c_str();
     }
 
+    /// Returns an independent copy with its own buffer.
+    fn clone(self) -> String {
+        return String { vec: self.vec.clone() };
+    }
+
     /// Frees the string memory (deprecated; use `free`).
     fn destroy(self) {
         self.free();

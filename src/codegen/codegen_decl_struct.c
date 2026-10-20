@@ -40,7 +40,7 @@ void emit_simple_enum(ParserContext *ctx, ASTNode *node)
     ASTNode *v = node->enm.variants;
     while (v)
     {
-        EMIT(ctx, "%s__%s_Tag, ", final_name, v->variant.name);
+        EMIT(ctx, "%s__%s_Tag = %d, ", final_name, v->variant.name, v->variant.tag_id);
         v = v->next;
     }
     EMIT(ctx, "} %s;\n\n", final_name);
@@ -145,7 +145,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
 
             if (node->type_info && node->type_info->kind == TYPE_VECTOR)
             {
-                char *inner_c = type_to_c_string(node->type_info->inner);
+                char *inner_c = type_to_c_string(node->type_info->inner, ctx->config->misra_mode);
                 EMIT(ctx, "typedef ZC_SIMD(%s, %d) %s;\n", inner_c, node->type_info->array_size,
                      node->strct.name);
                 zfree(inner_c);
@@ -271,7 +271,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             v = node->enm.variants;
             while (v)
             {
-                EMIT(ctx, "%s__%s_Tag, ", final_name, v->variant.name);
+                EMIT(ctx, "%s__%s_Tag = %d, ", final_name, v->variant.name, v->variant.tag_id);
                 v = v->next;
             }
             EMIT(ctx, "} %s_Tag;\n", final_name);
@@ -281,7 +281,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
             {
                 if (v->variant.payload)
                 {
-                    char *tstr = type_to_c_string(v->variant.payload);
+                    char *tstr = type_to_c_string(v->variant.payload, ctx->config->misra_mode);
                     EMIT(ctx, "%s %s; ", tstr, v->variant.name);
                     zfree(tstr);
                 }
@@ -295,7 +295,7 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 if (v->variant.payload)
                 {
                     Type *pt = v->variant.payload;
-                    char *tstr = type_to_c_string(pt);
+                    char *tstr = type_to_c_string(pt, ctx->config->misra_mode);
                     ASTNode *tuple_def = NULL;
                     if (pt->kind == TYPE_STRUCT && strncmp(pt->name, "Tuple__", 7) == 0)
                     {

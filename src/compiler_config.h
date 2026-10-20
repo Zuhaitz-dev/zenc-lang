@@ -50,7 +50,6 @@ typedef struct CompilerConfig
     int use_cuda;
     int use_objc;
     int mode_lsp;
-    int json_output;
     int use_typecheck;
     int warn_as_errors;
     int no_suppress_warnings;
@@ -77,15 +76,19 @@ typedef struct CompilerConfig
     zvec_Str backend_opts;
 } CompilerConfig;
 
+struct ZenDiagnostic;
 typedef struct ZenCompiler
 {
     CompilerConfig config;
-    struct zarena arena;
     int error_count;
     int warning_count;
     char link_flags[1024];
     char cflags[1024];
     double start_time;
+
+    /// Receives the diagnostics of this compilation; NULL prints them as text.
+    void (*diag_consumer)(void *data, const struct ZenDiagnostic *d);
+    void *diag_consumer_data; ///< Passed back to diag_consumer.
 } ZenCompiler;
 
 #endif // COMPILER_CONFIG_H

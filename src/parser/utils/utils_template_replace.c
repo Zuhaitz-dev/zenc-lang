@@ -155,7 +155,8 @@ static char *replace_in_string(const char *src, const char *old_w, const char *n
     return result;
 }
 
-Type *replace_type_formal(Type *t, const char *p, const char *c, const char *os, const char *ns);
+Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
+                          const char *ns);
 // Helper to replace generic params in mangled names (e.g. Option_V_None ->
 // Option_int_None)
 static char *replace_mangled_part(const char *src, const char *param, const char *concrete)
@@ -400,7 +401,7 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
 ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const char *c,
                             const char *os, const char *ns);
 
-Type *type_from_string_helper(const char *c)
+Type *type_from_string_helper(ParserContext *ctx, const char *c)
 {
     if (!c)
     {
@@ -416,7 +417,7 @@ Type *type_from_string_helper(const char *c)
         strncpy(base, c, (size_t)(base_len));
         base[base_len] = 0;
 
-        Type *inner = type_from_string_helper(base);
+        Type *inner = type_from_string_helper(ctx, base);
         zfree(base);
 
         return type_new_ptr(inner);
@@ -425,7 +426,7 @@ Type *type_from_string_helper(const char *c)
     // Check for 'const ' prefix
     if (strncmp(c, "const ", 6) == 0)
     {
-        Type *inner = type_from_string_helper(c + 6);
+        Type *inner = type_from_string_helper(ctx, c + 6);
         if (inner)
         {
             inner->is_const = 1;
@@ -535,12 +536,14 @@ Type *type_from_string_helper(const char *c)
         return type_new(TYPE_ISIZE);
     }
 
-    Type *n = type_new(TYPE_STRUCT);
-    n->name = sanitize_mangled_name(c);
+    char *name = sanitize_mangled_name(c);
+    Type *n = type_from_name(ctx, name);
+    zfree(name);
     return n;
 }
 
-Type *replace_type_formal(Type *t, const char *p, const char *c, const char *os, const char *ns)
+Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char *c, const char *os,
+                          const char *ns)
 {
     if (!t || (uintptr_t)t < 0x10000)
     {
@@ -574,7 +577,7 @@ Type *replace_type_formal(Type *t, const char *p, const char *c, const char *os,
                     strncpy(c_part, c_ptr, (size_t)(c_len));
                     c_part[c_len] = 0;
 
-                    Type *res = type_from_string_helper(c_part);
+                    Type *res = type_from_string_helper(ctx, c_part);
                     zfree(c_part);
                     return res;
                 }
@@ -598,7 +601,7 @@ Type *replace_type_formal(Type *t, const char *p, const char *c, const char *os,
         }
         else if (p && strcmp(t->name, p) == 0)
         {
-            return type_from_string_helper(c);
+            return type_from_string_helper(ctx, c);
         }
     }
 
@@ -770,7 +773,7 @@ Type *replace_type_formal(Type *t, const char *p, const char *c, const char *os,
     if (t->kind == TYPE_POINTER || t->kind == TYPE_ARRAY || t->kind == TYPE_FUNCTION ||
         t->kind == TYPE_VECTOR)
     {
-        n->inner = replace_type_formal(t->inner, p, c, os, ns);
+        n->inner = replace_type_formal(ctx, t->inner, p, c, os, ns);
     }
 
     if (t->count > 0 && t->args)
@@ -778,7 +781,7 @@ Type *replace_type_formal(Type *t, const char *p, const char *c, const char *os,
         n->args = xmalloc(sizeof(Type *) * (size_t)(t->count));
         for (int i = 0; i < t->count; i++)
         {
-            n->args[i] = replace_type_formal(t->args[i], p, c, os, ns);
+            n->args[i] = replace_type_formal(ctx, t->args[i], p, c, os, ns);
         }
     }
 
@@ -803,7 +806,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     {
         new_node->resolved_type = replace_type_str(n->resolved_type, p, c, os, ns);
     }
-    new_node->type_info = replace_type_formal(n->type_info, p, c, os, ns);
+    new_node->type_info = replace_type_formal(ctx, n->type_info, p, c, os, ns);
 
     new_node->next = copy_ast_replacing(ctx, n->next, p, c, os, ns);
 
@@ -893,7 +896,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
             for (int i = 0; i < n->func.count; i++)
             {
                 new_node->func.arg_types[i] =
-                    replace_type_formal(n->func.arg_types[i], p, c, os, ns);
+                    replace_type_formal(ctx, n->func.arg_types[i], p, c, os, ns);
             }
         }
         else
@@ -902,7 +905,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         }
         new_node->func.args = tmp_args;
 
-        new_node->func.ret_type_info = replace_type_formal(n->func.ret_type_info, p, c, os, ns);
+        new_node->func.ret_type_info =
+            replace_type_formal(ctx, n->func.ret_type_info, p, c, os, ns);
 
         // Deep copy default values AST if present
         if (n->func.default_values && n->func.count > 0)
@@ -1023,7 +1027,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     case NODE_VAR_DECL:
         new_node->var_decl.name = n->var_decl.name ? xstrdup(n->var_decl.name) : NULL;
         new_node->var_decl.type_str = replace_type_str(n->var_decl.type_str, p, c, os, ns);
-        new_node->var_decl.type_info = replace_type_formal(n->var_decl.type_info, p, c, os, ns);
+        new_node->var_decl.type_info =
+            replace_type_formal(ctx, n->var_decl.type_info, p, c, os, ns);
         new_node->var_decl.init_expr = copy_ast_replacing(ctx, n->var_decl.init_expr, p, c, os, ns);
         break;
     case NODE_RETURN:
@@ -1345,7 +1350,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         if (n->size_of.target_type_info)
         {
             new_node->size_of.target_type_info =
-                replace_type_formal(n->size_of.target_type_info, p, c, os, ns);
+                replace_type_formal(ctx, n->size_of.target_type_info, p, c, os, ns);
         }
         break;
     case NODE_LAMBDA:
@@ -1385,7 +1390,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
                 new_node->lambda.captured_types[i] =
                     replace_type_str(n->lambda.captured_types[i], p, c, os, ns);
                 new_node->lambda.captured_types_info[i] =
-                    replace_type_formal(n->lambda.captured_types_info[i], p, c, os, ns);
+                    replace_type_formal(ctx, n->lambda.captured_types_info[i], p, c, os, ns);
                 if (n->lambda.capture_modes)
                 {
                     new_node->lambda.capture_modes[i] = n->lambda.capture_modes[i];
@@ -1413,7 +1418,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
                 new_node->destruct.names[i] = xstrdup(n->destruct.names[i]);
                 new_node->destruct.types[i] = replace_type_str(n->destruct.types[i], p, c, os, ns);
                 new_node->destruct.type_infos[i] =
-                    replace_type_formal(n->destruct.type_infos[i], p, c, os, ns);
+                    replace_type_formal(ctx, n->destruct.type_infos[i], p, c, os, ns);
                 if (n->destruct.field_names && n->destruct.field_names[i])
                 {
                     new_node->destruct.field_names[i] = xstrdup(n->destruct.field_names[i]);
@@ -1512,7 +1517,7 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     case NODE_REFLECTION:
         new_node->reflection.kind = n->reflection.kind;
         new_node->reflection.target_type =
-            replace_type_formal(n->reflection.target_type, p, c, os, ns);
+            replace_type_formal(ctx, n->reflection.target_type, p, c, os, ns);
         break;
     case NODE_REPL_PRINT:
         new_node->repl_print.expr = copy_ast_replacing(ctx, n->repl_print.expr, p, c, os, ns);
@@ -1539,7 +1544,8 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
         break;
     case NODE_VA_ARG:
         new_node->va_arg_val.ap = copy_ast_replacing(ctx, n->va_arg_val.ap, p, c, os, ns);
-        new_node->va_arg_val.type_info = replace_type_formal(n->va_arg_val.type_info, p, c, os, ns);
+        new_node->va_arg_val.type_info =
+            replace_type_formal(ctx, n->va_arg_val.type_info, p, c, os, ns);
         break;
     default:
         break;

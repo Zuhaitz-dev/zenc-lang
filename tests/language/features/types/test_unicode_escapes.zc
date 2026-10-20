@@ -2,11 +2,11 @@
 test "unicode escape sequences" {
     // 32-bit rune literal
     let r1: rune = '\u{1F680}'; // Rocket
-    assert((uint32_t)r1 == 0x1F680, "Unicode escape u{...} for 32-bit rune failed");
+    assert((uint32_t)r1 == 0x1F680, "Unicode escape u{{...}} for 32-bit rune failed");
     
     // 16-bit rune literal
     let r2: rune = '\u{2764}'; // Heart
-    assert((uint32_t)r2 == 0x2764, "Unicode escape u{...} for 16-bit rune failed");
+    assert((uint32_t)r2 == 0x2764, "Unicode escape u{{...}} for 16-bit rune failed");
 
     // String literals with Unicode escapes
     let s = "\u{1F680} Rocket \u{2764} Heart";

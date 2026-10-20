@@ -102,6 +102,11 @@ void handle_request(const char *json_str)
     {
         g_lsp_request_is_readonly = 0;
         cJSON *params = cJSON_GetObjectItem(json, "params");
+        cJSON *capabilities = cJSON_GetObjectItem(params, "capabilities");
+        cJSON *definition =
+            cJSON_GetObjectItem(cJSON_GetObjectItem(capabilities, "textDocument"), "definition");
+        g_lsp_definition_link_support =
+            cJSON_IsTrue(cJSON_GetObjectItem(definition, "linkSupport"));
         char *root = NULL;
         if (params)
         {
@@ -222,6 +227,16 @@ void handle_request(const char *json_str)
                     lsp_project_track_document(uri->valuestring, text->valuestring);
                 }
             }
+        }
+    }
+    else if (strcmp(method, "textDocument/didClose") == 0)
+    {
+        g_lsp_request_is_readonly = 0;
+        cJSON *doc = cJSON_GetObjectItem(cJSON_GetObjectItem(json, "params"), "textDocument");
+        cJSON *uri = cJSON_GetObjectItem(doc, "uri");
+        if (cJSON_IsString(uri))
+        {
+            lsp_close_file(uri->valuestring);
         }
     }
     // Declarations and definitions are not told apart: go to declaration answers like go to

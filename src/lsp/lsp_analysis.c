@@ -2,7 +2,10 @@
 #include "../utils/cJSON.h"
 #include "../constants.h"
 #include "../ast/primitives.h"
+#include "../utils/utils.h"
 #include "lsp_project.h" // Includes lsp_index.h, parser.h
+#include "lsp_c_headers.h"
+#include "json_rpc.h"
 #include "../plugins/plugin_manager.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -49,19 +52,8 @@ static void send_json_response(cJSON *root)
     cJSON_Delete(root);
 }
 
-// Callback for parser errors (legacy fallback).
-void lsp_on_error(void *data, Token t, const char *msg)
-{
-    (void)data;
-    (void)t;
-    (void)msg;
-    // We do nothing here because lsp_on_diagnostic already captures everything via emit_json.
-    // This function exists merely to satisfy the 'if (g_parser_ctx->on_error)' check
-    // inside zpanic_at so the compiler recovers instead of exiting.
-}
-
-// Unified callback for diagnostics.
-void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int diag_id)
+// Appends a diagnostic to `data`, a DiagnosticList.
+static void diagnostic_list_add(void *data, Token t, int severity, const char *msg, int diag_id)
 {
     DiagnosticList *list = (DiagnosticList *)data;
     Diagnostic *d = calloc(1, sizeof(Diagnostic));
@@ -85,14 +77,62 @@ void lsp_on_diagnostic(void *data, Token t, int severity, const char *msg, int d
     }
 }
 
+// Consumer of the server's diagnostics. `data` is the DiagnosticList of the document
+// being checked, or NULL when nobody collects them (e.g. while indexing).
+void lsp_diagnose_consumer(void *data, const ZenDiagnostic *d)
+{
+    if (!data)
+    {
+        return;
+    }
+    char hints[MAX_PATH_LEN];
+    str_join(hints, sizeof(hints), d->hints, "\n");
+    char msg[MAX_ERROR_MSG_LEN + sizeof(hints) + 32]; // message, hints and the text around
+    if (hints[0])
+    {
+        snprintf(msg, sizeof(msg), "%s (Suggestion: %s)", d->message, hints);
+    }
+    else
+    {
+        snprintf(msg, sizeof(msg), "%s", d->message);
+    }
+    diagnostic_list_add(data, d->token, d->is_error ? LSP_SEVERITY_ERROR : LSP_SEVERITY_WARNING,
+                        msg, d->id);
+}
+
+void lsp_close_file(const char *uri)
+{
+    // The client's unsaved changes are gone: back to the file on disk. A file deleted
+    // meanwhile keeps its last contents.
+    lsp_project_untrack_document(uri);
+    ProjectFile *pf = lsp_project_get_file(uri);
+    char *src = pf ? load_file(pf->path, NULL, g_project->ctx->config) : NULL;
+    if (src)
+    {
+        lsp_project_update_file(uri, src);
+        zfree(src);
+    }
+
+    // Diagnostics are only computed for open documents, so a closed one's would go stale.
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
+    cJSON_AddStringToObject(root, "method", "textDocument/publishDiagnostics");
+    cJSON *params = cJSON_CreateObject();
+    cJSON_AddStringToObject(params, "uri", uri);
+    cJSON_AddItemToObject(params, "diagnostics", cJSON_CreateArray());
+    cJSON_AddItemToObject(root, "params", params);
+    send_json_response(root);
+}
+
 void lsp_check_file(const char *uri, const char *json_src, int id)
 {
     (void)id;
     if (!g_project)
     {
-        if (g_compiler.config.root_path)
+        const char *root_path = lsp_compiler()->config.root_path;
+        if (root_path)
         {
-            lsp_project_init(g_compiler.config.root_path);
+            lsp_project_init(root_path);
         }
         else
         {
@@ -111,22 +151,15 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
     // Setup error capture on the global project context
     DiagnosticList diagnostics = {0};
 
-    // We attach the callback to 'g_project->ctx'.
-    void *old_data = g_project->ctx->error_callback_data;
-    void (*old_cb_error)(void *, Token, const char *) = g_project->ctx->on_error;
-    void (*old_cb_diag)(void *, Token, int, const char *, int) = g_project->ctx->on_diagnostic;
-
-    g_project->ctx->error_callback_data = &diagnostics;
-    g_project->ctx->on_error = lsp_on_error;
-    g_project->ctx->on_diagnostic = lsp_on_diagnostic;
+    // The consumer collects the diagnostics of this document while it is parsed.
+    void *old_consumer_data = lsp_compiler()->diag_consumer_data;
+    lsp_compiler()->diag_consumer_data = &diagnostics;
 
     // Update and Parse
     lsp_project_update_file(uri, json_src);
 
     // Restore
-    g_project->ctx->on_diagnostic = old_cb_diag;
-    g_project->ctx->on_error = old_cb_error;
-    g_project->ctx->error_callback_data = old_data;
+    lsp_compiler()->diag_consumer_data = old_consumer_data;
 
     // Construct JSON Response (publishDiagnostics)
     cJSON *root = cJSON_CreateObject();
@@ -170,6 +203,9 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
         d = d->next;
     }
 
+    const char *document_path = strncmp(uri, "file://", 7) == 0 ? uri + 7 : uri;
+    lsp_c_headers_add_diagnostics(document_path, json_src, diag_array);
+
     cJSON_AddItemToObject(params, "diagnostics", diag_array);
     cJSON_AddItemToObject(root, "params", params);
 
@@ -202,6 +238,26 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
     int target_start_line = 0, target_start_col = 0;
     int target_end_line = 0, target_end_col = 0;
     int found = 0;
+
+    // On a C header alias or name, and on the name of an `extern fn`, the C side is what
+    // matters, even where Zen C has a definition of its own.
+    CHeaderOrigin c_origin;
+    CHeaderOriginKind c_origin_kind = C_HEADER_NONE;
+    const CHeaderSymbol *c_symbols[8];
+    int c_symbol_count = 0;
+    if (pf->source)
+    {
+        c_origin_kind = lsp_c_headers_origin_at(pf->path, pf->source, line, col, &c_origin);
+        if (c_origin_kind == C_HEADER_NONE && lsp_c_headers_is_extern_name(pf->source, line, col))
+        {
+            c_symbol_count =
+                lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8, NULL);
+        }
+        if (c_origin_kind != C_HEADER_NONE || c_symbol_count > 0)
+        {
+            r = NULL;
+        }
+    }
 
     if (r)
     {
@@ -273,11 +329,28 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
         }
     }
 
+    if (!found && c_origin_kind == C_HEADER_NONE && c_symbol_count == 0 && pf->source)
+    {
+        c_symbol_count = lsp_c_headers_find_at(pf->path, pf->source, line, col, c_symbols, 8, NULL);
+    }
+    cJSON *c_location =
+        c_origin_kind != C_HEADER_NONE
+            ? lsp_c_headers_origin_location(&c_origin, c_origin_kind, g_lsp_definition_link_support)
+            : NULL;
+
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
 
-    if (found)
+    if (c_location)
+    {
+        cJSON_AddItemToObject(root, "result", c_location);
+    }
+    else if (c_symbol_count > 0)
+    {
+        cJSON_AddItemToObject(root, "result", lsp_c_headers_locations(c_symbols, c_symbol_count));
+    }
+    else if (found)
     {
         cJSON *result = cJSON_CreateObject();
         cJSON_AddStringToObject(result, "uri", target_uri);
@@ -516,6 +589,34 @@ void lsp_hover(const char *uri, int line, int col, int id)
     LSPRange *r = lsp_find_at(idx, line, col);
     const char *text = NULL;
     int is_primitive = 0;
+    char *c_hover = NULL;
+    cJSON *c_hover_range = NULL;
+
+    // On a C header alias or name, and on the name of an `extern fn`, show the C side.
+    if (pf->source)
+    {
+        CHeaderOrigin c_origin;
+        CHeaderOriginKind c_origin_kind =
+            lsp_c_headers_origin_at(pf->path, pf->source, line, col, &c_origin);
+        if (c_origin_kind != C_HEADER_NONE)
+        {
+            c_hover = lsp_c_headers_origin_hover(&c_origin, c_origin_kind);
+            c_hover_range = lsp_c_headers_origin_range(&c_origin, c_origin_kind);
+        }
+        else if (lsp_c_headers_is_extern_name(pf->source, line, col))
+        {
+            const CHeaderSymbol *c_symbol = NULL;
+            if (lsp_c_headers_find_at(pf->path, pf->source, line, col, &c_symbol, 1, NULL) > 0)
+            {
+                c_hover = lsp_c_headers_hover(c_symbol, NULL);
+            }
+        }
+        if (c_hover)
+        {
+            text = c_hover;
+            r = NULL;
+        }
+    }
 
     if (r)
     {
@@ -600,6 +701,17 @@ void lsp_hover(const char *uri, int line, int col, int id)
         }
     }
 
+    if (!text && pf && pf->source)
+    {
+        const CHeaderSymbol *c_symbol = NULL;
+        CHeaderOrigin via;
+        if (lsp_c_headers_find_at(pf->path, pf->source, line, col, &c_symbol, 1, &via) > 0)
+        {
+            c_hover = lsp_c_headers_hover(c_symbol, &via);
+            text = c_hover;
+        }
+    }
+
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
@@ -610,7 +722,7 @@ void lsp_hover(const char *uri, int line, int col, int id)
         cJSON *contents = cJSON_CreateObject();
         cJSON_AddStringToObject(contents, "kind", "markdown");
 
-        if (is_primitive)
+        if (is_primitive || c_hover)
         {
             cJSON_AddStringToObject(contents, "value", text);
         }
@@ -625,6 +737,11 @@ void lsp_hover(const char *uri, int line, int col, int id)
         }
 
         cJSON_AddItemToObject(result, "contents", contents);
+        if (c_hover_range)
+        {
+            cJSON_AddItemToObject(result, "range", c_hover_range);
+            c_hover_range = NULL;
+        }
         cJSON_AddItemToObject(root, "result", result);
     }
     else
@@ -633,6 +750,8 @@ void lsp_hover(const char *uri, int line, int col, int id)
     }
 
     send_json_response(root);
+    libc_free(c_hover);
+    cJSON_Delete(c_hover_range);
 }
 
 static void enqueue_node_children(ASTNode *curr, ASTNode **queue, int *q_tail, int q_limit)
@@ -876,6 +995,16 @@ void lsp_completion(const char *uri, int line, int col, int id)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
+
+    // After the alias of a C header (`rl::`), the declarations of that header.
+    cJSON *c_items = pf->source ? lsp_c_headers_completion(pf->path, pf->source, line, col) : NULL;
+    if (c_items)
+    {
+        cJSON_AddItemToObject(root, "result", c_items);
+        send_json_response(root);
+        return;
+    }
+
     cJSON *items = cJSON_CreateArray();
 
     ASTNode *target_func = NULL;

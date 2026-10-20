@@ -15,6 +15,43 @@
 #include "zprep_plugin.h"
 #include "analysis/move_check.h"
 
+// A bare string statement prints even without its `;` when the next token
+// starts on a later line and cannot continue the expression (`;` is optional).
+static int string_statement_ends_at_newline(Token str, Token next)
+{
+    int end_line = str.line;
+    for (const char *c = str.start; c < str.start + str.len; c++)
+    {
+        if (*c == '\n')
+        {
+            end_line++;
+        }
+    }
+    if (next.line <= end_line)
+    {
+        return 0;
+    }
+
+    switch (next.kind)
+    {
+    case TOK_OP:
+    case TOK_LPAREN:
+    case TOK_LBRACKET:
+    case TOK_QUESTION:
+    case TOK_Q_DOT:
+    case TOK_QQ:
+    case TOK_QQ_EQ:
+    case TOK_PIPE:
+    case TOK_DOTDOT_EQ:
+    case TOK_DOTDOT_LT:
+    case TOK_AND:
+    case TOK_OR:
+        return 0;
+    default:
+        return 1;
+    }
+}
+
 ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
 {
     int prev_emit = l->emit_comments;
@@ -68,12 +105,13 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         Token next = lexer_peek(&lookahead);
         ZenTokenType next_type = next.kind;
 
-        if (next_type == TOK_SEMICOLON || next_type == TOK_DOTDOT || next_type == TOK_RBRACE)
+        if (next_type == TOK_SEMICOLON || next_type == TOK_DOTDOT || next_type == TOK_RBRACE ||
+            string_statement_ends_at_newline(tk, next))
         {
             Token t = lexer_next(l); // consume string
             char *inner = token_get_string_content(t);
 
-            int is_ln = (next_type == TOK_SEMICOLON || next_type == TOK_RBRACE);
+            int is_ln = (next_type != TOK_DOTDOT);
             char **used_syms = NULL;
             int used_count = 0;
             char *code = process_printf_sugar(ctx, next, inner, is_ln, "stdout", &used_syms,
@@ -106,6 +144,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             n->raw_stmt.content = stmt_code;
             n->raw_stmt.used_symbols = used_syms;
             n->raw_stmt.used_symbol_count = used_count;
+            take_fstring_exprs(ctx, n);
             zfree(inner);
             return n;
         }
@@ -731,6 +770,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             n->raw_stmt.content = stmt_code;
             n->raw_stmt.used_symbols = used_syms;
             n->raw_stmt.used_symbol_count = used_count;
+            take_fstring_exprs(ctx, n);
             return n;
         }
     }

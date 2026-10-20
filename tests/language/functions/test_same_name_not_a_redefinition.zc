@@ -1,0 +1,72 @@
+// language/functions: declarations that share a name but are not redefinitions:
+// a prototype and its definition, repeated externs, @cfg alternatives, the
+// same method on two types, a trait method and an inherent method, a diamond
+// import and a generic function used with several types.
+
+import "./redefinition/_left.zc"
+import "./redefinition/_right.zc"
+
+fn later() -> int;
+
+fn later() -> int {
+    return 7;
+}
+
+extern fn abs(x: int) -> int;
+extern fn abs(x: int) -> int;
+
+@cfg(not(ZC_NEVER_DEFINED))
+fn platform_value() -> int {
+    return 1;
+}
+
+@cfg(ZC_NEVER_DEFINED)
+fn platform_value() -> int {
+    return 2;
+}
+
+trait Shape {
+    fn area(self) -> int;
+}
+
+struct Square {
+    side: int;
+}
+
+struct Circle {
+    radius: int;
+}
+
+impl Square {
+    fn area(self) -> int {
+        return self.side * self.side;
+    }
+}
+
+impl Shape for Square {
+    fn area(self) -> int {
+        return self.side * self.side;
+    }
+}
+
+impl Circle {
+    fn area(self) -> int {
+        return 3 * self.radius * self.radius;
+    }
+}
+
+fn pick<T>(x: T) -> T {
+    return x;
+}
+
+test "same_name_not_a_redefinition" {
+    expect_eq(later(), 7, "prototype then definition");
+    expect_eq(abs(-3), 3, "repeated extern");
+    expect_eq(platform_value(), 1, "@cfg alternative");
+    expect_eq(left_answer() + right_answer(), 85, "diamond import");
+    let s = Square { side: 2 };
+    let c = Circle { radius: 1 };
+    let shape: Shape = &s;
+    expect_eq(s.area() + c.area() + shape.area(), 11, "methods with the same name");
+    expect_eq(pick<int>(5) + (int)pick<bool>(true), 6, "generic used twice");
+}

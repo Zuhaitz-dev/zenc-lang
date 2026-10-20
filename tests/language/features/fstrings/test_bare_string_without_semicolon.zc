@@ -1,0 +1,15 @@
+// language/features/fstrings: a bare string statement prints even without a
+// trailing `;` when the next statement starts on a new line (semicolons are
+// optional), for plain and interpolated strings alike.
+
+fn main() {
+    let x = 3
+    "plain without semicolon"
+    "interpolated without semicolon: {x}"
+    "followed by a declaration: {x}"
+    let y = x + 1
+    "y is {y}"
+    "same line"; "then {y}"
+    "without newline: {x} "..
+    "last"
+}

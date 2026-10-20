@@ -1,0 +1,12 @@
+// ARGS: build -q
+// --quiet: no warnings are shown or counted
+
+fn helper(a: int, unused_param: int) -> int {
+    let unused_local = 5;
+    return a;
+}
+
+fn main() {
+    let r = helper(1, 2);
+    println "{r}";
+}

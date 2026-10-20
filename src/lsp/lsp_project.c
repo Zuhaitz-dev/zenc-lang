@@ -25,13 +25,24 @@ typedef struct TrackedDocument
 static TrackedDocument *g_tracked_documents = NULL;
 static size_t g_built_total = 0;
 static int g_workspace_indexed = 0;
+// The compiler the server works with, owned by zc-lsp's main(). Projects point to it.
+static ZenCompiler *g_server_compiler = NULL;
 
 static void scan_dir(const char *dir_path);
-void lsp_default_on_error(void *data, Token t, const char *msg);
 
 // Initialize the project with a root directory
 
 // Perform full project indexing
+
+void lsp_set_compiler(ZenCompiler *compiler)
+{
+    g_server_compiler = compiler;
+}
+
+ZenCompiler *lsp_compiler(void)
+{
+    return g_server_compiler;
+}
 
 void lsp_project_init(const char *root_path)
 {
@@ -51,8 +62,8 @@ void lsp_project_init(const char *root_path)
 
     // Create a persistent global context
     g_project->ctx = xcalloc(1, sizeof(ParserContext));
-    g_project->ctx->compiler = &g_compiler;
-    g_project->ctx->config = &g_compiler.config;
+    g_project->ctx->compiler = g_server_compiler;
+    g_project->ctx->config = &g_server_compiler->config;
     g_project->ctx->is_fault_tolerant = 1;
     module_state_init(&g_project->ctx->imports);
     g_project->ctx->cg.hoist_out = tmpfile(); // Support hoisting in LSP
@@ -68,10 +79,6 @@ void lsp_project_init(const char *root_path)
     // error would fall through to exit(1) and kill the whole server.
     token_set_parser_ctx(g_project->ctx);
     diag_set_parser_ctx(g_project->ctx);
-
-    // Set a default error handler that just logs to stderr (or ignores)
-    // to prevent exit(1) during initial scan.
-    g_project->ctx->on_error = lsp_default_on_error;
 
     CompilerConfig *cfg = &g_project->ctx->compiler->config;
 
@@ -107,7 +114,7 @@ void lsp_project_index_workspace(void)
     g_is_indexing = 0;
 
     g_workspace_indexed = 1;
-    g_built_total = g_compiler.arena.total_alloc;
+    g_built_total = g_arena.total_alloc;
 }
 
 static char *libc_strdup(const char *s)
@@ -156,6 +163,22 @@ void lsp_project_track_document(const char *uri, const char *src)
     document->source = source;
 }
 
+void lsp_project_untrack_document(const char *uri)
+{
+    for (TrackedDocument **link = &g_tracked_documents; *link; link = &(*link)->next)
+    {
+        TrackedDocument *document = *link;
+        if (strcmp(document->uri, uri) == 0)
+        {
+            *link = document->next;
+            libc_free(document->uri);
+            libc_free(document->source);
+            libc_free(document);
+            return;
+        }
+    }
+}
+
 size_t lsp_project_built_total(void)
 {
     return g_built_total;
@@ -179,7 +202,7 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
         fclose(g_project->ctx->cg.hoist_out);
     }
 
-    zarena_restore(&g_compiler.arena, base);
+    zarena_restore(&g_arena, base);
 #if ZARENA_ASAN_REDZONE
     // Under ASan, a stale pointer into the rewound region becomes a reported error
     // instead of silently reading whatever the rebuild writes there.
@@ -192,9 +215,7 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
 
     // The compiler state saved with the mark only points below it. Globals that may
     // point above it are reset.
-    zarena arena = g_compiler.arena;
-    g_compiler = *base_compiler;
-    g_compiler.arena = arena;
+    *g_server_compiler = *base_compiler;
     g_project = NULL;
     curr_func_ret = NULL;
     clear_registered_traits();
@@ -210,22 +231,11 @@ void lsp_project_rebuild(ZarenaMark base, const ZenCompiler *base_compiler)
         lsp_project_update_file(document->uri, document->source);
     }
 
-    g_built_total = g_compiler.arena.total_alloc;
+    g_built_total = g_arena.total_alloc;
     fprintf(stderr, "zls: project rebuilt, arena in use: %zu KB\n", g_built_total / 1024);
 }
 
 // Default error handler for indexing phase
-void lsp_default_on_error(void *data, Token t, const char *msg)
-{
-    (void)data;
-    (void)t;
-    (void)msg;
-    // We can log it if we want, but standard zpanic_at already printed it to stderr.
-    // The important thing is that we exist so zpanic_at returns.
-    // Maybe we suppress duplicates or just let it pass.
-    // Since zpanic_at printed "error: ...", we don't need to print again.
-}
-
 static void scan_file(const char *path)
 {
     // Skip if not .zc
@@ -244,7 +254,7 @@ static void scan_file(const char *path)
         return;
     }
 
-    char *src = load_file(path, g_project->ctx->current_filename);
+    char *src = load_file(path, g_project->ctx->current_filename, g_project->ctx->config);
     if (!src)
     {
         return;

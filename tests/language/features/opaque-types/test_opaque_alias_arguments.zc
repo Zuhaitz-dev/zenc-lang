@@ -1,0 +1,30 @@
+// language/features/opaque-types: test_opaque_alias_arguments
+// Arguments of an opaque alias type accept that alias; inside the defining
+// module they also accept the underlying type. The rejections are in
+// tests/compiler/diagnostics/err_opaque_alias_*argument.zc.
+import "std/option.zc"
+import "std/vec.zc"
+import "_opaque_id_lib.zc"
+
+fn count_one<T>(value: T) -> int {
+    return 1;
+}
+
+test "a function takes its own alias" {
+    let user = UserId::of(4);
+    assert(user_number(user) == 4, "free function");
+    assert(user.same(UserId::of(4)), "method");
+}
+
+test "the defining module converts the underlying type" {
+    assert(first_user_number() == 1, "literal argument inside the module");
+}
+
+test "generic containers and functions take the alias" {
+    let users = Vec<UserId>::new();
+    users.push(UserId::of(2));
+    let found = Option<UserId>::Some(UserId::of(3));
+    assert(users.get(0).raw() == 2, "Vec");
+    assert(found.unwrap().raw() == 3, "Option");
+    assert(count_one(UserId::of(5)) == 1, "generic function");
+}

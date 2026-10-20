@@ -231,7 +231,7 @@ static void scan_c_header_contents(ParserContext *ctx, const char *path, int dep
     }
     mark_file_imported(ctx, path);
 
-    char *src = load_file(path, ctx->current_filename);
+    char *src = load_file(path, ctx->current_filename, ctx->config);
     if (!src)
     {
         return;
@@ -621,6 +621,35 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
 
     if (is_file_imported(ctx, fn))
     {
+        // The file is not read again (a std module may already have brought in the same C
+        // header), but `as name` still belongs to this import. A C header's alias is
+        // registered: its symbols keep their C names. A module's symbols already carry the
+        // prefix of its first import, so its alias cannot be honoured here and is consumed.
+        if (!is_selective)
+        {
+            Token next_tok = lexer_peek(l);
+            if (next_tok.kind == TOK_IDENT && next_tok.len == 2 &&
+                strncmp(next_tok.start, "as", 2) == 0)
+            {
+                lexer_next(l);
+                Token alias_tok = lexer_next(l);
+                int is_header = strlen(fn) > 2 && strcmp(fn + strlen(fn) - 2, ".h") == 0;
+                if (is_header && alias_tok.kind == TOK_IDENT)
+                {
+                    char *alias = token_strdup(alias_tok);
+                    if (!zmap_get(&ctx->imports.modules, alias))
+                    {
+                        Module *m = xmalloc(sizeof(Module));
+                        m->alias = alias;
+                        m->path = xstrdup(fn);
+                        m->base_name = module_prefix_for(ctx, fn);
+                        m->is_c_header = 1;
+                        m->is_re_export = is_re_export;
+                        zmap_put(&ctx->imports.modules, alias, m);
+                    }
+                }
+            }
+        }
         for (size_t _c = 0; _c < symbols.length; _c++)
         {
             zfree(symbols.data[_c]);
@@ -738,7 +767,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         return n;
     }
 
-    char *src = load_file(fn, ctx->current_filename);
+    char *src = load_file(fn, ctx->current_filename, ctx->config);
     if (!src)
     {
         if (!src)
@@ -766,7 +795,8 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     }
 
     Lexer i;
-    lexer_init(&i, src, ctx->config, ctx->current_filename);
+    // The imported file's own path: tokens carry it into diagnostics and #line.
+    lexer_init(&i, src, ctx->config, fn);
 
     char *prev_module_prefix = ctx->imports.current_module_prefix;
     char *temp_module_prefix = NULL;

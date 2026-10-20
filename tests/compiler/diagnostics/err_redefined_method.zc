@@ -1,0 +1,23 @@
+// EXPECT: FAIL
+// compiler/diagnostics: a method defined twice, in two impl blocks of a type.
+
+struct Counter {
+    value: int;
+}
+
+impl Counter {
+    fn get(self) -> int {
+        return self.value;
+    }
+}
+
+impl Counter {
+    fn get(self) -> int {
+        return self.value + 1;
+    }
+}
+
+fn main() {
+    let c = Counter { value: 1 };
+    println "{c.get()}";
+}
