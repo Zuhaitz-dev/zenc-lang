@@ -12,11 +12,11 @@
  * The parser dereferences ctx->config (e.g. ctx->config->keep_comments) and
  * the global token/diagnostic contexts during parsing; without these the
  * REPL segfaults on any input. */
-void repl_parser_ctx_init(ParserContext *ctx)
+void repl_parser_ctx_init(ParserContext *ctx, ZenCompiler *compiler)
 {
     memset(ctx, 0, sizeof(*ctx));
-    ctx->compiler = &g_compiler;
-    ctx->config = &g_compiler.config;
+    ctx->compiler = compiler;
+    ctx->config = &compiler->config;
     ctx->current_filename = "<repl>";
     ctx->cg.is_repl = 1;
     ctx->is_fault_tolerant = 1;
@@ -44,10 +44,10 @@ static void repl_counting_error_callback(void *data, Token t, const char *msg)
     }
 }
 
-char *repl_transpile(const char *zen_c_code)
+char *repl_transpile(ZenCompiler *compiler, const char *zen_c_code)
 {
     ParserContext ctx;
-    repl_parser_ctx_init(&ctx);
+    repl_parser_ctx_init(&ctx, compiler);
     ctx.cg.skip_preamble = 0;
 
     /* Track parser errors via the callback: zpanic_at/zpanic_with_* all
@@ -59,7 +59,7 @@ char *repl_transpile(const char *zen_c_code)
     ctx.error_callback_data = &errs;
 
     Lexer lex;
-    lexer_init(&lex, zen_c_code, &g_compiler.config, ctx.current_filename);
+    lexer_init(&lex, zen_c_code, ctx.config, ctx.current_filename);
 
     ASTNode *root = parse_program(&ctx, &lex);
     if (!root || errs.count > 0)
@@ -112,10 +112,10 @@ void repl_error_callback(void *data, Token t, const char *msg)
     fprintf(stderr, "\033[1;31merror:\033[0m %s\n", msg);
 }
 
-int is_definition_of(const char *code, const char *name)
+int is_definition_of(CompilerConfig *cfg, const char *code, const char *name)
 {
     Lexer l;
-    lexer_init(&l, code, &g_compiler.config, "<repl>");
+    lexer_init(&l, code, cfg, "<repl>");
     Token t = lexer_next(&l);
     int is_header = 0;
     if (t.kind == TOK_UNION)
@@ -357,11 +357,11 @@ void repl_update_symbols(ReplState *state)
     zfree(global_code);
     zfree(main_code);
     ParserContext ctx;
-    repl_parser_ctx_init(&ctx);
+    repl_parser_ctx_init(&ctx, state->compiler);
     ctx.cg.skip_preamble = 1;
     ctx.is_fault_tolerant = 1;
     Lexer lex;
-    lexer_init(&lex, code, &g_compiler.config, ctx.current_filename);
+    lexer_init(&lex, code, ctx.config, ctx.current_filename);
     ASTNode *nodes = parse_program(&ctx, &lex);
     ASTNode *search = (nodes && nodes->kind == NODE_ROOT) ? nodes->root.children : nodes;
     for (ASTNode *n = search; n; n = n->next)

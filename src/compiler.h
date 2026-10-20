@@ -16,13 +16,6 @@
 #include "arena.h"
 #include "platform/os.h"
 
-extern ZenCompiler g_compiler;
-
-#define g_config g_compiler.config
-#define g_link_flags g_compiler.link_flags
-#define g_cflags g_compiler.cflags
-#define g_error_count g_compiler.error_count
-#define g_warning_count g_compiler.warning_count
-#define g_start_time g_compiler.start_time
+extern zarena g_arena;
 
 #endif // COMPILER_H

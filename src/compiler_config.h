@@ -80,7 +80,6 @@ typedef struct CompilerConfig
 typedef struct ZenCompiler
 {
     CompilerConfig config;
-    struct zarena arena;
     int error_count;
     int warning_count;
     char link_flags[1024];

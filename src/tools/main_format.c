@@ -2,6 +2,7 @@
 // Standalone Zen C source formatter. Reads source from a file (or stdin) and
 // prints the formatted source to stdout.
 #include "tool_common.h"
+#include "../compiler.h"
 #include "../lsp/lsp_formatter.h"
 #include "../arena.h"
 #include <stdio.h>
@@ -10,7 +11,8 @@
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup();
+    ZenCompiler compiler = {0};
+    z_compiler_setup(&compiler);
 
     const char *input = NULL;
     int check = 0;

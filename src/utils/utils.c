@@ -28,10 +28,10 @@ static void *arena_alloc(zarena *a, size_t size)
 // Header stored 16 bytes before the returned pointer, used by xrealloc.
 #define XMALLOC_HDR_SIZE 16
 
-// Backward compatibility using global g_compiler.arena
+// All compiler allocations come from the global arena g_arena.
 static void *arena_alloc_raw(size_t size)
 {
-    return arena_alloc(&g_compiler.arena, size);
+    return arena_alloc(&g_arena, size);
 }
 
 #include <time.h>
@@ -404,8 +404,8 @@ char *load_file(const char *fn, const char *relative_to, CompilerConfig *cfg)
     return b;
 }
 
-// ** Global Compiler State **
-ZenCompiler g_compiler = {0};
+// ** Global Memory Arena **
+zarena g_arena = {0};
 
 void append_flag(char *dest, size_t max_size, const char *prefix, const char *val)
 {

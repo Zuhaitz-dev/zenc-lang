@@ -5,6 +5,7 @@
 // Common bootstrap shared by the zc compiler binary and the standalone tools
 // (zc-lsp, zc-repl, zc-doc, zc-format). Each tool has its own thin main() and
 // calls z_compiler_setup() before delegating to its entry point.
-void z_compiler_setup(void);
+typedef struct ZenCompiler ZenCompiler;
+void z_compiler_setup(ZenCompiler *compiler);
 
 #endif // ZC_TOOL_COMMON_H

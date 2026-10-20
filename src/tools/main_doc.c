@@ -12,28 +12,31 @@
 
 int main(int argc, char **argv)
 {
-    z_compiler_setup();
+    ZenCompiler compiler = {0};
+    CompilerConfig *cfg = &compiler.config;
 
-    g_config.mode_doc = 1;
-    g_config.keep_comments = 1;
-    g_config.recursive_doc = 1;
-    g_config.mode_check = 0; // Documentation does not require typechecking
-    g_config.use_typecheck = 0;
+    z_compiler_setup(&compiler);
+
+    cfg->mode_doc = 1;
+    cfg->keep_comments = 1;
+    cfg->recursive_doc = 1;
+    cfg->mode_check = 0; // Documentation does not require typechecking
+    cfg->use_typecheck = 0;
 
     const char *input = NULL;
     for (int i = 1; i < argc; i++)
     {
         if (strcmp(argv[i], "--recursive-doc") == 0)
         {
-            g_config.recursive_doc = 1;
+            cfg->recursive_doc = 1;
         }
         else if (strcmp(argv[i], "--no-recursive-doc") == 0)
         {
-            g_config.recursive_doc = 0;
+            cfg->recursive_doc = 0;
         }
         else if (strcmp(argv[i], "--verbose") == 0 || strcmp(argv[i], "-v") == 0)
         {
-            g_config.verbose = 1;
+            cfg->verbose = 1;
         }
         else if (argv[i][0] != '-' && !input)
         {
@@ -53,21 +56,21 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    g_config.input_file = (char *)input;
+    cfg->input_file = (char *)input;
 
     ParserContext ctx;
     memset(&ctx, 0, sizeof(ctx));
-    ctx.compiler = &g_compiler;
-    ctx.config = &g_compiler.config;
-    ctx.current_filename = g_compiler.config.input_file;
+    ctx.compiler = &compiler;
+    ctx.config = cfg;
+    ctx.current_filename = cfg->input_file;
     module_state_init(&ctx.imports);
     diag_set_parser_ctx(&ctx);
     token_set_parser_ctx(&ctx);
 
-    char *src = load_file(g_compiler.config.input_file, ctx.current_filename, ctx.config);
+    char *src = load_file(cfg->input_file, ctx.current_filename, ctx.config);
     if (!src)
     {
-        fprintf(stderr, "error: could not read file '%s'\n", g_compiler.config.input_file);
+        fprintf(stderr, "error: could not read file '%s'\n", cfg->input_file);
         return 1;
     }
 

@@ -20,11 +20,12 @@ void diag_set_parser_ctx(ParserContext *ctx)
 }
 
 // Diagnostics take no compiler argument: they use (config) and update (error and
-// warning counts) the compiler of the registered parser context, or g_compiler if
-// none is set.
+// warning counts) the compiler of the registered parser context. Before a context is
+// registered they fall back to a private compiler that nothing reads.
 static ZenCompiler *diag_compiler(void)
 {
-    return d_ctx.parser_ctx ? d_ctx.parser_ctx->compiler : &g_compiler;
+    static ZenCompiler no_context;
+    return d_ctx.parser_ctx ? d_ctx.parser_ctx->compiler : &no_context;
 }
 
 static CompilerConfig *diag_cfg(void)
@@ -757,7 +758,7 @@ int is_diag_enabled(DiagnosticID id)
     {
         return 0;
     }
-    // Check bitmask in g_config
+    // Check the bit of this diagnostic in the config's mask
     return (diag_cfg()->diag_mask & ((uint64_t)1 << id)) != 0;
 }
 
@@ -800,17 +801,17 @@ void zwarn_diag(DiagnosticID id, Token t, const char *msg, const char *hint)
     }
 }
 
-int set_diag_by_name(const char *name, int enabled)
+int set_diag_by_name(CompilerConfig *cfg, const char *name, int enabled)
 {
     if (strcmp(name, "interop") == 0)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         return 1;
     }
@@ -818,13 +819,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_PEDANTIC_STRICT_TYPING);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_INTEROP_UNDEF_FUNC);
         }
         return 1;
     }
@@ -832,13 +833,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_VAR);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_PARAM);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_VAR);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_UNUSED_PARAM);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_VAR);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_PARAM);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_VAR);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_UNUSED_PARAM);
         }
         return 1;
     }
@@ -846,15 +847,15 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_NULL_PTR);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_DIV_ZERO);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_SAFETY_ARRAY_BOUNDS);
         }
         return 1;
     }
@@ -862,15 +863,15 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_UNREACHABLE);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_TRUE);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_LOGIC_ALWAYS_FALSE);
         }
         return 1;
     }
@@ -878,13 +879,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_NARROWING);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_CONVERSION_NARROWING);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_NARROWING);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_IMPLICIT);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_CONVERSION_NARROWING);
         }
         return 1;
     }
@@ -892,13 +893,13 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_STYLE_SHADOWING);
-            diag_cfg()->diag_mask |= ((uint64_t)1 << DIAG_STYLE_FORMAT);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_STYLE_SHADOWING);
+            cfg->diag_mask |= ((uint64_t)1 << DIAG_STYLE_FORMAT);
         }
         else
         {
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_SHADOWING);
-            diag_cfg()->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_FORMAT);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_SHADOWING);
+            cfg->diag_mask &= ~((uint64_t)1 << DIAG_STYLE_FORMAT);
         }
         return 1;
     }
@@ -906,11 +907,11 @@ int set_diag_by_name(const char *name, int enabled)
     {
         if (enabled)
         {
-            diag_cfg()->diag_mask = 0xFFFFFFFFFFFFFFFF;
+            cfg->diag_mask = 0xFFFFFFFFFFFFFFFF;
         }
         else
         {
-            diag_cfg()->diag_mask = 0;
+            cfg->diag_mask = 0;
         }
         return 1;
     }
