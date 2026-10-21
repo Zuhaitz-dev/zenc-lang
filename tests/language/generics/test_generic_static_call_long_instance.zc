@@ -1,0 +1,28 @@
+// language/generics: test_generic_static_call_long_instance
+// `Type::method(...)` on a generic type, resolved to a concrete instance whose
+// mangled name is long (the resolved name used to be copied into a buffer
+// sized for the short unresolved one).
+struct AStructNameLongerThanThirtyTwoCharacters {
+    value: int;
+}
+
+struct Wrap<T> {
+    inner: T;
+}
+
+impl Wrap<T> {
+    fn make(inner: T) -> Wrap<T> {
+        return Wrap<T> { inner: inner };
+    }
+}
+
+test "static_call_resolves_to_long_instance" {
+    let w: Wrap<AStructNameLongerThanThirtyTwoCharacters> =
+        Wrap::make(AStructNameLongerThanThirtyTwoCharacters { value: 7 });
+    assert(w.inner.value == 7, "the long instance's method was called");
+}
+
+test "static_call_resolves_to_short_instance" {
+    let w: Wrap<int> = Wrap::make(3);
+    assert(w.inner == 3, "the int instance's method was called");
+}
