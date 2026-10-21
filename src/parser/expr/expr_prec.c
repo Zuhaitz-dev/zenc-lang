@@ -985,8 +985,7 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         // `as` and the type were parsed as stray identifiers and the C broke.
         if (op.kind == TOK_IDENT && op.len == 2 && strncmp(op.start, "as", 2) == 0)
         {
-            const char *hints[] = {"Casts are written `(T)value`, for example `(u8)300`",
-                                   NULL};
+            const char *hints[] = {"Casts are written `(T)value`, for example `(u8)300`", NULL};
             zpanic_with_hints(op, "`as` is not a cast in Zen C", hints);
             return NULL;
         }
