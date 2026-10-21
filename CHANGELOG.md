@@ -1,0 +1,254 @@
+# Changelog
+
+## 0.5.0
+
+### Fixed
+- Security:
+  - a stack buffer overflow when mangling long or deeply nested generic, enum variant and method names (GHSA-rv74-w6q7-h8xr);
+  - text interpolated into the format argument of `printf`, `fprintf`, `snprintf` and other variadic calls is passed through `"%s"`, so a `%` in it is no longer read as a format directive;
+  - `//> pkg-config:` build directives run `pkg-config` without going through a shell.
+- Malformed or truncated source no longer crashes or hangs the compiler: recursion limits, end-of-file checks in every block parser, and many buffer overflows and NULL dereferences found by fuzzing. If the compiler still crashes, it says so and keeps the generated C.
+- Memory errors in the compiler:
+  - a `match` expression with more than 8 bindings in a pattern (PR #517);
+  - `Type::method` on a generic resolved to an instance with a long name (PR #517);
+  - a lambda capturing more than 32 variables (PR #511);
+  - `snprintf` results are no longer used as buffer offsets in the language server (PR #526).
+- Function bodies and `test` blocks can use anything declared further down the file, imports included: functions, methods, impls, generics and operators (PR #486).
+- Closures and lambdas:
+  - returning a capturing closure keeps its return type and its captured values (#358, #361);
+  - non-capturing lambdas and methods (`Person::speak`) can be assigned to `fn*` pointers, also in struct fields (#344);
+  - lambdas no longer capture C library names (`sprintf`, `stdout`) or `NULL`, `true` and `false` (#344), nor other names that are not variables outside them (PR #513);
+  - lambdas capture outer variables used anywhere in their body, not only in some kinds of statements (PR #500);
+  - lambdas can contain `for … in` loops and destructuring `let` (PR #508), can be nested (PR #510), and can capture fixed-size arrays (PR #512);
+  - closures inside f-strings: a `:` in the closure no longer cuts the expression, the return type is inferred, and captures are read in f-strings used as expressions (PR #509);
+  - lambdas inside generic functions get one definition per instance;
+  - closures that capture a function pointer compile (#418, PR #469).
+- Traits:
+  - a struct pointer converts to a trait object: `(Greeter)ptr`, `let g: Greeter = &h;` (#343);
+  - a trait method returning a generic type (`-> Vec<char*>`) compiles (#342);
+  - `@unused` on methods of an `impl` block, generic or not, is no longer ignored.
+- Generics:
+  - pointer type arguments: `Option<T*>`, `Map<MyStruct*>` (#350, #328);
+  - generic structs with slice fields (`data: T[]`);
+  - generic function bodies can use `match` destructuring, `defer`, `guard`, `unless` and ternaries, and `sizeof`, casts and local types are substituted per instance;
+  - a static call on a generic path (`Option<V>::None()`) no longer ties the template to an unrelated instance (`Map<JsonValue>::get` returned `Option<Vec<DirEntry>>`);
+  - the annotation of `let x: Foo<int> = make()` selects the instance, and methods of generic `impl` blocks are found as templates;
+  - an instance is no longer accepted where another instance of the same generic is expected (`Id<OrderKind>` for `Id<UserKind>`); through a pointer the program used to build and run with the wrong value (PR #521).
+- Enums and `match`:
+  - variants shared by several enums call the right constructor, also without `()` on a generic instance (`Maybe<int>::Nothing`) (PR #450);
+  - explicit values (`Ok = 200`, hex, negative) reach the C enum and `match` (#399, PR #480);
+  - enums without payloads compare with `==` and cast to integers;
+  - `Enum::Variant` without `()` used as a value calls the constructor;
+  - `match` on a variant whose name contains `_`;
+  - `match` bindings on `Result` and `Option` get the payload type, so `Ok(s) => s.length()` works;
+  - enum variants with more than 32 payload types no longer crash the compiler.
+- `@derive`:
+  - `@derive(Eq)` on an enum with payloads compares the values of the variant, not only the variant: `Just(1) == Just(5)` was `true` (PR #520);
+  - `@derive(Eq)`, `Clone`, `Debug`, `FromJson` and `ToJson` work on generic structs and enums; no instance got the methods (PR #520);
+  - `@derive(Eq)` compiles on enums without payloads (#316, PR #484);
+  - `@derive(Clone)` clones `String` and `Vec` fields instead of sharing them (double free) (#431, PR #485).
+- Method calls:
+  - fill in default arguments and convert `&x` to trait objects (PR #453);
+  - resolve on enum values, also inside f-strings (PR #453);
+  - work on temporaries as receivers (`v.get(0).id == id`, `E::V.f()`) (PR #464).
+- Operators:
+  - `a != b` uses `eq` when there is no `neq`, also on instances of generic structs (PR #488);
+  - overloaded operators pass struct operands by reference and drop temporaries (`text += &other`) (#336, PR #467);
+  - `name < index` and `name < *ptr` parse as comparisons (#367, #427, PR #478);
+  - `cond ? .a : .b` (the `self` field shorthand) parses as a ternary (#324);
+  - the `?` operator works on `Option`, and builds the `Err` or `None` it returns from the enclosing function's return type.
+- Loops:
+  - `continue` in `for i, v in arr` advances the index instead of looping forever (#359);
+  - method calls on fields of the loop variable over `Vec<T*>` (`o.inner.get()`) (#349, PR #482);
+  - `let t = s;` inside a `for x in v` loop keeps the element type (#377, PR #475);
+  - a `break` or `continue` nested in more than 64 loops runs the right defers (PR #517);
+  - a stray `break` after a `for i, x in a..b` loop is reported by `zc` instead of the C compiler (PR #517).
+- `defer` with `it` works in any expression (`it[1]`, `(int)it`, ternaries) (PR #503).
+- Nested tuples (`((int, int), (int, int))`) generate valid C.
+- Strings and interpolation:
+  - interpolations are no longer lost in `-O2` and `--release` builds; temporaries are evaluated once and freed once (#385);
+  - a `String` field in an interpolation (`{p.name}`) (#384);
+  - raw strings `r"..."` and `r"""..."""` are not interpolated (#397);
+  - non-`char` pointers print with `%p`, and values of unknown type fall back to `%s` instead of failing in C;
+  - a `rune` interpolates without importing `std/io.zc`;
+  - moves are checked inside interpolations (`"{a.c_str()}"` after `let b = a;`) (#378, #383, PR #483);
+  - a bare interpolated string statement prints without a `;` (#379, PR #481);
+  - globals can hold strings whose braces are all escaped (`"""` snippets) or an embedded file with braces (#411, PR #477);
+  - `assert` and `expect` interpolate their message (#402, PR #473);
+  - several crashes in f-string parsing.
+- Modules and imports:
+  - `mod::fn()` and `mod::Type::method()` resolve after a plain `import "mod.zc"`;
+  - types used inside a module no longer get that module's prefix (`mod__Type`);
+  - `extern fn` and `extern let` keep their C names inside modules, and `extern let x: T;` keeps its declaration instead of vanishing (PR #455);
+  - modules imported with `as` no longer clash when they share a file name (PR #454);
+  - `import "math.h" as m` keeps its alias when a module imported earlier already included `math.h` (PR #463);
+  - a header imported twice (directly and through a std module) is no longer reported as a circular import;
+  - importing `std/arena.zc` no longer forms an import cycle;
+  - selective imports (`import {a, b} from`) take more than 32 names;
+  - a function shared by several modules gets one prototype in the C output;
+  - methods `_name` and `name` on the same type no longer collide in C;
+  - errors in an imported file are reported with that file's path, not the importer's (PR #487).
+- Opaque aliases (PR #490):
+  - `self` and generic arguments (`Option<UserId>`) keep the alias type;
+  - arguments are checked like `let`: `UserId` and `ItemId` no longer mix;
+  - in their own module, two different aliases are not interchangeable;
+  - in their own module, an alias of a number compares with numbers (`*self == 0`).
+- `@link_name` structs: literals, and variables inside loops, methods and `test` blocks, use the C name (PR #501, PR #514).
+- `def` constants keep their sign and their 64 bits (`def NEG = -1;`, `def BIG: u64 = 0xcbf29ce484222325;`) (#322, PR #472).
+- Drop and moves:
+  - `Set` implements `Drop` and no longer leaks (#420);
+  - by-value parameters whose type has a destructor (`String`, `Vec`, structs holding them) are dropped when the function returns;
+  - a discarded call result with Drop is dropped (`Resource::new(i);`, `items.pop();`) (#406, PR #471);
+  - `x.forget()` after moving `x` is not reported as a use after move.
+- Generated C:
+  - each type is declared before the types that use it (PR #452);
+  - indexing through a pointer (`self.rows.data[r].push(v)`) uses plain array indexing instead of the `[]` overload, which produced invalid C;
+  - empty struct initializers are emitted as `{0}`.
+- `comptime` blocks process escapes in strings, and inside a function their output is parsed as statements (PR #451).
+- `? "prompt" (x)` keeps the answer on the prompt's line, and reading a `string` works on macOS (#416, PR #479).
+- `zc check` (`--typecheck`):
+  - checks method bodies in `trait` and `impl` blocks (#347);
+  - methods can call methods defined further down the same `impl`;
+  - a `T*` argument assigned to a `T` variable is accepted for `Copy` structs (#356);
+  - assigning to a variable captured by value in a lambda is reported (#358);
+  - an infinite loop without `break` counts as returning.
+- Diagnostics:
+  - no unknown-type warning for C type names like `uint32_t` (#365);
+  - errors inside lambdas and `match` point at the right line.
+- `--misra` builds a program end to end: every program used to fail with rule 5.10 on the compiler's own `true` and `false`, and the MISRA preamble lacked `ZC_FUNC`, `ZC_GLOBAL` and `string` (PR #519).
+- `zc transpile -o FILE` no longer overwrites its output with a temporary file, and replaces an existing `FILE` on Windows too (PR #519).
+- Platforms:
+  - Windows: UTF-8 console output (#338), `String` case-insensitive comparison without `strcasecmp`, `std/time.zc` no longer redeclares `time()`, built programs link statically, and a failure to run them shows the OS error;
+  - `@cfg(apple)` is set on macOS (so `std/sync.zc` barriers work) and `@cfg(windows)` on Windows;
+  - a macro name clash on Termux (PR #447, Yuuki1578).
+- The C compiler receives the `-I` paths and the input file's directory, with `-iquote` for relative `#include`s, and no empty `-I`.
+- Installation:
+  - an installed `zc` finds its standard library in `PREFIX/share/zenc` without `-I` (PR #524);
+  - std lookup follows one order: `-I` paths, `ZC_ROOT`, `/usr/local/share/zenc`, `/usr/share/zenc`; the compiler also finds `std.zc` by walking up from its own location, and std modules are loaded from one location only;
+  - an installed `zc` compiles programs that import `std/regex.zc` and resolves `@link("std/...")` paths;
+  - Make and CMake install `std.zc`, and CMake installs to `share/zenc` (PR #448, robknopf);
+  - `zc --version` shows the new version after a rebuild.
+- Building the compiler:
+  - with TCC, zig cc and Cosmopolitan (APE);
+  - plain `make` works without libtcc (the REPL JIT is enabled only when found) (#437, PR #465);
+  - with clang older than 14 (`-Wreturn-stack-address`) (#440, PR #466);
+  - with `ZC_LSP=0` or `ZC_REPL=0`, the tools whose sources it excludes are left out (PR #515).
+- Embedding the compiler (`driver_compile`): the caller's configuration is used throughout (PR #494, PR #495), and a compilation after one with errors no longer fails (PR #507).
+- LSP:
+  - crashes and memory leaks in completion, go to definition, find references and indexing;
+  - client timeouts while indexing the workspace;
+  - re-analysing a file no longer reports redefinitions from files indexed before;
+  - an unresolved import no longer crashes the server (PR #396, robknopf);
+  - the server writes to stderr only with `--verbose`, which broke Neovim ("cannot resume dead coroutine").
+- REPL: Ctrl+C no longer locks multi-line input, crashes are fixed, and `:c`, `:type` and `:run` work on Windows, APE builds and with the standalone `zc-repl`.
+- The Forth and Befunge plugins accept CRLF line endings.
+
+### Added
+- Language:
+  - `const self` methods, in `impl` and in traits;
+  - several variables in one `let`: `let a = 1, b = 2;`;
+  - `@thread_local static let x: T;`, and `static let` at file scope;
+  - `@crepr("struct timeval")` maps a struct to an existing C type, and `@link("file.c")` compiles and links a C file with the program;
+  - `export import "file.zc"` re-exports a module;
+  - `null` in C mode;
+  - arrays in `comptime` blocks (declaration, indexing, casts; out-of-bounds indexes are compile errors).
+- Escape analysis in `zc check`: returning or storing the address of a local is an error, also through arrays, struct fields, and functions or methods that return one of their pointer arguments (lifetime elision).
+- Clear errors instead of broken C for:
+  - top-level `const` (PR #458), and anything else that does not start a top-level declaration (`pub fn`, a stray `}`, `namespace`) (PR #463);
+  - C keywords used as names (`let double`) (PR #456);
+  - `x as T`, with a hint towards `(T)x` (PR #522);
+  - a struct named like a std generic (PR #457), and a struct defined twice (PR #354, jiang1997);
+  - functions and methods defined twice (#178, PR #476);
+  - circular imports;
+  - `break` and `continue` outside a loop;
+  - an initializer of an unrelated type (`let x: int = "text"`);
+  - prefix pointers (`*Type`; Zen C uses `Type*`);
+  - `println(...)` written with parentheses;
+  - leftover tokens in an interpolation (`"{x y}"`, code in a `"""` string) (#368, PR #470);
+  - a C string or number as the operand of an overload that takes a struct (`String += "x"`) (#336, PR #467);
+  - a global initialized with an interpolated string (#411, PR #477);
+  - an unknown trait in `@derive` (`@derive(Cpy)`) (PR #489);
+  - a function whose closing `}` is missing at the end of the file (`Unclosed '{'`) (PR #486).
+- Testing:
+  - `expect(cond, msg)`, a check that records the failure and goes on;
+  - `std/test.zc`, imported in `test` blocks: `expect_eq`, `expect_ne`, `expect_approx_eq`;
+  - each `test` block reports `OK` or `FAIL`, a failure no longer stops the other tests, and the exit code is the number of failed tests.
+- Backends: `--backend NAME` with `c`, `cpp`, `cuda`, `objc`, `json` (the AST), `ast-dump`, `lisp` (Common Lisp) and `dot` (Graphviz), plus `--backend-opt key=value`; `--cpp`, `--cuda` and `--objc` stay as aliases. CUDA and Objective-C builds get their own compiler flags, and the C++ backend compiles the standard library. An unknown `--backend` name is an error, with a suggestion (PR #515).
+- `--filcc` builds with Fil-C, the memory-safe C compiler.
+- MISRA:
+  - `--misra` checks MISRA C:2012 rules and directives, plus Zen rules (no `raw` or `plugin` blocks, no `#` directives, no `_` arm on enum matches, no shadowing, reserved names, no tuples of 3 or more fields, no `string == string`);
+  - `@cfg(misra)`, and `@cfg(freestanding)` with `--freestanding`;
+  - `StaticArena`, a fixed buffer used for allocation in MISRA builds.
+- CLI:
+  - `zc help` and `zc help <command>`;
+  - `zc` reports an unknown command instead of building silently (`zc test f.zc`) (#409, PR #468);
+  - `-W<group>` and `-Wno-<group>` turn Zen C diagnostics on or off (`unused`, `safety`, `logic`, `conversion`, `pedantic`, `interop`); other `-W` flags still go to the C compiler;
+  - `--no-suppress-warnings` (see Changed) (#341);
+  - `zc doc FILE` (`zc-doc`) writes Markdown documentation from `///` and `/** */` comments, generic `impl` methods included.
+- `zenc.json` accepts `"c_types"`: C type names that the unknown-type check accepts.
+- Standard library:
+  - `Option`: `unwrap_or_else`, `is_some_and`, `is_none_or`, `filter`; `Result`: `unwrap_or`, `unwrap_or_else`, `ok`, `err`, `map_err`, `is_ok_and`, `is_err_and`, `expect_err`;
+  - `String`: `clone` (#431, PR #485), `to_int`, `repeated`, `reverse`, `trim_start`, `trim_end`;
+  - `VecIter`: `collect`, `count`, `forEach`, `find`, `any`, `all`, `filter`, `fold`;
+  - `BigInt`: `compare`, `is_zero`, `from_string`, `sub`, `mul`, `div`, `rem`; `BigFloat`: `compare`, `sub`, `mul`, `div`, `from_string`;
+  - `Base64::decode`;
+  - a generic `sort<T>(arr, len)`;
+  - `std/mem.zc`: `realloc_n`, `dealloc`, `alloc_bytes`, `zalloc_bytes`;
+  - `std/plugin.zc`, to write compiler plugins in Zen C;
+  - `///` documentation comments on the main modules.
+- REPL: runs code in process through libtcc, `zc-repl -c "code"`, tab completion of keywords, commands and session symbols, and `:` commands such as `:type`, `:time`, `:c`, `:show`, `:save` and `:load`.
+- LSP:
+  - project-wide definition and hover, percent-encoded file URIs, completion filtered by the typed prefix, and types colored as types (PR #442, PigeonCoding);
+  - hover, go to definition and completion for C headers (PR #491);
+  - `workspace/symbol` (PR #462) and go to declaration (PR #460);
+  - full signatures on hover (PR #461);
+  - formatting, and signature help that marks the active parameter;
+  - completion of keywords and types, `Enum::Variant`, and members through generics and methods (`a.b.`);
+  - `break` and `continue` offered in every kind of loop, also nested in `unless`, `match` or `guard` (PR #505, PR #506);
+  - hover for built-ins and for plugin blocks;
+  - code actions that replace deprecated `var` and `const`;
+  - `shutdown` and `exit`;
+  - `zenc.server.json` (include paths, `exclude`, `use_gitignore`) and `.gitignore` support when indexing (PR #493);
+  - `--verbose` startup log: version, project root, and what the workspace indexing cost (PR #525).
+- Build:
+  - `make ZC_LSP=0 ZC_REPL=0 ZC_PLUGINS=0 ZC_BACKENDS=0` and the `core`, `lite` and `minimal` targets build a smaller compiler;
+  - `make format`, `lint`, `bench`, fuzzing targets, and test targets for MISRA, backends, plugins, the LSP, TCC and Fil-C.
+- Test tooling:
+  - diagnostic output tests (PR #496) and C unit tests, `make test-unit` (PR #497), run by the CI (PR #498);
+  - `make test-check`: files that `zc check` must accept with no errors (PR #523);
+  - the MISRA test runner matches expected errors against diagnostics only (PR #459), and a MISRA build is tested end to end (PR #519).
+- Documentation:
+  - German translations of the README, CONTRIBUTING, SECURITY and LSP guides (PR #366, VOIDWERK);
+  - the README and its translations describe runes and the `test` framework (#338);
+  - `MANGLING.md`, `STYLE.md` and the compiler conventions in `CONTRIBUTING.md`.
+
+### Changed
+- The LSP, REPL, documentation generator and formatter are separate programs: `zc-lsp`, `zc-repl`, `zc-doc` and `zc-format`. `zc lsp`, `zc repl`, `zc doc` and `zc format` still work but are deprecated, and `--zen` is gone.
+- `async` functions compile to a state machine polled by `await` instead of a thread per call; programs no longer link `-lpthread`.
+- `comptime` blocks run in an interpreter inside the compiler (`let`, loops, `if`, string concatenation, `code()`, `yield()`, `compile_error`, `compile_warn`).
+- `zc check` follows the build's rules: match bindings, aliases, `p[i]`, pointer/value, and omitted struct fields (required only in MISRA mode) (PR #523).
+- Output is shorter by default: `zc` prints only "Compiling FILE"; `-v` shows each phase. `zc --help` is a short usage summary.
+- Diagnostics go through one path: errors and warnings are counted once, also with `--json`, and hints print the same way everywhere (PR #496, PR #497).
+- C compiler warnings caused by the generated code (`-Wparentheses`, unused values and variables, sign comparison, missing field initializers) are silenced by default; `--no-suppress-warnings` shows them (#341).
+- `#define` and `#include` in Zen C code are deprecated with a warning: use `def` and `import`.
+- `c_long_long` and `c_ulong_long` are now `c_longlong` and `c_ulonglong`.
+- Standard library:
+  - `to_string()` returns `char*` everywhere (`Complex` and `JsonValue` returned `String`);
+  - `length()` and `free()` are the canonical names; `len()` (JSON) and `free_mem()` (`BigInt`, `BigFloat`) remain as deprecated aliases;
+  - `alloc`, `alloc_n` and `zalloc` return zeroed memory, and `realloc_n` zeroes the new tail;
+  - each `Random` has its own generator state (same seeds, same sequences);
+  - `format()` can be nested: it rotates four thread-local buffers, and `itos`, `utos` and `format` are thread-safe;
+  - modules use `extern fn`, `@crepr` and `@link` instead of `raw` C blocks (`std/sys`, `time`, `json`, `sha256`, `regex`, `process`);
+  - `sort` is a generic quicksort with median-of-three pivots, and `String` building copies with `memcpy`;
+  - `std/net/http` no longer prints "Server listening".
+- The DSL plugins (Befunge, Brainfuck, Forth, Lisp, SQL) are written in Zen C, the regex plugin is gone, and plugins can report diagnostics and provide hover text.
+- LSP:
+  - memory no longer grows without bound while editing (PR #449);
+  - unknown requests get `MethodNotFound` (PR #460);
+  - closing a document reverts it to the file on disk (PR #492);
+  - a project outside the compiler's tree finds the standard library (PR #516);
+  - go to definition finds variables inside `unless`, ternaries, array literals, `repeat`, lambdas and `do … while` (PR #499).
+- The language reference moved from the README to the documentation site; the installation guide was updated (PR #369, z0rhan).
+- Faster symbol and type lookups (PR #444, apocalypse9949).
+- Building the compiler: C23 (`gnu23`) by default, falling back to `gnu11`; `zc` no longer contains the TRE regex library, which `std/regex.zc` compiles from source.
+- Internal: the compiler source was split into many smaller files with a shared source list, the code generator writes through an emitter, global state moved into the compiler and parser contexts (PR #494, PR #495), typecheck and MISRA checks were separated, the AST walkers share `ast_children()` (PR #499 to PR #505), the C code generator shares its loop and defer scaffolding (PR #518), the driver no longer sets the parser context twice (#436, PR #474), dead code was removed, and CI gained sanitizer, fuzzing, coverage, benchmark and example-build jobs; benchmark noise no longer fails pull requests (PR #502).
