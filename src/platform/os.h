@@ -138,6 +138,13 @@ const char *z_get_temp_dir(void);
 int z_get_pid(void);
 
 /**
+ * @brief Rename a file, replacing the destination if it exists (as POSIX rename() does;
+ * on Windows rename() fails when the destination exists).
+ * @return 0 on success, -1 with errno set on failure.
+ */
+int z_rename_replace(const char *from, const char *to);
+
+/**
  * @brief Get the path of the current executable.
  */
 void z_get_executable_path(char *buffer, size_t size);

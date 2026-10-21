@@ -134,6 +134,15 @@ int z_get_pid(void)
 #endif
 }
 
+int z_rename_replace(const char *from, const char *to)
+{
+#if ZC_OS_WINDOWS
+    // Windows' rename() does not replace an existing file.
+    remove(to);
+#endif
+    return rename(from, to);
+}
+
 void z_get_executable_path(char *buffer, size_t size)
 {
     memset(buffer, 0, size);

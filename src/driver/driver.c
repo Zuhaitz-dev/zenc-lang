@@ -362,7 +362,7 @@ static int compile_program(ZenCompiler *compiler)
 
     if (compiler->config.mode_transpile)
     {
-        if (rename(temp_source_buf, compiler->config.output_file) != 0)
+        if (z_rename_replace(temp_source_buf, compiler->config.output_file) != 0)
         {
             perror("rename output");
             return 1;
@@ -376,7 +376,7 @@ static int compile_program(ZenCompiler *compiler)
         if (compiler->config.output_file &&
             strcmp(temp_source_buf, compiler->config.output_file) != 0)
         {
-            rename(temp_source_buf, compiler->config.output_file);
+            z_rename_replace(temp_source_buf, compiler->config.output_file);
         }
         else if (!compiler->config.emit_c)
         {
