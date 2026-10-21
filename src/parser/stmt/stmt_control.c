@@ -417,6 +417,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                         ASTNode *outer = ast_create(NODE_BLOCK);
                         idx_decl->next = n;
                         outer->block.statements = idx_decl;
+                        ctx->cg.loop_depth--;
                         return outer;
                     }
                     else

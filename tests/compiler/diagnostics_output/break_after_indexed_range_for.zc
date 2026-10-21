@@ -1,0 +1,9 @@
+// ARGS: transpile
+// a `for i, x in a..b` loop must not leave the parser inside a loop
+
+fn main() {
+    for i, x in 0..3 {
+        println "{i} {x}";
+    }
+    break;
+}
