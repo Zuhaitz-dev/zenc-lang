@@ -11,6 +11,12 @@
 
 void register_builtins(ParserContext *ctx)
 {
+    // Built-ins are not identifiers of the program: MISRA's rule 5.10 (no identifier named like
+    // a standard macro) must not reject `true` and `false`.
+    void (*check_standard_macro_name)(Token tok, const char *name) =
+        ctx->hook_check_standard_macro_name;
+    ctx->hook_check_standard_macro_name = NULL;
+
     Type *t = type_new(TYPE_BOOL);
     t->is_const = 1;
     add_symbol(ctx, "true", "bool", t, 0);
@@ -105,6 +111,8 @@ void register_builtins(ParserContext *ctx)
     va_def->strct.name = xstrdup("va_list");
     register_struct_def(ctx, "va_list", va_def);
     register_impl(ctx, "Copy", "va_list");
+
+    ctx->hook_check_standard_macro_name = check_standard_macro_name;
 }
 
 void register_comptime_builtins(ParserContext *ctx)

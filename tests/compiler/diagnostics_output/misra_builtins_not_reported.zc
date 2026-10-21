@@ -1,0 +1,6 @@
+// ARGS: transpile --misra
+// the compiler's own symbols (`true`, `false`) are not checked against MISRA rule 5.10
+
+fn main() -> int {
+    return 0;
+}
