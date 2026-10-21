@@ -1442,24 +1442,17 @@ void lsp_completion(const char *uri, int line, int col, int id)
 
             // Rich detail with signature
             char detail[1024];
-            int offset = snprintf(detail, sizeof(detail), "fn %s(", f->name);
-            for (int i = 0; i < f->total_args; i++)
+            size_t used = 0;
+            int fits = str_appendf(detail, sizeof(detail), &used, "fn %s(", f->name);
+            for (int i = 0; fits && i < f->total_args; i++)
             {
                 char *tstr = type_to_string(f->arg_types[i]);
-                offset += snprintf(detail + offset, (size_t)(sizeof(detail) - (size_t)(offset)),
-                                   "%s%s", tstr, (i < f->total_args - 1) ? ", " : "");
+                fits = str_appendf(detail, sizeof(detail), &used, "%s%s", tstr,
+                                   (i < f->total_args - 1) ? ", " : "");
                 zfree(tstr);
-                if (offset >= (int)sizeof(detail))
-                {
-                    break;
-                }
             }
             char *ret_str = type_to_string(f->ret_type);
-            if (offset < (int)sizeof(detail))
-            {
-                snprintf(detail + offset, (size_t)(sizeof(detail) - (size_t)(offset)), ") -> %s",
-                         ret_str);
-            }
+            str_appendf(detail, sizeof(detail), &used, ") -> %s", ret_str);
             zfree(ret_str);
             cJSON_AddStringToObject(item, "detail", detail);
 

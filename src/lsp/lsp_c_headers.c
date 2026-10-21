@@ -2361,37 +2361,32 @@ char *lsp_c_headers_origin_hover(const CHeaderOrigin *origin, CHeaderOriginKind 
     size_t used = 0;
     if (kind == C_HEADER_NAME)
     {
-        used += (size_t)snprintf(text, sizeof(text), "C header `%s`", origin->header);
+        str_appendf(text, sizeof(text), &used, "C header `%s`", origin->header);
     }
     else
     {
-        used += (size_t)snprintf(text, sizeof(text), "`%s`: alias of the C header `%s`",
-                                 origin->alias, origin->header);
+        str_appendf(text, sizeof(text), &used, "`%s`: alias of the C header `%s`", origin->alias,
+                    origin->header);
     }
     if (origin->is_re_export)
     {
-        used += (size_t)snprintf(text + used, sizeof(text) - used,
-                                 "\n\nRe-exported by `%s`:\n```zc\n%s\n```",
-                                 file_label(origin->declared_in), origin->statement);
+        str_appendf(text, sizeof(text), &used, "\n\nRe-exported by `%s`:\n```zc\n%s\n```",
+                    file_label(origin->declared_in), origin->statement);
     }
     else if (kind == C_HEADER_ALIAS_USE)
     {
-        used += (size_t)snprintf(text + used, sizeof(text) - used,
-                                 "\n\nImported at line %d:\n```zc\n%s\n```", origin->line + 1,
-                                 origin->statement);
+        str_appendf(text, sizeof(text), &used, "\n\nImported at line %d:\n```zc\n%s\n```",
+                    origin->line + 1, origin->statement);
     }
-    if (used < sizeof(text))
+    if (origin->path[0])
     {
-        if (origin->path[0])
-        {
-            snprintf(text + used, sizeof(text) - used, "\n\n`%s`\n\nFound through %s.",
-                     origin->path, origin->found_by);
-        }
-        else
-        {
-            snprintf(text + used, sizeof(text) - used,
-                     "\n\nNot found where the C compiler will look for it.");
-        }
+        str_appendf(text, sizeof(text), &used, "\n\n`%s`\n\nFound through %s.", origin->path,
+                    origin->found_by);
+    }
+    else
+    {
+        str_appendf(text, sizeof(text), &used,
+                    "\n\nNot found where the C compiler will look for it.");
     }
     return copy_text(text, strlen(text));
 }
@@ -2609,7 +2604,10 @@ static char *path_to_uri(const char *path)
         }
         else
         {
-            used += (size_t)snprintf(uri + used, capacity - used, "%%%02X", c);
+            static const char hex[] = "0123456789ABCDEF";
+            uri[used++] = '%';
+            uri[used++] = hex[c >> 4];
+            uri[used++] = hex[c & 0x0F];
         }
     }
     uri[used] = '\0';

@@ -6,6 +6,7 @@
 #include "cmd.h"
 #include "platform/os.h"
 #include <sys/stat.h>
+#include <stdarg.h>
 
 // ** Arena Implementation **
 #define ARENA_BLOCK_SIZE (1024 * 1024)
@@ -437,6 +438,31 @@ void str_join(char *out, size_t size, const char *const *parts, const char *sep)
         strncat(out, *p, size - strlen(out) - 1);
         p++;
     }
+}
+
+int str_appendf(char *buf, size_t size, size_t *used, const char *fmt, ...)
+{
+    if (*used >= size)
+    {
+        *used = size - 1;
+        return 0;
+    }
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(buf + *used, size - *used, fmt, args);
+    va_end(args);
+    if (written < 0)
+    {
+        buf[*used] = '\0';
+        return 0;
+    }
+    if ((size_t)written >= size - *used)
+    {
+        *used = size - 1;
+        return 0;
+    }
+    *used += (size_t)written;
+    return 1;
 }
 
 // Helper for environment expansion
