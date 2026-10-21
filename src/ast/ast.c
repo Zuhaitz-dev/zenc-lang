@@ -104,9 +104,11 @@ static void add_child(ASTChildren *c, ASTNode **slot)
 }
 
 // Every NodeType must have a case: a new kind fails to compile until it says
-// which children it has.
+// which children it has (with GCC and Clang; TCC does not know these pragmas).
+#if defined(__GNUC__) && !defined(__TINYC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wswitch-enum"
+#endif
 ASTChildren ast_children(ASTNode *node)
 {
     ASTChildren c = {0};
@@ -324,7 +326,9 @@ ASTChildren ast_children(ASTNode *node)
     }
     return c;
 }
+#if defined(__GNUC__) && !defined(__TINYC__)
 #pragma GCC diagnostic pop
+#endif
 
 Type *type_new(TypeKind kind)
 {
