@@ -632,11 +632,7 @@ void emit_lambda_defs(ParserContext *ctx)
         }
         ctx->cg.current_lambda = NULL;
 
-        for (int i = ctx->cg.defer_count - 1; i >= 0; i--)
-        {
-            emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-            codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-        }
+        emit_defers_down_to(ctx, 0);
 
         emitter_dedent(&ctx->cg.emitter);
         EMIT(ctx, "}\n\n");

@@ -15,9 +15,14 @@
 #include "codegen_internal.h"
 #include "zprep_plugin.h"
 
-// Enters a loop: records where its defers start, so `break`/`continue` know how many to run.
-void codegen_loop_enter(ParserContext *ctx)
+// Enters a loop: emits its label, if any, and records where its defers start, so `break` and
+// `continue` know how many to run.
+void codegen_loop_enter(ParserContext *ctx, const char *label)
 {
+    if (label)
+    {
+        EMIT(ctx, "%s:;\n", label);
+    }
     if (ctx->cg.loop_depth >= ctx->cg.loop_defer_capacity)
     {
         int capacity = ctx->cg.loop_defer_capacity ? ctx->cg.loop_defer_capacity * 2 : 16;
@@ -27,6 +32,55 @@ void codegen_loop_enter(ParserContext *ctx)
     }
     ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
     ctx->cg.loop_depth++;
+}
+
+// Emits a loop body. A labelled loop gets a block that ends in its `continue` target. With
+// `misra_wrap`, an unlabelled body that is not a block is braced in MISRA mode (rule 15.6).
+void codegen_loop_body(ParserContext *ctx, ASTNode *body, const char *label, int misra_wrap)
+{
+    if (label)
+    {
+        EMIT(ctx, "{\n");
+        emitter_indent(&ctx->cg.emitter);
+        codegen_node_single(ctx, body);
+        emitter_dedent(&ctx->cg.emitter);
+        EMIT(ctx, "__continue_%s:;\n", label);
+        EMIT(ctx, "}\n");
+        return;
+    }
+
+    int wrap = misra_wrap && ctx->config->misra_mode && body->kind != NODE_BLOCK;
+    if (wrap)
+    {
+        EMIT(ctx, "{\n");
+        emitter_indent(&ctx->cg.emitter);
+    }
+    codegen_node_single(ctx, body);
+    if (wrap)
+    {
+        emitter_dedent(&ctx->cg.emitter);
+        EMIT(ctx, "\n}");
+    }
+}
+
+// Leaves a loop entered with codegen_loop_enter: emits its `break` target, if labelled.
+void codegen_loop_exit(ParserContext *ctx, const char *label)
+{
+    ctx->cg.loop_depth--;
+    if (label)
+    {
+        EMIT(ctx, "__break_%s:;\n", label);
+    }
+}
+
+// Emits the pending defers, innermost first, down to stack index `boundary`.
+void emit_defers_down_to(ParserContext *ctx, int boundary)
+{
+    for (int i = ctx->cg.defer_count - 1; i >= boundary; i--)
+    {
+        emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
+        codegen_node_single(ctx, ctx->cg.defer_stack[i]);
+    }
 }
 
 // Name of the struct with Drop that a call statement produces and discards, or NULL.
@@ -101,11 +155,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     {
     case NODE_FOR:
     {
-        if (node->for_stmt.loop_label)
-        {
-            EMIT(ctx, "%s:;\n", node->for_stmt.loop_label);
-        }
-        codegen_loop_enter(ctx);
+        codegen_loop_enter(ctx, node->for_stmt.loop_label);
         EMIT(ctx, "for (");
         if (node->for_stmt.init)
         {
@@ -142,34 +192,8 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             codegen_expression_bare(ctx, node->for_stmt.step);
         }
         EMIT(ctx, ") ");
-        if (node->for_stmt.loop_label)
-        {
-            EMIT(ctx, "{\n");
-            emitter_indent(&ctx->cg.emitter);
-            codegen_node_single(ctx, node->for_stmt.body);
-            emitter_dedent(&ctx->cg.emitter);
-            EMIT(ctx, "__continue_%s:;\n", node->for_stmt.loop_label);
-            EMIT(ctx, "}\n");
-        }
-        else
-        {
-            if (ctx->config->misra_mode && node->for_stmt.body->kind != NODE_BLOCK)
-            {
-                EMIT(ctx, "{\n");
-                emitter_indent(&ctx->cg.emitter);
-            }
-            codegen_node_single(ctx, node->for_stmt.body);
-            if (ctx->config->misra_mode && node->for_stmt.body->kind != NODE_BLOCK)
-            {
-                emitter_dedent(&ctx->cg.emitter);
-                EMIT(ctx, "\n}");
-            }
-        }
-        ctx->cg.loop_depth--;
-        if (node->for_stmt.loop_label)
-        {
-            EMIT(ctx, "__break_%s:;\n", node->for_stmt.loop_label);
-        }
+        codegen_loop_body(ctx, node->for_stmt.body, node->for_stmt.loop_label, 1);
+        codegen_loop_exit(ctx, node->for_stmt.loop_label);
         break;
     }
     case NODE_BREAK:
@@ -177,11 +201,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         if (ctx->cg.loop_depth > 0)
         {
             int boundary = ctx->cg.loop_defer_boundary[ctx->cg.loop_depth - 1];
-            for (int i = ctx->cg.defer_count - 1; i >= boundary; i--)
-            {
-                emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-                codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-            }
+            emit_defers_down_to(ctx, boundary);
         }
         if (node->break_stmt.target_label)
         {
@@ -197,11 +217,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         if (ctx->cg.loop_depth > 0)
         {
             int boundary = ctx->cg.loop_defer_boundary[ctx->cg.loop_depth - 1];
-            for (int i = ctx->cg.defer_count - 1; i >= boundary; i--)
-            {
-                emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-                codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-            }
+            emit_defers_down_to(ctx, boundary);
         }
         if (node->continue_stmt.target_label)
         {
@@ -230,101 +246,36 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         break;
     case NODE_DO_WHILE:
     {
-        if (node->do_while_stmt.loop_label)
-        {
-            EMIT(ctx, "%s:;\n", node->do_while_stmt.loop_label);
-        }
-        codegen_loop_enter(ctx);
+        codegen_loop_enter(ctx, node->do_while_stmt.loop_label);
         EMIT(ctx, "do ");
-        if (node->do_while_stmt.loop_label)
-        {
-            EMIT(ctx, "{\n");
-            emitter_indent(&ctx->cg.emitter);
-            codegen_node_single(ctx, node->do_while_stmt.body);
-            emitter_dedent(&ctx->cg.emitter);
-            EMIT(ctx, "__continue_%s:;\n", node->do_while_stmt.loop_label);
-            EMIT(ctx, "}\n");
-        }
-        else
-        {
-            codegen_node_single(ctx, node->do_while_stmt.body);
-        }
+        codegen_loop_body(ctx, node->do_while_stmt.body, node->do_while_stmt.loop_label, 0);
         EMIT(ctx, " while (");
         codegen_expression(ctx, node->do_while_stmt.condition);
         EMIT(ctx, ");\n");
-        ctx->cg.loop_depth--;
-        if (node->do_while_stmt.loop_label)
-        {
-            EMIT(ctx, "__break_%s:;\n", node->do_while_stmt.loop_label);
-        }
+        codegen_loop_exit(ctx, node->do_while_stmt.loop_label);
         break;
     }
     // Loop constructs: loop, repeat, for-in
     case NODE_LOOP:
     {
         // loop { ... } => while (1) { ... }
-        if (node->loop_stmt.loop_label)
-        {
-            EMIT(ctx, "%s:;\n", node->loop_stmt.loop_label);
-        }
-        codegen_loop_enter(ctx);
+        codegen_loop_enter(ctx, node->loop_stmt.loop_label);
         EMIT(ctx, "while (1) ");
-        if (node->loop_stmt.loop_label)
-        {
-            EMIT(ctx, "{\n");
-            emitter_indent(&ctx->cg.emitter);
-            codegen_node_single(ctx, node->loop_stmt.body);
-            emitter_dedent(&ctx->cg.emitter);
-            EMIT(ctx, "__continue_%s:;\n", node->loop_stmt.loop_label);
-            EMIT(ctx, "}\n");
-        }
-        else
-        {
-            codegen_node_single(ctx, node->loop_stmt.body);
-        }
-        ctx->cg.loop_depth--;
-        if (node->loop_stmt.loop_label)
-        {
-            EMIT(ctx, "__break_%s:;\n", node->loop_stmt.loop_label);
-        }
+        codegen_loop_body(ctx, node->loop_stmt.body, node->loop_stmt.loop_label, 0);
+        codegen_loop_exit(ctx, node->loop_stmt.loop_label);
         break;
     }
     case NODE_REPEAT:
     {
-        if (node->repeat_stmt.loop_label)
-        {
-            EMIT(ctx, "%s:;\n", node->repeat_stmt.loop_label);
-        }
-        codegen_loop_enter(ctx);
+        codegen_loop_enter(ctx, node->repeat_stmt.loop_label);
         EMIT(ctx, "for (int _rpt_i = 0; _rpt_i < (%s); _rpt_i++) ", node->repeat_stmt.count);
-        if (node->repeat_stmt.loop_label)
-        {
-            EMIT(ctx, "{\n");
-            emitter_indent(&ctx->cg.emitter);
-            codegen_node_single(ctx, node->repeat_stmt.body);
-            emitter_dedent(&ctx->cg.emitter);
-            EMIT(ctx, "__continue_%s:;\n", node->repeat_stmt.loop_label);
-            EMIT(ctx, "}\n");
-        }
-        else
-        {
-            codegen_node_single(ctx, node->repeat_stmt.body);
-        }
-        ctx->cg.loop_depth--;
-        if (node->repeat_stmt.loop_label)
-        {
-            EMIT(ctx, "__break_%s:;\n", node->repeat_stmt.loop_label);
-        }
+        codegen_loop_body(ctx, node->repeat_stmt.body, node->repeat_stmt.loop_label, 0);
+        codegen_loop_exit(ctx, node->repeat_stmt.loop_label);
         break;
     }
     case NODE_FOR_RANGE:
     {
-        if (node->for_range.loop_label)
-        {
-            EMIT(ctx, "%s:;\n", node->for_range.loop_label);
-        }
-        // Track loop entry for defer boundary
-        codegen_loop_enter(ctx);
+        codegen_loop_enter(ctx, node->for_range.loop_label);
 
         EMIT(ctx, "for (");
         if (z_path_match_compiler(ctx->config->cc, "tcc"))
@@ -370,25 +321,8 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "++) ");
         }
-        if (node->for_range.loop_label)
-        {
-            EMIT(ctx, "{\n");
-            emitter_indent(&ctx->cg.emitter);
-            codegen_node_single(ctx, node->for_range.body);
-            emitter_dedent(&ctx->cg.emitter);
-            EMIT(ctx, "__continue_%s:;\n", node->for_range.loop_label);
-            EMIT(ctx, "}\n");
-        }
-        else
-        {
-            codegen_node_single(ctx, node->for_range.body);
-        }
-
-        ctx->cg.loop_depth--;
-        if (node->for_range.loop_label)
-        {
-            EMIT(ctx, "__break_%s:;\n", node->for_range.loop_label);
-        }
+        codegen_loop_body(ctx, node->for_range.body, node->for_range.loop_label, 0);
+        codegen_loop_exit(ctx, node->for_range.loop_label);
         break;
     }
 
@@ -706,11 +640,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     {
                         EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
                     }
-                    for (int i = ctx->cg.defer_count - 1; i >= ctx->cg.func_defer_boundary; i--)
-                    {
-                        emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-                        codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-                    }
+                    emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
                     EMIT(ctx, "_z_ret_mv; });\n");
 
                     if (ctx->config->misra_mode)
@@ -754,11 +684,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 }
                 codegen_expression(ctx, node->ret.value);
                 EMIT(ctx, "; ");
-                for (int i = ctx->cg.defer_count - 1; i >= ctx->cg.func_defer_boundary; i--)
-                {
-                    emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-                    codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-                }
+                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
                 if (ctx->config->misra_mode)
                 {
                     emitter_dedent(&ctx->cg.emitter);
@@ -772,11 +698,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
             else if (has_defers)
             {
-                for (int i = ctx->cg.defer_count - 1; i >= ctx->cg.func_defer_boundary; i--)
-                {
-                    emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-                    codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-                }
+                emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
                 if (ctx->config->misra_mode)
                 {
                     EMIT(ctx, "goto _misra_end_of_func;\n");

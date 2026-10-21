@@ -678,11 +678,7 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node)
             codegen_walker(ctx, cur->test_stmt.body);
             ctx->cg.current_func_ret_type = saved_ret;
             // Run defers
-            for (int i = ctx->cg.defer_count - 1; i >= saved; i--)
-            {
-                emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-                codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-            }
+            emit_defers_down_to(ctx, saved);
             ctx->cg.defer_count = saved;
             EMIT(ctx, "if (_zc_before == _zc_test_failures) { fprintf(stderr, \"OK\\n\"); } "
                       "else { fprintf(stderr, \"FAIL\\n\"); }\n");

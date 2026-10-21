@@ -5,6 +5,7 @@
 #include "../constants.h"
 #include "../zprep.h"
 #include "codegen.h"
+#include "codegen_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -138,40 +139,6 @@ static int struct_depends_on(ParserContext *ctx, ASTNode *s1, const char *target
     }
 
     return 0;
-}
-
-typedef struct VisitedModules
-{
-    const char *path;
-    struct VisitedModules *next;
-} VisitedModules;
-
-static int is_module_visited(VisitedModules *visited, const char *path)
-{
-    while (visited)
-    {
-        if (strcmp(visited->path, path) == 0)
-        {
-            return 1;
-        }
-        visited = visited->next;
-    }
-    return 0;
-}
-
-static void mark_module_visited(VisitedModules **visited, const char *path)
-{
-    VisitedModules *node = xmalloc(sizeof(VisitedModules));
-    node->path = path; // path is from import_stmt which persists
-    node->next = *visited;
-    *visited = node;
-}
-
-static void free_visited_modules(VisitedModules *visited)
-{
-    // NO-OP: We use arena allocation (xmalloc) for VisitedModules.
-    // Arena is reset globally, single nodes must not be zfree()d.
-    (void)visited;
 }
 
 static int count_sortable_nodes_internal(ASTNode *head, VisitedModules **visited, int depth)

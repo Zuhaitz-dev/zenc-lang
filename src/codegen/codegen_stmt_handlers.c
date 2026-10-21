@@ -95,11 +95,7 @@ void handle_node_block(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, "{\n");
     emitter_indent(&ctx->cg.emitter);
     codegen_walker(ctx, node->block.statements);
-    for (int i = ctx->cg.defer_count - 1; i >= saved; i--)
-    {
-        emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-        codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-    }
+    emit_defers_down_to(ctx, saved);
     ctx->cg.defer_count = saved;
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
@@ -265,11 +261,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
 
         ctx->cg.current_func_ret_type = prev_ret;
         ctx->cg.current_func_ret_type_info = prev_ret_info;
-        for (int i = ctx->cg.defer_count - 1; i >= 0; i--)
-        {
-            emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-            codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-        }
+        emit_defers_down_to(ctx, 0);
         emitter_dedent(&ctx->cg.emitter);
         EMIT(ctx, "}\n");
 
@@ -547,11 +539,7 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     }
 
     codegen_walker(ctx, node->func.body);
-    for (int i = ctx->cg.defer_count - 1; i >= 0; i--)
-    {
-        emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-        codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-    }
+    emit_defers_down_to(ctx, 0);
     ctx->cg.current_func_ret_type = prev_ret;
     ctx->cg.current_func_ret_type_info = prev_ret_info;
     ctx->self_is_pointer = prev_self_is_ptr;
@@ -1060,40 +1048,10 @@ void handle_node_guard(ParserContext *ctx, ASTNode *node)
 
 void handle_node_while(ParserContext *ctx, ASTNode *node)
 {
-    if (node->while_stmt.loop_label)
-    {
-        EMIT(ctx, "%s:;\n", node->while_stmt.loop_label);
-    }
-    codegen_loop_enter(ctx);
+    codegen_loop_enter(ctx, node->while_stmt.loop_label);
     EMIT(ctx, "while (");
     codegen_expression(ctx, node->while_stmt.condition);
     EMIT(ctx, ") ");
-    if (node->while_stmt.loop_label)
-    {
-        EMIT(ctx, "{\n");
-        emitter_indent(&ctx->cg.emitter);
-        codegen_node_single(ctx, node->while_stmt.body);
-        emitter_dedent(&ctx->cg.emitter);
-        EMIT(ctx, "__continue_%s:;\n", node->while_stmt.loop_label);
-        EMIT(ctx, "}\n");
-    }
-    else
-    {
-        if (ctx->config->misra_mode && node->while_stmt.body->kind != NODE_BLOCK)
-        {
-            EMIT(ctx, "{\n");
-            emitter_indent(&ctx->cg.emitter);
-        }
-        codegen_node_single(ctx, node->while_stmt.body);
-        if (ctx->config->misra_mode && node->while_stmt.body->kind != NODE_BLOCK)
-        {
-            emitter_dedent(&ctx->cg.emitter);
-            EMIT(ctx, "\n}");
-        }
-    }
-    ctx->cg.loop_depth--;
-    if (node->while_stmt.loop_label)
-    {
-        EMIT(ctx, "__break_%s:;\n", node->while_stmt.loop_label);
-    }
+    codegen_loop_body(ctx, node->while_stmt.body, node->while_stmt.loop_label, 1);
+    codegen_loop_exit(ctx, node->while_stmt.loop_label);
 }
