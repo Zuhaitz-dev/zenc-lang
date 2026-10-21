@@ -1,0 +1,29 @@
+// language/features/match: test_match_expr_many_bindings
+// A match used as an expression must accept more than 8 bindings in one
+// pattern (the binding list used to have a fixed capacity of 8).
+enum Packet {
+    Wide(int, int, int, int, int, int, int, int, int, int),
+    Empty,
+}
+
+fn sum(p: Packet) -> int {
+    return match p {
+        Packet::Wide(a, b, c, d, e, f, g, h, i, j) => a + b + c + d + e + f + g + h + i + j,
+        Packet::Empty => 0,
+    };
+}
+
+test "match_expr_ten_bindings" {
+    let total = sum(Packet::Wide(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+    assert(total == 55, "all ten bindings must be bound");
+    assert(sum(Packet::Empty) == 0, "empty variant");
+}
+
+test "match_expr_bindings_keep_order" {
+    let p = Packet::Wide(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+    let last = match p {
+        Packet::Wide(a, _b, _c, _d, _e, _f, _g, _h, i, j) => j * 100 + i * 10 + a,
+        Packet::Empty => 0,
+    };
+    assert(last == 1091, "ninth and tenth bindings hold their own values");
+}

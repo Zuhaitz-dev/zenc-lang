@@ -264,8 +264,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 int is_brace = (lexer_peek(l).kind == TOK_LBRACE);
                 lexer_next(l);
-                bindings = xcalloc(8, sizeof(char *));  // Initial capacity
-                binding_refs = xcalloc(8, sizeof(int)); // unused but consistent
+                int binding_cap = 8;
+                bindings = xcalloc((size_t)binding_cap, sizeof(char *));
+                binding_refs = xcalloc((size_t)binding_cap, sizeof(int));
 
                 while (lexer_peek(l).kind != TOK_RPAREN && lexer_peek(l).kind != TOK_RBRACE)
                 {
@@ -281,6 +282,13 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         zpanic_at(b, "Expected binding");
                         break;
+                    }
+
+                    if (binding_count >= binding_cap)
+                    {
+                        binding_cap *= 2;
+                        bindings = xrealloc(bindings, sizeof(char *) * (size_t)(binding_cap));
+                        binding_refs = xrealloc(binding_refs, sizeof(int) * (size_t)(binding_cap));
                     }
 
                     if (is_brace && lexer_peek(l).kind == TOK_COLON)
