@@ -1,0 +1,40 @@
+// closures: test_closure_capture_array
+// A lambda can capture a fixed-size array, by value (a copy) or by reference.
+
+test "read an element of a captured array" {
+    let arr = [1, 2, 3];
+    let f = fn() -> int { return arr[1]; };
+    assert f() == 2;
+}
+
+test "iterate over a captured array" {
+    let arr = [1, 2, 3];
+    let f = fn() -> int {
+        let r = 0;
+        for v in arr {
+            r = r + v;
+        }
+        return r;
+    };
+    assert f() == 6;
+}
+
+test "a capture by value is a copy" {
+    let arr = [1, 2, 3];
+    let f = fn() -> int { return arr[0]; };
+    arr[0] = 9;
+    assert f() == 1;
+}
+
+test "a capture by reference sees later changes" {
+    let arr = [1, 2, 3];
+    let f = fn[&]() -> int { return arr[2]; };
+    arr[2] = 9;
+    assert f() == 9;
+}
+
+test "an array with an explicit type" {
+    let b: int[3] = [4, 5, 6];
+    let f = fn() -> int { return b[0] + b[2]; };
+    assert f() == 10;
+}
