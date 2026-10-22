@@ -588,190 +588,46 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
 // Walk the AST and replace NODE_COMPTIME nodes with their generated children.
 // This must run before codegen so that emitted declarations (structs, functions)
 // appear in the root children list.
-static void flatten_comptime_nodes(ASTNode *parent)
+static void flatten_comptime_nodes(ASTNode *node);
+
+// In the list whose head is at `pp`, puts in place of each NODE_COMPTIME that generated
+// code the code it generated, and flattens under every other node.
+static void flatten_comptime_list(ASTNode **pp)
 {
-    if (!parent)
+    while (*pp)
+    {
+        if ((*pp)->kind == NODE_COMPTIME && (*pp)->comptime.generated)
+        {
+            ASTNode *gen = (*pp)->comptime.generated;
+            ASTNode *gen_last = gen;
+            while (gen_last->next)
+            {
+                gen_last = gen_last->next;
+            }
+            gen_last->next = (*pp)->next;
+            // Look at the same place again: the generated code may start with a comptime.
+            *pp = gen;
+        }
+        else
+        {
+            flatten_comptime_nodes(*pp);
+            pp = &(*pp)->next;
+        }
+    }
+}
+
+static void flatten_comptime_nodes(ASTNode *node)
+{
+    // The body of a comptime block is interpreted, not emitted.
+    if (!node || node->kind == NODE_COMPTIME)
     {
         return;
     }
 
-    // For blocks: walk block.statements
-    if (parent->kind == NODE_BLOCK)
+    ASTChildren children = ast_children(node);
+    for (int i = 0; i < children.count; i++)
     {
-        ASTNode **pp = &parent->block.statements;
-        while (pp && *pp)
-        {
-            if ((*pp)->kind == NODE_COMPTIME && (*pp)->comptime.generated)
-            {
-                ASTNode *gen = (*pp)->comptime.generated;
-                ASTNode *gen_last = gen;
-                while (gen_last && gen_last->next)
-                {
-                    gen_last = gen_last->next;
-                }
-                if ((*pp)->next)
-                {
-                    if (gen_last)
-                    {
-                        gen_last->next = (*pp)->next;
-                    }
-                }
-                *pp = gen;
-                if (!*pp)
-                {
-                    break;
-                }
-            }
-            else
-            {
-                flatten_comptime_nodes(*pp);
-                if (*pp)
-                {
-                    pp = &(*pp)->next;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        return;
-    }
-
-    // For root: walk root.children
-    if (parent->kind == NODE_ROOT)
-    {
-        ASTNode **pp = &parent->root.children;
-        while (pp && *pp)
-        {
-            if ((*pp)->kind == NODE_COMPTIME && (*pp)->comptime.generated)
-            {
-                ASTNode *gen = (*pp)->comptime.generated;
-                ASTNode *gen_last = gen;
-                while (gen_last && gen_last->next)
-                {
-                    gen_last = gen_last->next;
-                }
-                if ((*pp)->next)
-                {
-                    if (gen_last)
-                    {
-                        gen_last->next = (*pp)->next;
-                    }
-                }
-                *pp = gen;
-                if (!*pp)
-                {
-                    break;
-                }
-            }
-            else
-            {
-                flatten_comptime_nodes(*pp);
-                if (*pp)
-                {
-                    pp = &(*pp)->next;
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-        return;
-    }
-
-    // For if/while/for/etc: recurse into sub-blocks
-    if (parent->kind == NODE_IF)
-    {
-        if (parent->if_stmt.then_body)
-        {
-            flatten_comptime_nodes(parent->if_stmt.then_body);
-        }
-        if (parent->if_stmt.else_body)
-        {
-            flatten_comptime_nodes(parent->if_stmt.else_body);
-        }
-    }
-    if (parent->kind == NODE_WHILE && parent->while_stmt.body)
-    {
-        flatten_comptime_nodes(parent->while_stmt.body);
-    }
-    if (parent->kind == NODE_FOR && parent->for_stmt.body)
-    {
-        flatten_comptime_nodes(parent->for_stmt.body);
-    }
-    if (parent->kind == NODE_FOR_RANGE && parent->for_range.body)
-    {
-        flatten_comptime_nodes(parent->for_range.body);
-    }
-    if (parent->kind == NODE_LOOP && parent->loop_stmt.body)
-    {
-        flatten_comptime_nodes(parent->loop_stmt.body);
-    }
-    if (parent->kind == NODE_REPEAT && parent->repeat_stmt.body)
-    {
-        flatten_comptime_nodes(parent->repeat_stmt.body);
-    }
-    if (parent->kind == NODE_MATCH)
-    {
-        ASTNode *c = parent->match_stmt.cases;
-        while (c)
-        {
-            if (c->kind == NODE_MATCH_CASE && c->match_case.body)
-            {
-                flatten_comptime_nodes(c->match_case.body);
-            }
-            c = c->next;
-        }
-    }
-    if (parent->kind == NODE_FUNCTION && parent->func.body)
-    {
-        flatten_comptime_nodes(parent->func.body);
-    }
-    if (parent->kind == NODE_TEST && parent->test_stmt.body)
-    {
-        flatten_comptime_nodes(parent->test_stmt.body);
-    }
-    if (parent->kind == NODE_DEFER && parent->defer_stmt.stmt)
-    {
-        flatten_comptime_nodes(parent->defer_stmt.stmt);
-    }
-    if (parent->kind == NODE_GUARD && parent->guard_stmt.body)
-    {
-        flatten_comptime_nodes(parent->guard_stmt.body);
-    }
-    if (parent->kind == NODE_UNLESS && parent->unless_stmt.body)
-    {
-        flatten_comptime_nodes(parent->unless_stmt.body);
-    }
-    if (parent->kind == NODE_DO_WHILE && parent->do_while_stmt.body)
-    {
-        flatten_comptime_nodes(parent->do_while_stmt.body);
-    }
-
-    // For lambda/impl bodies
-    if (parent->kind == NODE_LAMBDA && parent->lambda.body)
-    {
-        flatten_comptime_nodes(parent->lambda.body);
-    }
-    if (parent->kind == NODE_IMPL)
-    {
-        ASTNode *m = parent->impl.methods;
-        while (m)
-        {
-            if (m->kind == NODE_FUNCTION && m->func.body)
-            {
-                flatten_comptime_nodes(m->func.body);
-            }
-            m = m->next;
-        }
-    }
-
-    // For function declaration bodies
-    if (parent->kind == NODE_FUNCTION && parent->func.body)
-    {
-        flatten_comptime_nodes(parent->func.body);
+        flatten_comptime_list(children.slots[i]);
     }
 }
 

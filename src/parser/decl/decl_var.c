@@ -25,37 +25,22 @@ void replace_it_with_var(ASTNode *node, char *var_name)
             // Replace 'it' with var_name
             node->var_ref.name = xstrdup(var_name);
         }
+        return;
     }
-    else if (node->kind == NODE_EXPR_CALL)
+
+    // A lambda had its captures worked out when it was parsed, while it still said `it`;
+    // renaming inside it now would make its body and its captures disagree.
+    if (node->kind == NODE_LAMBDA)
     {
-        replace_it_with_var(node->call.callee, var_name);
-        ASTNode *arg = node->call.args;
-        while (arg)
+        return;
+    }
+
+    ASTChildren children = ast_children(node);
+    for (int i = 0; i < children.count; i++)
+    {
+        for (ASTNode *child = *children.slots[i]; child; child = child->next)
         {
-            replace_it_with_var(arg, var_name);
-            arg = arg->next;
-        }
-    }
-    else if (node->kind == NODE_EXPR_MEMBER)
-    {
-        replace_it_with_var(node->member.target, var_name);
-    }
-    else if (node->kind == NODE_EXPR_BINARY)
-    {
-        replace_it_with_var(node->binary.left, var_name);
-        replace_it_with_var(node->binary.right, var_name);
-    }
-    else if (node->kind == NODE_EXPR_UNARY)
-    {
-        replace_it_with_var(node->unary.operand, var_name);
-    }
-    else if (node->kind == NODE_BLOCK)
-    {
-        ASTNode *s = node->block.statements;
-        while (s)
-        {
-            replace_it_with_var(s, var_name);
-            s = s->next;
+            replace_it_with_var(child, var_name);
         }
     }
 }
