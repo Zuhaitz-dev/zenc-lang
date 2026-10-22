@@ -180,6 +180,14 @@ static int is_in_list(const char *name, char **list, int count)
     return 0;
 }
 
+// Appends a copy of `name` to the list.
+static void add_name(char ***list, int *count, const char *name)
+{
+    *list = xrealloc(*list, sizeof(char *) * (size_t)(*count + 1));
+    (*list)[*count] = xstrdup(name);
+    (*count)++;
+}
+
 // Recursively find all variable references in an expression/statement.
 static void find_var_refs(ASTNode *node, char ***refs, int *ref_count)
 {
@@ -190,122 +198,49 @@ static void find_var_refs(ASTNode *node, char ***refs, int *ref_count)
 
     if (node->kind == NODE_EXPR_VAR)
     {
-        *refs = xrealloc(*refs, sizeof(char *) * (size_t)(*ref_count + 1));
-        (*refs)[*ref_count] = xstrdup(node->var_ref.name);
-        (*ref_count)++;
+        add_name(refs, ref_count, node->var_ref.name);
     }
 
-    switch (node->kind)
+    // A println lists the symbols it uses; an f-string in an expression keeps its
+    // expressions in an array, which ast_children() leaves out.
+    if (node->kind == NODE_RAW_STMT)
     {
-    case NODE_EXPR_BINARY:
-        find_var_refs(node->binary.left, refs, ref_count);
-        find_var_refs(node->binary.right, refs, ref_count);
-        break;
-    case NODE_EXPR_UNARY:
-        find_var_refs(node->unary.operand, refs, ref_count);
-        break;
-    case NODE_EXPR_CALL:
-        find_var_refs(node->call.callee, refs, ref_count);
-        for (ASTNode *arg = node->call.args; arg; arg = arg->next)
-        {
-            find_var_refs(arg, refs, ref_count);
-        }
-        break;
-    case NODE_EXPR_MEMBER:
-        find_var_refs(node->member.target, refs, ref_count);
-        break;
-    case NODE_EXPR_INDEX:
-        find_var_refs(node->index.array, refs, ref_count);
-        find_var_refs(node->index.index, refs, ref_count);
-        break;
-    case NODE_EXPR_SLICE:
-        find_var_refs(node->slice.array, refs, ref_count);
-        find_var_refs(node->slice.start, refs, ref_count);
-        find_var_refs(node->slice.end, refs, ref_count);
-        break;
-    case NODE_BLOCK:
-        for (ASTNode *stmt = node->block.statements; stmt; stmt = stmt->next)
-        {
-            find_var_refs(stmt, refs, ref_count);
-        }
-        break;
-    case NODE_RETURN:
-        find_var_refs(node->ret.value, refs, ref_count);
-        break;
-    case NODE_VAR_DECL:
-    case NODE_CONST:
-        find_var_refs(node->var_decl.init_expr, refs, ref_count);
-        break;
-    case NODE_IF:
-        find_var_refs(node->if_stmt.condition, refs, ref_count);
-        find_var_refs(node->if_stmt.then_body, refs, ref_count);
-        if (node->if_stmt.else_body)
-        {
-            find_var_refs(node->if_stmt.else_body, refs, ref_count);
-        }
-        break;
-    case NODE_WHILE:
-        find_var_refs(node->while_stmt.condition, refs, ref_count);
-        find_var_refs(node->while_stmt.body, refs, ref_count);
-        break;
-    case NODE_FOR:
-        find_var_refs(node->for_stmt.init, refs, ref_count);
-        find_var_refs(node->for_stmt.condition, refs, ref_count);
-        find_var_refs(node->for_stmt.step, refs, ref_count);
-        find_var_refs(node->for_stmt.body, refs, ref_count);
-        break;
-    case NODE_FOR_RANGE:
-        find_var_refs(node->for_range.start, refs, ref_count);
-        find_var_refs(node->for_range.end, refs, ref_count);
-        find_var_refs(node->for_range.body, refs, ref_count);
-        break;
-    case NODE_MATCH:
-        find_var_refs(node->match_stmt.expr, refs, ref_count);
-        for (ASTNode *c = node->match_stmt.cases; c; c = c->next)
-        {
-            find_var_refs(c->match_case.body, refs, ref_count);
-        }
-        break;
-    case NODE_RAW_STMT:
         for (int i = 0; i < node->raw_stmt.used_symbol_count; i++)
         {
-            *refs = xrealloc(*refs, sizeof(char *) * (size_t)(*ref_count + 1));
-            (*refs)[*ref_count] = xstrdup(node->raw_stmt.used_symbols[i]);
-            (*ref_count)++;
+            add_name(refs, ref_count, node->raw_stmt.used_symbols[i]);
         }
-        break;
-    case NODE_EXPR_CAST:
-        find_var_refs(node->cast.expr, refs, ref_count);
-        break;
-    case NODE_EXPR_STRUCT_INIT:
-        for (ASTNode *f = node->struct_init.fields; f; f = f->next)
+        for (int i = 0; i < node->raw_stmt.interp_expr_count; i++)
         {
-            find_var_refs(f, refs, ref_count);
+            find_var_refs(node->raw_stmt.interp_exprs[i], refs, ref_count);
         }
-        break;
-    case NODE_EXPR_ARRAY_LITERAL:
-        for (ASTNode *e = node->array_literal.elements; e; e = e->next)
+        return;
+    }
+
+    // A nested lambda was analyzed when it was parsed: from outside it needs what it
+    // captures, not the names in its body (its own parameters among them).
+    if (node->kind == NODE_LAMBDA)
+    {
+        for (int i = 0; i < node->lambda.capture_count; i++)
         {
-            find_var_refs(e, refs, ref_count);
+            add_name(refs, ref_count, node->lambda.captured_vars[i]);
         }
-        break;
-    case NODE_TERNARY:
-        find_var_refs(node->ternary.cond, refs, ref_count);
-        find_var_refs(node->ternary.true_expr, refs, ref_count);
-        find_var_refs(node->ternary.false_expr, refs, ref_count);
-        break;
-    case NODE_EXPECT:
-    case NODE_ASSERT:
-        find_var_refs(node->assert_stmt.condition, refs, ref_count);
-        break;
-    case NODE_DEFER:
-        find_var_refs(node->defer_stmt.stmt, refs, ref_count);
-        break;
-    case NODE_TRY:
-        find_var_refs(node->try_stmt.expr, refs, ref_count);
-        break;
-    default:
-        break;
+        return;
+    }
+
+    // A comptime block runs while compiling: the names in it (yield among them) are not
+    // variables the lambda uses at run time.
+    if (node->kind == NODE_COMPTIME)
+    {
+        return;
+    }
+
+    ASTChildren children = ast_children(node);
+    for (int i = 0; i < children.count; i++)
+    {
+        for (ASTNode *child = *children.slots[i]; child; child = child->next)
+        {
+            find_var_refs(child, refs, ref_count);
+        }
     }
 }
 
@@ -319,9 +254,7 @@ static void find_declared_vars(ASTNode *node, char ***decls, int *count)
 
     if (node->kind == NODE_VAR_DECL)
     {
-        *decls = xrealloc(*decls, sizeof(char *) * (size_t)(*count + 1));
-        (*decls)[*count] = xstrdup(node->var_decl.name);
-        (*count)++;
+        add_name(decls, count, node->var_decl.name);
     }
 
     if (node->kind == NODE_MATCH_CASE)
@@ -332,46 +265,28 @@ static void find_declared_vars(ASTNode *node, char ***decls, int *count)
             {
                 if (node->match_case.binding_names[i])
                 {
-                    *decls = xrealloc(*decls, sizeof(char *) * (size_t)(*count + 1));
-                    (*decls)[*count] = xstrdup(node->match_case.binding_names[i]);
-                    (*count)++;
+                    add_name(decls, count, node->match_case.binding_names[i]);
                 }
             }
         }
     }
 
-    switch (node->kind)
+    // Struct literal fields are NODE_VAR_DECLs named after the field, the locals of a nested
+    // lambda are its own and those of a comptime block live while compiling: none declares
+    // anything here.
+    if (node->kind == NODE_EXPR_STRUCT_INIT || node->kind == NODE_LAMBDA ||
+        node->kind == NODE_COMPTIME)
     {
-    case NODE_BLOCK:
-        for (ASTNode *stmt = node->block.statements; stmt; stmt = stmt->next)
+        return;
+    }
+
+    ASTChildren children = ast_children(node);
+    for (int i = 0; i < children.count; i++)
+    {
+        for (ASTNode *child = *children.slots[i]; child; child = child->next)
         {
-            find_declared_vars(stmt, decls, count);
+            find_declared_vars(child, decls, count);
         }
-        break;
-    case NODE_IF:
-        find_declared_vars(node->if_stmt.then_body, decls, count);
-        find_declared_vars(node->if_stmt.else_body, decls, count);
-        break;
-    case NODE_WHILE:
-        find_declared_vars(node->while_stmt.body, decls, count);
-        break;
-    case NODE_FOR:
-        find_declared_vars(node->for_stmt.init, decls, count);
-        find_declared_vars(node->for_stmt.body, decls, count);
-        break;
-    case NODE_FOR_RANGE:
-        find_declared_vars(node->for_range.start, decls, count);
-        find_declared_vars(node->for_range.body, decls, count);
-        break;
-    case NODE_MATCH:
-        for (ASTNode *c = node->match_stmt.cases; c; c = c->next)
-        {
-            find_declared_vars(c, decls, count);
-            find_declared_vars(c->match_case.body, decls, count);
-        }
-        break;
-    default:
-        break;
     }
 }
 
