@@ -61,6 +61,37 @@ static int exec_tool(const char *cmd, const char *tool, int argc, char **argv)
     return 127;
 }
 
+// Reports a --backend name that no registered backend has: the closest name, if one is
+// within two edits, and the list of backends.
+static void report_unknown_backend(const char *name)
+{
+    int count = 0;
+    const CodegenBackend *const *backends = codegen_backends(&count);
+    const char *closest = NULL;
+    int best = 3;
+    for (int i = 0; i < count; i++)
+    {
+        int distance = levenshtein(name, backends[i]->name);
+        if (distance < best)
+        {
+            best = distance;
+            closest = backends[i]->name;
+        }
+    }
+
+    fprintf(stderr, "error: unknown backend '%s'\n", name);
+    if (closest)
+    {
+        fprintf(stderr, "  did you mean '%s'?\n", closest);
+    }
+    fprintf(stderr, "  available backends:");
+    for (int i = 0; i < count; i++)
+    {
+        fprintf(stderr, " %s", backends[i]->name);
+    }
+    fprintf(stderr, "\n");
+}
+
 int main(int argc, char **argv)
 {
     ZenCompiler compiler = {0};
@@ -228,6 +259,11 @@ int main(int argc, char **argv)
         else if (strcmp(arg, "--backend") == 0 && i + 1 < argc)
         {
             cfg->backend_name = argv[++i];
+            if (!codegen_find_backend(cfg->backend_name))
+            {
+                report_unknown_backend(cfg->backend_name);
+                return 1;
+            }
             if (strcmp(cfg->backend_name, "cpp") == 0)
             {
                 cfg->use_cpp = 1;

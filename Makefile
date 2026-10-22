@@ -108,8 +108,10 @@ ifeq ($(ZC_HAS_JIT), 1)
 endif
 
 TARGET = zc$(EXE)
-# Standalone tools built alongside the compiler (Unix-style separation)
-TOOLS = zc-lsp zc-repl zc-doc zc-format
+# Standalone tools built alongside the compiler (Unix-style separation). zc-lsp and zc-format
+# need the LSP sources and zc-repl the REPL ones, so ZC_LSP=0 / ZC_REPL=0 leave them out.
+ALL_TOOLS = zc-lsp zc-repl zc-doc zc-format
+TOOLS = $(if $(filter 1,$(ZC_LSP)),zc-lsp zc-format) $(if $(filter 1,$(ZC_REPL)),zc-repl) zc-doc
 ifeq ($(OS),Windows_NT)
     LIBS = -lws2_32
     ifeq ($(ZC_HAS_JIT), 1)
@@ -454,12 +456,12 @@ install-tools: $(TOOLS)
 	$(INSTALL) -d $(BINDIR)
 	for t in $(TOOLS); do $(INSTALL) -m 755 $$t $(BINDIR)/$$t; done
 	# Backward-compat alias: the LSP was previously installed as `zls`
-	$(INSTALL) -m 755 zc-lsp $(BINDIR)/zls
+	$(if $(filter zc-lsp,$(TOOLS)),$(INSTALL) -m 755 zc-lsp $(BINDIR)/zls)
 
 # Uninstall
 uninstall:
 	$(RM) $(BINDIR)/$(TARGET) $(BINDIR)/zls
-	for t in $(TOOLS); do $(RM) $(BINDIR)/$$t; done
+	for t in $(ALL_TOOLS); do $(RM) $(BINDIR)/$$t; done
 	$(RM) $(MANDIR)/man1/zc.1
 	$(RM) $(MANDIR)/man5/zc.5
 	$(RM) $(MANDIR)/man7/zc.7
@@ -495,7 +497,7 @@ uninstall-ape:
 
 # Clean
 clean:
-	$(RM) $(OBJ_DIR) obj-ape obj-fuzz obj-fuzz-cmplog $(TARGET) $(TOOLS) libzc-*.a
+	$(RM) $(OBJ_DIR) obj-ape obj-fuzz obj-fuzz-cmplog $(TARGET) $(ALL_TOOLS) libzc-*.a
 	$(RM) out.c out.cpp out.m out.cu plugins/*.so a.out* out test_out_* rule_*
 	$(RM) *.gcda *.gcno *.gcov coverage.info
 	$(RM) -r coverage-report/

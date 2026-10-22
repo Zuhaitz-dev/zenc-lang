@@ -98,6 +98,24 @@ const CodegenBackend *codegen_get_backend(const char *name)
     return &c_backend;
 }
 
+const CodegenBackend *codegen_find_backend(const char *name)
+{
+    for (int i = 0; i < backend_count; i++)
+    {
+        if (strcmp(registered_backends[i]->name, name) == 0)
+        {
+            return registered_backends[i];
+        }
+    }
+    return NULL;
+}
+
+const CodegenBackend *const *codegen_backends(int *count)
+{
+    *count = backend_count;
+    return registered_backends;
+}
+
 void codegen_init_backends(void)
 {
     if (backend_count > 0)
