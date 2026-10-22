@@ -1,0 +1,9 @@
+// EXPECT: FAIL
+// compiler/diagnostics: the same through a pointer, where the C compiler would
+// only warn about incompatible pointer types.
+import "../../language/generics/_generic_ids.zc"
+
+fn main() {
+    let order = OrderId::of(7);
+    println "{user_number_at(&order)}";
+}

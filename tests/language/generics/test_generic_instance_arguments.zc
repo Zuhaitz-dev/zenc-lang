@@ -1,0 +1,28 @@
+// language/generics: test_generic_instance_arguments
+// An instance of a generic is accepted where the same instance is expected,
+// by value, through a pointer and in generic containers. The rejections are in
+// tests/compiler/diagnostics/err_generic_instance_*argument.zc.
+import "std/option.zc"
+import "std/vec.zc"
+import "_generic_ids.zc"
+
+fn count_one<T>(value: T) -> int {
+    return 1;
+}
+
+test "an instance is accepted where the same instance is expected" {
+    let user = UserId::of(4);
+    assert(user_number(user) == 4, "by value");
+    assert(user_number_at(&user) == 4, "through a pointer");
+    assert(user.same(UserId::of(4)), "method");
+    assert(count_one(user) == 1, "generic function");
+}
+
+test "containers of an instance take the same instance" {
+    let users = Vec<UserId>::new();
+    users.push(UserId::of(2));
+    let found = Option<UserId>::Some(UserId::of(3));
+    assert(user_number(users.get(0)) == 2, "Vec");
+    assert(user_number_at(users.get_ref(0)) == 2, "Vec element through a pointer");
+    assert(user_number(found.unwrap()) == 3, "Option");
+}
