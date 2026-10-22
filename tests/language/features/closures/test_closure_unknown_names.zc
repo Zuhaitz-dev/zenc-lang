@@ -1,0 +1,20 @@
+// closures: test_closure_unknown_names
+// A name a lambda uses that is no variable outside it (a C macro, or a local
+// that a comptime block declares) is not captured.
+
+test "a C macro inside a lambda" {
+    let k = 1;
+    let f = fn() -> int { return EXIT_FAILURE + k; };
+    assert f() == 2;
+}
+
+test "a local declared by a comptime block in a lambda" {
+    let k = 1;
+    let f = fn() -> int {
+        comptime {
+            yield("let g = 3;");
+        }
+        return g + k;
+    };
+    assert f() == 4;
+}
