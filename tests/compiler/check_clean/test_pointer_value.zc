@@ -1,0 +1,40 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// Pointer/value rules the build already follows:
+// - `return self;` in a method whose `self` is a pointer returns the value;
+// - an alias of a pointer (`alias EntryPtr = Entry*`) is that pointer, also as
+//   the argument of a generic (`Vec<Entry*>` spells T as `EntryPtr`);
+// - a literal 0 is a null pointer constant.
+import "std/vec.zc"
+
+@derive(Copy)
+struct Entry { size: int; }
+alias EntryPtr = Entry*;
+
+@derive(Copy)
+struct Counter { value: int; }
+
+impl Counter {
+    fn same(self) -> Counter { return self; }
+}
+
+struct Slots {
+    first: Entry*;
+    flags: bool*;
+    count: int;
+}
+
+fn first_of(entries: Vec<Entry*>*) -> EntryPtr {
+    return entries.get(0);
+}
+
+fn main() {
+    let counter = Counter { value: 3 };
+    let copy = counter.same();
+    let entry = Entry { size: 7 };
+    let entries = Vec<Entry*>::new();
+    entries.push(&entry);
+    let first: Entry* = first_of(&entries);
+    let slots = Slots { first: 0, flags: 0, count: 0 };
+    let empty = slots.first == NULL;
+    println "{copy.value} {first.size} {empty}";
+}

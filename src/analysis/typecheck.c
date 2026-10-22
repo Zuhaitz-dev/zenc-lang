@@ -15,6 +15,103 @@
 
 // ** Internal Helpers **
 
+// The variant a match pattern names. The parser stores it mangled
+// (`Shape__Circle`); `Shape::Circle` and a bare `Circle` are accepted too. NULL
+// for patterns that are not a single enum variant (`_`, `A || B`, literals).
+static const char *match_pattern_variant(const char *pattern, const char *enum_name)
+{
+    if (!pattern || strstr(pattern, "||") || strchr(pattern, ',') || strstr(pattern, " or "))
+    {
+        return NULL;
+    }
+    size_t enum_len = enum_name ? strlen(enum_name) : 0;
+    if (enum_len && strncmp(pattern, enum_name, enum_len) == 0)
+    {
+        const char *rest = pattern + enum_len;
+        if (strncmp(rest, "__", 2) == 0 || strncmp(rest, "::", 2) == 0)
+        {
+            return rest + 2;
+        }
+    }
+    const char *sep = NULL;
+    const char *p = pattern;
+    while ((p = strstr(p, "::")) != NULL)
+    {
+        sep = p;
+        p += 2;
+    }
+    return sep ? sep + 2 : pattern;
+}
+
+// Type of the `index`-th of `count` bindings of a match case, read from the
+// payload of the variant the pattern names. NULL when it cannot be told (not an
+// enum, unknown variant, unresolved generic): the caller keeps UNSAFE_ANY.
+static Type *match_binding_type(TypeChecker *tc, Type *scrutinee, const char *pattern, int index,
+                                int count)
+{
+    Type *t = get_inner_type(scrutinee);
+    while (t && t->kind == TYPE_POINTER)
+    {
+        t = get_inner_type(t->inner);
+    }
+    const char *variant = t ? match_pattern_variant(pattern, t->name) : NULL;
+    if (!t || !t->name || !variant)
+    {
+        return NULL;
+    }
+    ASTNode *def = find_struct_def(tc->pctx, t->name);
+    if (!def || def->kind != NODE_ENUM)
+    {
+        return NULL;
+    }
+    ASTNode *v = def->enm.variants;
+    while (v)
+    {
+        if (v->kind == NODE_ENUM_VARIANT && v->variant.name &&
+            strcmp(v->variant.name, variant) == 0)
+        {
+            Type *payload = v->variant.payload;
+            if (!payload)
+            {
+                return NULL;
+            }
+            if (count == 1)
+            {
+                return payload;
+            }
+            // Several bindings destructure a tuple payload: one per field.
+            ASTNode *tuple = payload->name ? find_struct_def(tc->pctx, payload->name) : NULL;
+            if (!tuple || tuple->kind != NODE_STRUCT)
+            {
+                return NULL;
+            }
+            ASTNode *field = tuple->strct.fields;
+            int i = 0;
+            while (field)
+            {
+                if (field->kind == NODE_FIELD)
+                {
+                    if (i == index)
+                    {
+                        // Tuple structs registered for payloads only keep the
+                        // field type as text.
+                        if (!field->type_info && field->field.type)
+                        {
+                            return type_from_string_helper(tc->pctx, field->field.type);
+                        }
+                        return field->type_info;
+                    }
+                    i++;
+                }
+                field = field->next;
+            }
+            return NULL;
+        }
+        v = v->next;
+    }
+    return NULL;
+}
+
 void check_node(TypeChecker *tc, ASTNode *node, int depth)
 {
     if (!node || !tc)
@@ -96,9 +193,18 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             {
                 apply_implicit_struct_pointer_conversions(tc, &node->ret.value,
                                                           tc->current_func->func.ret_type_info);
-                check_type_compatibility(tc, tc->current_func->func.ret_type_info,
-                                         node->ret.value->type_info, node->token, node->ret.value,
-                                         0);
+                Type *returned = node->ret.value->type_info;
+                Type *expected = get_inner_type(tc->current_func->func.ret_type_info);
+                // In a method whose `self` is a pointer, `return self;` returns the
+                // value: codegen emits `return *self;` (see codegen_stmt.c).
+                if (returned && expected && returned->kind == TYPE_POINTER &&
+                    expected->kind != TYPE_POINTER && node->ret.value->kind == NODE_EXPR_VAR &&
+                    strcmp(node->ret.value->var_ref.name, "self") == 0)
+                {
+                    returned = returned->inner;
+                }
+                check_type_compatibility(tc, tc->current_func->func.ret_type_info, returned,
+                                         node->token, node->ret.value, 0);
             }
         }
         tc->is_unreachable = 1;
@@ -237,10 +343,13 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                             char *bname = mcase->match_case.binding_names[i];
                             if (bname)
                             {
-                                // For now, we use UNSAFE_ANY as the binding type
-                                // In a more complete implementation, we'd infer it from the enum
-                                // payload
-                                Type *bt = type_new(TYPE_UNSAFE_ANY);
+                                Type *bt = match_binding_type(tc, node->match_stmt.expr->type_info,
+                                                              mcase->match_case.pattern, i,
+                                                              mcase->match_case.binding_count);
+                                if (!bt)
+                                {
+                                    bt = type_new(TYPE_UNSAFE_ANY);
+                                }
                                 if (mcase->match_case.binding_refs &&
                                     mcase->match_case.binding_refs[i])
                                 {
@@ -412,6 +521,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                 }
                 zfree(mangled_idx);
                 zfree(mangled_get);
+            }
+            // The overload lookup above looks through a pointer to a struct;
+            // the element type comes from the array/pointer type itself.
+            if (is_ptr)
+            {
+                t = node->index.array->type_info;
             }
             if (t->kind == TYPE_ARRAY || t->kind == TYPE_POINTER || t->kind == TYPE_VECTOR)
             {

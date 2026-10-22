@@ -1,0 +1,30 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// Indexing a pointer to a struct gives the struct, directly and inside a
+// generic instantiation such as Vec<T> (whose methods index `T*` buffers).
+import "std/vec.zc"
+
+@derive(Copy)
+struct Item { id: int; }
+
+struct Shelf<T> { item: T; }
+
+impl Shelf<T> {
+    fn fill(self, slots: T*, count: usize) {
+        let i: usize = 0;
+        while i < count {
+            slots[i] = self.item;
+            i = i + 1;
+        }
+    }
+}
+
+fn main() {
+    let items = Vec<Item>::new();
+    items.push(Item { id: 1 });
+    let copy = items.clone();
+    let slots: Item[2];
+    let shelf = Shelf<Item> { item: Item { id: 4 } };
+    shelf.fill(&slots[0], 2);
+    let first: Item = slots[1];
+    println "{first.id} {copy.length()}";
+}

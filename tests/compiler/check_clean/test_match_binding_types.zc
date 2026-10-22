@@ -1,0 +1,49 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// Match bindings get the type of the variant payload: a single value, a value
+// behind `ref`, or one field each when the payload has several values.
+enum Value {
+    Nothing,
+    Level(u8),
+    Point(int, int),
+    Label(string),
+}
+
+fn level_of(value: Value) -> u8 {
+    match value {
+        Value::Level(level) => { return level; },
+        _ => { return 0; },
+    }
+    return 0;
+}
+
+fn sum_of(value: Value) -> int {
+    match value {
+        Value::Point(x, y) => { return x + y; },
+        _ => { return 0; },
+    }
+    return 0;
+}
+
+fn label_of(value: Value) -> string {
+    match value {
+        Value::Label(text) => { return text; },
+        _ => { return ""; },
+    }
+    return "";
+}
+
+fn bump(value: Value*) {
+    match *value {
+        Value::Level(ref level) => { *level = *level + 1; },
+        _ => {},
+    }
+}
+
+fn main() {
+    let value = Value::Level(2);
+    bump(&value);
+    let level = level_of(value);
+    let sum = sum_of(Value::Point(3, 4));
+    let label = label_of(Value::Label("x"));
+    println "{level} {sum} {label}";
+}

@@ -1,0 +1,23 @@
+// compiler/check_clean: `zc check` must accept this file with no errors.
+// An alias is the same type as what it names, also when it names a generic
+// instance or another alias, in struct literals, arguments and returns.
+@derive(Copy)
+struct Handle<K> { value: u32; }
+struct UserKind {}
+alias UserId = Handle<UserKind>;
+alias Owner = UserId;
+
+@derive(Copy)
+struct Point { x: int; y: int; }
+alias Position = Point;
+
+fn raw_of(handle: Handle<UserKind>) -> u32 { return handle.value; }
+fn owner_of(raw: u32) -> Owner { return UserId { value: raw }; }
+fn origin() -> Position { return Point { x: 0, y: 0 }; }
+
+fn main() {
+    let user = UserId { value: 3 };
+    let owner = owner_of(raw_of(user));
+    let here: Point = origin();
+    println "{owner.value} {here.x}";
+}

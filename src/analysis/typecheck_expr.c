@@ -43,6 +43,98 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     }
 }
 
+// Follows `alias A = B;` by name until it reaches a name that is not an alias
+// (the parser stores the target already mangled: `Handle<K>` -> `Handle__K`).
+// Opaque aliases stop the chain: they must stay distinct types.
+static const char *resolve_alias_name(TypeChecker *tc, const char *name)
+{
+    for (int depth = 0; name && depth < 16; depth++)
+    {
+        TypeAlias *ta = find_type_alias_node(tc->pctx, name);
+        if (ta && ta->is_opaque)
+        {
+            return name;
+        }
+        const char *next = find_type_alias(tc->pctx, name);
+        if (!next || strcmp(next, name) == 0)
+        {
+            return name;
+        }
+        name = next;
+    }
+    return name;
+}
+
+// Canonical spelling of a type for alias-insensitive comparison: aliases
+// resolved by name, pointers spelled outside (`alias P = T*;` makes `P*` and
+// `T**` the same). Returns an allocated string, or NULL when there is nothing
+// to resolve.
+static char *canonical_type_name(TypeChecker *tc, Type *t, int depth)
+{
+    if (!t || depth > 16)
+    {
+        return NULL;
+    }
+    t = resolve_alias(t);
+    if (t->kind == TYPE_POINTER)
+    {
+        char *inner = canonical_type_name(tc, t->inner, depth + 1);
+        if (!inner)
+        {
+            return NULL;
+        }
+        size_t len = strlen(inner);
+        char *out = xmalloc(len + 2);
+        memcpy(out, inner, len);
+        out[len] = '*';
+        out[len + 1] = 0;
+        zfree(inner);
+        return out;
+    }
+    if (!t->name)
+    {
+        return NULL;
+    }
+    const char *name = resolve_alias_name(tc, t->name);
+    // Template instantiation spells a pointer argument as `<Name>Ptr`
+    // (`Vec<DirEntry*>` substitutes T by `DirEntryPtr`): read it back as
+    // `<Name>*` when `<Name>Ptr` is not a type of its own.
+    size_t name_len = strlen(name);
+    if (name_len > 3 && strcmp(name + name_len - 3, "Ptr") == 0 &&
+        !find_struct_def(tc->pctx, name) && !find_type_alias(tc->pctx, name))
+    {
+        char *base_name = xstrdup(name);
+        base_name[name_len - 3] = 0;
+        Type base = {0};
+        base.kind = TYPE_STRUCT;
+        base.name = base_name;
+        char *inner = canonical_type_name(tc, &base, depth + 1);
+        zfree(base_name);
+        if (inner)
+        {
+            size_t len = strlen(inner);
+            char *out = xmalloc(len + 2);
+            memcpy(out, inner, len);
+            out[len] = '*';
+            out[len + 1] = 0;
+            zfree(inner);
+            return out;
+        }
+    }
+    // Drop spaces so "DirEntry *" and "DirEntry*" compare equal.
+    char *out = xmalloc(strlen(name) + 1);
+    char *w = out;
+    for (const char *r = name; *r; r++)
+    {
+        if (*r != ' ')
+        {
+            *w++ = *r;
+        }
+    }
+    *w = 0;
+    return out;
+}
+
 Type *resolve_alias(Type *t)
 {
     while (t && t->kind == TYPE_ALIAS && t->inner)
@@ -828,6 +920,22 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         misra_check_pointer_conversion(tc->pctx, target, value, t);
     }
 
+    // A literal 0 is a null pointer constant, as in C. MISRA mode reports it
+    // above (Rule 11.9); otherwise it is accepted for any pointer.
+    if (resolved_target->kind == TYPE_POINTER && value_node)
+    {
+        ASTNode *expr = value_node;
+        while (expr && expr->kind == NODE_EXPR_CAST)
+        {
+            expr = expr->cast.expr;
+        }
+        if (expr && expr->kind == NODE_EXPR_LITERAL && expr->literal.kind == LITERAL_INT &&
+            expr->literal.int_val == 0)
+        {
+            return 1;
+        }
+    }
+
     // Resolution of Integer compatibility (Rule 10.3)
     // This MUST happen before type_eq fast-path because type_eq is lax for integers.
     if (is_integer_type(resolved_target) && is_integer_type(resolved_value))
@@ -877,6 +985,21 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
                                    NULL};
             tc_error_with_hints(tc, t, msg, hints);
             return 0;
+        }
+    }
+
+    // Types that are aliases of one another (`alias UserId = Handle<UserKind>`,
+    // `alias EntryPtr = Entry*` making `EntryPtr*` and `Entry**` equal): an alias
+    // may also reach here as a struct named after it.
+    {
+        char *target_name = canonical_type_name(tc, target, 0);
+        char *value_name = canonical_type_name(tc, value, 0);
+        int same = target_name && value_name && strcmp(target_name, value_name) == 0;
+        zfree(target_name);
+        zfree(value_name);
+        if (same)
+        {
+            return 1;
         }
     }
 
@@ -1125,8 +1248,12 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         }
     }
 
-    // Find struct definition
+    // Find struct definition (the literal may name it through an alias)
     ASTNode *def = find_struct_def(tc->pctx, node->struct_init.struct_name);
+    if (!def)
+    {
+        def = find_struct_def(tc->pctx, resolve_alias_name(tc, node->struct_init.struct_name));
+    }
     if (!def)
     {
         char msg[MAX_SHORT_MSG_LEN];
@@ -1204,7 +1331,7 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
             }
             check_type_compatibility(tc, localized_expected,
                                      field_init->var_decl.init_expr->type_info, field_init->token,
-                                     NULL, 0);
+                                     field_init->var_decl.init_expr, 0);
         }
 
         // Move Analysis: Check if the initializer moves a non-copy value.
@@ -1213,8 +1340,10 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
         field_init = field_init->next;
     }
 
-    // Check for missing required fields
-    ASTNode *def_field = def->strct.fields;
+    // Fields left out of a struct literal are zero-initialised (the C designated
+    // initializer the build emits), so they are only reported in MISRA mode,
+    // which requires explicit initialization.
+    ASTNode *def_field = tc->pctx->config->misra_mode ? def->strct.fields : NULL;
     while (def_field)
     {
         if (def_field->kind == NODE_FIELD && def_field->field.name)
