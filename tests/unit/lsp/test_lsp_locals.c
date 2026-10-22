@@ -129,3 +129,36 @@ UTEST(lsp_has_loop_before, no_loop)
                                 "main");
     ASSERT_FALSE(lsp_has_loop_before(func, 3));
 }
+
+UTEST(lsp_has_loop_before, a_for_in_loop)
+{
+    ASTNode *func = function_in("fn main() {\n"
+                                "    for i in 0..3 {\n"
+                                "        break;\n"
+                                "    }\n"
+                                "}\n",
+                                "main");
+    ASSERT_TRUE(lsp_has_loop_before(func, 3));
+}
+
+UTEST(lsp_has_loop_before, a_repeat_loop)
+{
+    ASTNode *func = function_in("fn main() {\n"
+                                "    repeat 3 {\n"
+                                "        break;\n"
+                                "    }\n"
+                                "}\n",
+                                "main");
+    ASSERT_TRUE(lsp_has_loop_before(func, 3));
+}
+
+UTEST(lsp_has_loop_before, a_do_while_loop)
+{
+    ASTNode *func = function_in("fn main() {\n"
+                                "    do {\n"
+                                "        break;\n"
+                                "    } while 1 > 0;\n"
+                                "}\n",
+                                "main");
+    ASSERT_TRUE(lsp_has_loop_before(func, 3));
+}
