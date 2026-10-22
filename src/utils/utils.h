@@ -11,6 +11,7 @@
  */
 
 #include <stddef.h>
+#include "../compat/c23_compat.h"
 
 struct ParserContext;
 struct CompilerConfig;
@@ -29,6 +30,11 @@ void append_flag(char *dest, size_t max_size, const char *prefix, const char *va
 /** Joins the NULL-terminated `parts` (or none, if NULL) with `sep` into `out`, which
  *  holds `size` bytes (size > 0). The result is cut to fit and always terminated. */
 void str_join(char *out, size_t size, const char *const *parts, const char *sep);
+/** Appends formatted text to `buf` (of `size` bytes, size > 0, `*used` of them taken), cut to
+ *  fit and always terminated. `*used` never goes past `size - 1`, so it can be passed on to the
+ *  next call: using what snprintf returns instead overflows once the text is cut.
+ *  Returns 0 if the text did not fit. */
+ZEN_FORMAT_PRINTF(4, 5) int str_appendf(char *buf, size_t size, size_t *used, const char *fmt, ...);
 void scan_build_directives(struct ParserContext *ctx, const char *src);
 int resolve_build_directive(const char *raw, char *out, size_t out_size);
 int is_safe_pkg_config_spec(const char *libs);

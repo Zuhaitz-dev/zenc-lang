@@ -36,6 +36,29 @@ UTEST(str_join, truncates_to_the_buffer)
     ASSERT_STREQ("abc-d", out);
 }
 
+UTEST(str_appendf, appends_one_after_another)
+{
+    char out[32];
+    size_t used = 0;
+    ASSERT_TRUE(str_appendf(out, sizeof(out), &used, "fn %s(", "f"));
+    ASSERT_TRUE(str_appendf(out, sizeof(out), &used, "%d, %d)", 1, 2));
+    ASSERT_STREQ("fn f(1, 2)", out);
+    ASSERT_EQ((size_t)10, used);
+}
+
+UTEST(str_appendf, cuts_to_the_buffer_and_stops_there)
+{
+    char out[8];
+    size_t used = 0;
+    ASSERT_FALSE(str_appendf(out, sizeof(out), &used, "%s", "abcdefghij"));
+    ASSERT_STREQ("abcdefg", out);
+    ASSERT_EQ((size_t)7, used);
+    // A full buffer stays as it is: `used` cannot run past the end.
+    ASSERT_FALSE(str_appendf(out, sizeof(out), &used, "%s", "xyz"));
+    ASSERT_STREQ("abcdefg", out);
+    ASSERT_EQ((size_t)7, used);
+}
+
 // Runs scan_build_directives on `src` with a fresh compiler, whose flags the test then reads.
 static ZenCompiler *scan(const char *src)
 {
