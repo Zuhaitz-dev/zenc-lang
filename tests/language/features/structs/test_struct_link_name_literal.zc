@@ -1,0 +1,29 @@
+// structs: test_struct_link_name_literal
+// A struct literal of a struct with @link_name is emitted under the C name,
+// as the struct definition and its variables are.
+
+@link_name("c_point")
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn make(x: int, y: int) -> Point {
+    return Point { x: x, y: y };
+}
+
+fn sum(p: Point) -> int {
+    return p.x + p.y;
+}
+
+fn main() -> int {
+    let p = Point { x: 1, y: 2 };
+    assert p.x == 1;
+    assert p.y == 2;
+
+    let q = make(3, 4);
+    assert q.x + q.y == 7;
+
+    assert sum(Point { x: 5, y: 6 }) == 11;
+    return 0;
+}
