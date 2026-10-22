@@ -2,6 +2,7 @@
 #include "../parser/parser.h"
 
 #include "codegen.h"
+#include "codegen_internal.h"
 #include "zprep.h"
 #include "../constants.h"
 #include <ctype.h>
@@ -544,11 +545,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                         codegen_node_single(ctx, stmt);
                         stmt = stmt->next;
                     }
-                    for (int i = ctx->cg.defer_count - 1; i >= saved; i--)
-                    {
-                        emit_source_mapping_duplicate(ctx, ctx->cg.defer_stack[i]);
-                        codegen_node_single(ctx, ctx->cg.defer_stack[i]);
-                    }
+                    emit_defers_down_to(ctx, saved);
                     ctx->cg.defer_count = saved;
                     EMIT(ctx, " })");
                 }
