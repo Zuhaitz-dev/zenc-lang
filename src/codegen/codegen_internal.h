@@ -43,6 +43,9 @@ void handle_expr_match(ParserContext *ctx, ASTNode *node);
 void handle_expr_var(ParserContext *ctx, ASTNode *node);
 void handle_lambda(ParserContext *ctx, ASTNode *node);
 void handle_expr_literal(ParserContext *ctx, ASTNode *node);
+// Emits C text as it is; inside a lambda, the names the lambda captures become ctx->name, or
+// (*ctx->name) when captured by reference.
+void emit_raw_with_captures(ParserContext *ctx, const char *content);
 void handle_raw_stmt(ParserContext *ctx, ASTNode *node);
 void handle_ast_comment(ParserContext *ctx, ASTNode *node);
 void handle_erroneous(ParserContext *ctx, ASTNode *node);
