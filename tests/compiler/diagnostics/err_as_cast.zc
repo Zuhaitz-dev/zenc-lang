@@ -1,0 +1,7 @@
+// EXPECT: FAIL
+// compiler/diagnostics: `as` is not a cast in Zen C; casts are `(T)value`.
+
+fn main() {
+    let small = 300 as u8;
+    println "{small}";
+}
