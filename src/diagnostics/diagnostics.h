@@ -167,5 +167,7 @@ int set_diag_by_name(CompilerConfig *cfg, const char *name, int enabled);
 // Set at the start of each compilation unit so diagnostic functions can access
 // config, callbacks, and current filename without relying on the global.
 void diag_set_parser_ctx(struct ParserContext *ctx);
+// The parser context registered with diag_set_parser_ctx, or NULL.
+struct ParserContext *diag_parser_ctx(void);
 
 #endif

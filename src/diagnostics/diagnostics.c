@@ -19,6 +19,11 @@ void diag_set_parser_ctx(ParserContext *ctx)
     d_ctx.parser_ctx = ctx;
 }
 
+ParserContext *diag_parser_ctx(void)
+{
+    return d_ctx.parser_ctx;
+}
+
 // Diagnostics take no compiler argument: they use (config) and update (error and
 // warning counts) the compiler of the registered parser context. Before a context is
 // registered they fall back to a private compiler that nothing reads.

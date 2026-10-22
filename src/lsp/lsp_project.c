@@ -576,6 +576,10 @@ void lsp_project_update_file(const char *uri, const char *src)
         mark_file_imported(g_project->ctx, pf->path);
     }
 
+    // Each parse counts its own diagnostics; otherwise the counts grow with every edit.
+    g_project->ctx->compiler->error_count = 0;
+    g_project->ctx->compiler->warning_count = 0;
+
     ASTNode *root = parse_program(g_project->ctx, &l);
     if (root)
     {

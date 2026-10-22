@@ -97,8 +97,13 @@ int driver_run(ZenCompiler *compiler)
     return result;
 }
 
-int driver_compile(ZenCompiler *compiler)
+static int compile_program(ZenCompiler *compiler)
 {
+    // The counts are per compilation: the build fails when error_count is not 0 (see
+    // check_moves_only), so a previous compilation of the same compiler must not leave any.
+    compiler->error_count = 0;
+    compiler->warning_count = 0;
+
     ParserContext ctx;
     memset(&ctx, 0, sizeof(ctx));
     ctx.compiler = compiler;
@@ -461,4 +466,14 @@ int driver_compile(ZenCompiler *compiler)
     }
 
     return 0;
+}
+
+int driver_compile(ZenCompiler *compiler)
+{
+    int result = compile_program(compiler);
+    // The parser context lived on compile_program's stack: unregister it, so that a
+    // diagnostic emitted after the compilation does not reach freed memory.
+    diag_set_parser_ctx(NULL);
+    token_set_parser_ctx(NULL);
+    return result;
 }
