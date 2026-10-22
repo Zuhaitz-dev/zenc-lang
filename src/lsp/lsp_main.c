@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "json_rpc.h"
+#include "lsp_main.h"
 #include "lsp_project.h"
 #include "../constants.h"
 #include "zprep.h"
@@ -44,13 +45,8 @@ int lsp_main(ZenCompiler *compiler, int argc, char **argv)
     cfg->mode_lsp = 1;
     compiler->diag_consumer = lsp_diagnose_consumer;
 
-    // Initialize root path from executable to find std/
-    char self_path[MAX_PATH_LEN];
-    z_get_executable_path(self_path, sizeof(self_path));
-    if (self_path[0])
-    {
-        cfg->root_path = xstrdup(self_path);
-    }
+    // root_path (where std/ is found) was set by z_compiler_setup, which looks for std.zc in
+    // the executable's directory and its parents.
 
     // Everything the project allocates goes above this mark, so a rebuild can rewind to it.
     ZarenaMark base_mark = zarena_save(&g_arena);
