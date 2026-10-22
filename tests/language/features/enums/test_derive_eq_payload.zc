@@ -1,0 +1,82 @@
+// language/features/enums: test_derive_eq_payload
+// The derived `eq` of an enum with payloads compares the variant and its values
+// (before, only the variant: `Value(1) == Value(5)` was true). A struct field of
+// such an enum compares with that `eq` too.
+import "std/string.zc"
+
+@derive(Eq, Copy)
+struct Point {
+    x: int;
+    y: int;
+}
+
+enum Color {
+    Red,
+    Blue,
+}
+
+@derive(Eq)
+enum Reading {
+    Missing,
+    Value(int),
+}
+
+@derive(Eq)
+enum Shape {
+    Empty,
+    Circle(float),
+    Rect(float, float),
+    At(Point),
+    Named(String),
+    Tint(Color),
+    Last(Reading),
+}
+
+@derive(Eq)
+enum Maybe<T> {
+    Nothing,
+    Just(T),
+}
+
+@derive(Eq)
+struct Sensor {
+    id: int;
+    last: Reading;
+}
+
+test "values of the same variant are compared" {
+    assert(Shape::Circle(1.0) == Shape::Circle(1.0), "same float");
+    assert(Shape::Circle(1.0) != Shape::Circle(2.0), "different float");
+    assert(Shape::Rect(1.0, 2.0) == Shape::Rect(1.0, 2.0), "same tuple");
+    assert(Shape::Rect(1.0, 2.0) != Shape::Rect(1.0, 3.0), "different tuple");
+    assert(Shape::At(Point { x: 1, y: 2 }) == Shape::At(Point { x: 1, y: 2 }), "struct eq");
+    assert(Shape::At(Point { x: 1, y: 2 }) != Shape::At(Point { x: 1, y: 3 }), "struct ne");
+    assert(Shape::Tint(Color::Red) != Shape::Tint(Color::Blue), "plain enum");
+    assert(Shape::Last(Reading::Value(1)) != Shape::Last(Reading::Value(5)), "nested enum");
+    assert(Shape::Empty == Shape::Empty, "variant without values");
+    assert(Shape::Circle(1.0) != Shape::Rect(1.0, 1.0), "different variants");
+}
+
+test "a String value is compared by content" {
+    let a = Shape::Named(String::new("door"));
+    let b = Shape::Named(String::new("door"));
+    let c = Shape::Named(String::new("wall"));
+    assert(a == b, "same text");
+    assert(a != c, "different text");
+}
+
+test "values of a generic enum are compared" {
+    assert(Maybe<int>::Just(1) != Maybe<int>::Just(5), "int");
+    assert(Maybe<int>::Just(5) == Maybe<int>::Just(5), "same int");
+    let p = Maybe<Point>::Just(Point { x: 1, y: 1 });
+    assert(p != Maybe<Point>::Just(Point { x: 1, y: 2 }), "struct T");
+    assert(p == Maybe<Point>::Just(Point { x: 1, y: 1 }), "same struct T");
+}
+
+test "a struct field of an enum with payloads uses its eq" {
+    let a = Sensor { id: 1, last: Reading::Value(10) };
+    let b = Sensor { id: 1, last: Reading::Value(99) };
+    let c = Sensor { id: 1, last: Reading::Value(10) };
+    assert(a != b, "different reading");
+    assert(a == c, "same reading");
+}

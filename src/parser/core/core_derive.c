@@ -5,6 +5,7 @@
 #include "analysis/move_check.h"
 #include "plugins/plugin_manager.h"
 #include <ctype.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,10 +70,140 @@ void check_derivable_trait(Token t, const char *name)
     zpanic_with_hints(t, msg, hints);
 }
 
+// The type the derived impls are written for: `Name`, or `Name<K, V>` for a
+// generic struct or enum, so that they are generic impls whose methods every
+// instance gets (`impl Name { ... }` on a generic left them undefined).
+static char *derive_self_type(ASTNode *strct)
+{
+    const char *name = strct->kind == NODE_ENUM ? strct->enm.name : strct->strct.name;
+    char params[MAX_SHORT_MSG_LEN] = "";
+    if (strct->kind == NODE_STRUCT && strct->strct.is_template)
+    {
+        char **param = strct->strct.generic_params;
+        for (int i = 0; i < strct->strct.generic_param_count; i++, param++)
+        {
+            size_t used = strlen(params);
+            snprintf(params + used, sizeof(params) - used, "%s%s", i ? ", " : "", *param);
+        }
+    }
+    else if (strct->kind == NODE_ENUM && strct->enm.is_template && strct->enm.generic_param)
+    {
+        snprintf(params, sizeof(params), "%s", strct->enm.generic_param);
+    }
+    if (!params[0])
+    {
+        return xstrdup(name);
+    }
+    size_t size = strlen(name) + strlen(params) + 3;
+    char *self_type = xmalloc(size);
+    snprintf(self_type, size, "%s<%s>", name, params);
+    return self_type;
+}
+
+// Appends to `out` (of `size` bytes, `*used` of them taken); 0 if it does not fit.
+static int append_text(char *out, size_t size, size_t *used, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(out + *used, size - *used, fmt, args);
+    va_end(args);
+    if (written < 0 || (size_t)written >= size - *used)
+    {
+        return 0;
+    }
+    *used += (size_t)written;
+    return 1;
+}
+
+// Type of the `index`-th value a variant carries: its payload, or a field of the
+// tuple that holds several values.
+static char *variant_value_type(ParserContext *ctx, ASTNode *variant, int index)
+{
+    Type *payload = variant->variant.payload;
+    if (variant->variant.payload_count == 1)
+    {
+        return type_to_string(payload);
+    }
+    ASTNode *tuple = payload && payload->name ? find_struct_def(ctx, payload->name) : NULL;
+    ASTNode *field = tuple && tuple->kind == NODE_STRUCT ? tuple->strct.fields : NULL;
+    for (int i = 0; field && i < index; i++)
+    {
+        field = field->next;
+    }
+    return field && field->field.type ? xstrdup(field->field.type) : NULL;
+}
+
+// Body of the derived `eq` of an enum with payloads: the same variant and, for a
+// variant that carries values, the same values, compared with `==` (so with
+// their own `eq` when they have one). The bindings are `ref`: no value is moved
+// out of either operand. In a generic enum they are typed through locals
+// (`let x0: T* = a0;`): a binding of type `T` stays untyped in the instances,
+// and `==` would not find the `eq` of a struct `T`. 0 if the body does not fit.
+static int enum_eq_body(ParserContext *ctx, ASTNode *enm, char *body, size_t size)
+{
+    const char *name = enm->enm.name;
+    int is_generic = enm->enm.is_template && enm->enm.generic_param;
+    size_t used = 0;
+    if (!append_text(body, size, &used,
+                     "if self.tag != other.tag { return false; } match *self { "))
+    {
+        return 0;
+    }
+    for (ASTNode *v = enm->enm.variants; v; v = v->next)
+    {
+        int values = v->variant.payload_count;
+        if (v->kind != NODE_ENUM_VARIANT || values == 0)
+        {
+            continue;
+        }
+        char mine[MAX_SHORT_MSG_LEN] = "";
+        char theirs[MAX_SHORT_MSG_LEN] = "";
+        char typed[MAX_SHORT_MSG_LEN] = "";
+        char same[MAX_SHORT_MSG_LEN] = "";
+        size_t mine_used = 0, theirs_used = 0, typed_used = 0, same_used = 0;
+        for (int i = 0; i < values; i++)
+        {
+            const char *sep = i ? ", " : "";
+            const char *joiner = i ? " && " : "";
+            if (!append_text(mine, sizeof(mine), &mine_used, "%sref a%d", sep, i) ||
+                !append_text(theirs, sizeof(theirs), &theirs_used, "%sref b%d", sep, i))
+            {
+                return 0;
+            }
+            char *type = is_generic ? variant_value_type(ctx, v, i) : NULL;
+            int ok;
+            if (type)
+            {
+                ok = append_text(typed, sizeof(typed), &typed_used,
+                                 "let x%d: %s* = a%d; let y%d: %s* = b%d; ", i, type, i, i, type,
+                                 i) &&
+                     append_text(same, sizeof(same), &same_used, "%s*x%d == *y%d", joiner, i, i);
+            }
+            else
+            {
+                ok = append_text(same, sizeof(same), &same_used, "%s*a%d == *b%d", joiner, i, i);
+            }
+            if (!ok)
+            {
+                return 0;
+            }
+        }
+        if (!append_text(body, size, &used,
+                         "%s::%s(%s) => { match *other { %s::%s(%s) => { %sreturn %s; }, _ => {} } "
+                         "}, ",
+                         name, v->variant.name, mine, name, v->variant.name, theirs, typed, same))
+        {
+            return 0;
+        }
+    }
+    return append_text(body, size, &used, "_ => {} } return true;");
+}
+
 ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits, int count)
 {
     ASTNode *head = NULL, *tail = NULL;
     char *name = strct->strct.name;
+    char *self_type = derive_self_type(strct);
 
     for (int i = 0; i < count; i++)
     {
@@ -85,8 +216,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             if (strct->kind != NODE_STRUCT)
             {
                 code = xmalloc(code_size);
-                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { return self; } }", name,
-                         name);
+                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { return self; } }",
+                         self_type, self_type);
             }
             else
             {
@@ -94,7 +225,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                 // struct that derives or implements it) is cloned, so the copy owns
                 // its own resources; anything else is copied.
                 char body[4096];
-                int written = snprintf(body, sizeof(body), "return %s { ", name);
+                int written = snprintf(body, sizeof(body), "return %s { ", self_type);
                 size_t used = written > 0 ? (size_t)written : 0;
                 for (ASTNode *f = strct->strct.fields; f; f = f->next)
                 {
@@ -115,10 +246,10 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                     used += (size_t)written;
                 }
                 snprintf(body + used, sizeof(body) - used, "};");
-                code_size = strlen(body) + strlen(name) * 2 + 64;
+                code_size = strlen(body) + strlen(self_type) * 2 + 64;
                 code = xmalloc(code_size);
-                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { %s } }", name, name,
-                         body);
+                snprintf(code, code_size, "impl %s { fn clone(self) -> %s { %s } }", self_type,
+                         self_type, body);
             }
         }
         else if (0 == strcmp(trait, "Eq"))
@@ -143,8 +274,11 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 
                 if (has_payload)
                 {
-                    snprintf(body, sizeof(body),
-                             "return self.tag == other.tag;"); /* TODO: check buffer size */
+                    if (!enum_eq_body(ctx, strct, body, sizeof(body)))
+                    {
+                        zpanic_at(strct->token, "Too many variants for @derive(Eq)");
+                        return NULL;
+                    }
                 }
                 else
                 {
@@ -203,7 +337,9 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
                             }
                             if (ep)
                             {
-                                snprintf(cmp, sizeof(cmp), "self.%s.tag == other.%s.tag", fn,
+                                // An enum with payloads compares with its own `eq` (the
+                                // variant and the values), not just the variant.
+                                snprintf(cmp, sizeof(cmp), "self.%s == other.%s", fn,
                                          fn); /* TODO: check buffer size */
                             }
                             else
@@ -238,8 +374,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             }
             code = xmalloc(4096 + 1024);
             // Updated signature: other is a pointer T*
-            sprintf(code, "impl %s { fn eq(self, other: %s*) -> bool { %s } }", name, name,
-                    body); /* safe */
+            sprintf(code, "impl %s { fn eq(self, other: %s*) -> bool { %s } }", self_type,
+                    self_type, body); /* safe */
         }
         else if (0 == strcmp(trait, "Debug"))
         {
@@ -248,7 +384,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             sprintf(
                 code,
                 "impl %s { fn to_string(self) -> char* { return \"%s {{ ... }}\"; } }", /* safe */
-                name, name);
+                self_type, name);
         }
         else if (0 == strcmp(trait, "Copy"))
         {
@@ -377,9 +513,9 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 
             // Build struct initialization
             strncat(body, "return Result<", sizeof(body) - strlen(body) - 1);
-            strncat(body, name, sizeof(body) - strlen(body) - 1);
+            strncat(body, self_type, sizeof(body) - strlen(body) - 1);
             strncat(body, ">::Ok(", sizeof(body) - strlen(body) - 1);
-            strncat(body, name, sizeof(body) - strlen(body) - 1);
+            strncat(body, self_type, sizeof(body) - strlen(body) - 1);
             strncat(body, " { ", sizeof(body) - strlen(body) - 1);
 
             f = strct->strct.fields;
@@ -420,8 +556,8 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
 
             code = xmalloc(8192 + 1024);
             sprintf(code, "impl %s { fn from_json(j: JsonValue*) -> Result<%s> { %s } }",
-                    name, /* safe */
-                    name, body);
+                    self_type, /* safe */
+                    self_type, body);
         }
         else if (0 == strcmp(trait, "ToJson"))
         {
@@ -519,7 +655,7 @@ ASTNode *generate_derive_impls(ParserContext *ctx, ASTNode *strct, char **traits
             strncat(body, "return _obj;", sizeof(body) - strlen(body) - 1);
 
             code = xmalloc(8192 + 1024);
-            sprintf(code, "impl %s { fn to_json(self) -> JsonValue { %s } }", name,
+            sprintf(code, "impl %s { fn to_json(self) -> JsonValue { %s } }", self_type,
                     body); /* safe */
         }
 
