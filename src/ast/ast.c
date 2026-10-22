@@ -97,6 +97,239 @@ void ast_free(ASTNode *node)
     zfree(node);
 }
 
+static void add_child(ASTChildren *c, ASTNode **slot)
+{
+    c->slots[c->count] = slot;
+    c->count++;
+}
+
+// Every NodeType must have a case: a new kind fails to compile until it says
+// which children it has (with GCC and Clang; TCC does not know these pragmas).
+#if defined(__GNUC__) && !defined(__TINYC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Wswitch-enum"
+#endif
+ASTChildren ast_children(ASTNode *node)
+{
+    ASTChildren c = {0};
+    if (!node)
+    {
+        return c;
+    }
+
+    switch (node->kind)
+    {
+    // Declarations and blocks.
+    case NODE_ROOT:
+        add_child(&c, &node->root.children);
+        break;
+    case NODE_FUNCTION:
+        add_child(&c, &node->func.body);
+        break;
+    case NODE_BLOCK:
+        add_child(&c, &node->block.statements);
+        break;
+    case NODE_VAR_DECL:
+    case NODE_CONST:
+        add_child(&c, &node->var_decl.init_expr);
+        break;
+    case NODE_DESTRUCT_VAR:
+        add_child(&c, &node->destruct.init_expr);
+        add_child(&c, &node->destruct.else_block);
+        break;
+    case NODE_STRUCT:
+        add_child(&c, &node->strct.fields);
+        break;
+    case NODE_ENUM:
+        add_child(&c, &node->enm.variants);
+        break;
+    case NODE_TRAIT:
+        add_child(&c, &node->trait.methods);
+        break;
+    case NODE_IMPL:
+        add_child(&c, &node->impl.methods);
+        break;
+    case NODE_IMPL_TRAIT:
+        add_child(&c, &node->impl_trait.methods);
+        break;
+    case NODE_TEST:
+        add_child(&c, &node->test_stmt.body);
+        break;
+    case NODE_COMPTIME:
+        add_child(&c, &node->comptime.body);
+        add_child(&c, &node->comptime.generated);
+        break;
+
+    // Statements.
+    case NODE_RETURN:
+        add_child(&c, &node->ret.value);
+        break;
+    case NODE_IF:
+        add_child(&c, &node->if_stmt.condition);
+        add_child(&c, &node->if_stmt.then_body);
+        add_child(&c, &node->if_stmt.else_body);
+        break;
+    case NODE_UNLESS:
+        add_child(&c, &node->unless_stmt.condition);
+        add_child(&c, &node->unless_stmt.body);
+        break;
+    case NODE_GUARD:
+        add_child(&c, &node->guard_stmt.condition);
+        add_child(&c, &node->guard_stmt.body);
+        break;
+    case NODE_WHILE:
+        add_child(&c, &node->while_stmt.condition);
+        add_child(&c, &node->while_stmt.body);
+        break;
+    case NODE_DO_WHILE:
+        add_child(&c, &node->do_while_stmt.body);
+        add_child(&c, &node->do_while_stmt.condition);
+        break;
+    case NODE_FOR:
+        add_child(&c, &node->for_stmt.init);
+        add_child(&c, &node->for_stmt.condition);
+        add_child(&c, &node->for_stmt.step);
+        add_child(&c, &node->for_stmt.body);
+        break;
+    case NODE_FOR_RANGE:
+        add_child(&c, &node->for_range.start);
+        add_child(&c, &node->for_range.end);
+        add_child(&c, &node->for_range.body);
+        break;
+    case NODE_LOOP:
+        add_child(&c, &node->loop_stmt.body);
+        break;
+    case NODE_REPEAT:
+        add_child(&c, &node->repeat_stmt.body);
+        break;
+    case NODE_MATCH:
+        add_child(&c, &node->match_stmt.expr);
+        add_child(&c, &node->match_stmt.cases);
+        break;
+    case NODE_MATCH_CASE:
+        add_child(&c, &node->match_case.guard);
+        add_child(&c, &node->match_case.body);
+        break;
+    case NODE_DEFER:
+        add_child(&c, &node->defer_stmt.stmt);
+        break;
+    case NODE_ASSERT:
+    case NODE_EXPECT:
+        add_child(&c, &node->assert_stmt.condition);
+        break;
+    case NODE_GOTO:
+        add_child(&c, &node->goto_stmt.goto_expr);
+        break;
+    case NODE_REPL_PRINT:
+        add_child(&c, &node->repl_print.expr);
+        break;
+
+    // Expressions.
+    case NODE_EXPR_BINARY:
+        add_child(&c, &node->binary.left);
+        add_child(&c, &node->binary.right);
+        break;
+    case NODE_EXPR_UNARY:
+    case NODE_AWAIT:
+        add_child(&c, &node->unary.operand);
+        break;
+    case NODE_EXPR_CALL:
+        add_child(&c, &node->call.callee);
+        add_child(&c, &node->call.args);
+        break;
+    case NODE_EXPR_MEMBER:
+        add_child(&c, &node->member.target);
+        break;
+    case NODE_EXPR_INDEX:
+        add_child(&c, &node->index.array);
+        add_child(&c, &node->index.index);
+        add_child(&c, &node->index.extra_indices);
+        break;
+    case NODE_EXPR_SLICE:
+        add_child(&c, &node->slice.array);
+        add_child(&c, &node->slice.start);
+        add_child(&c, &node->slice.end);
+        break;
+    case NODE_EXPR_CAST:
+        add_child(&c, &node->cast.expr);
+        break;
+    case NODE_EXPR_SIZEOF:
+    case NODE_TYPEOF:
+        add_child(&c, &node->size_of.expr);
+        break;
+    case NODE_EXPR_STRUCT_INIT:
+        add_child(&c, &node->struct_init.fields);
+        break;
+    case NODE_EXPR_ARRAY_LITERAL:
+        add_child(&c, &node->array_literal.elements);
+        break;
+    case NODE_EXPR_TUPLE_LITERAL:
+        add_child(&c, &node->tuple_literal.elements);
+        break;
+    case NODE_TERNARY:
+        add_child(&c, &node->ternary.cond);
+        add_child(&c, &node->ternary.true_expr);
+        add_child(&c, &node->ternary.false_expr);
+        break;
+    case NODE_LAMBDA:
+        add_child(&c, &node->lambda.body);
+        break;
+    case NODE_TRY:
+        add_child(&c, &node->try_stmt.expr);
+        break;
+    case NODE_CUDA_LAUNCH:
+        add_child(&c, &node->cuda_launch.call);
+        add_child(&c, &node->cuda_launch.grid);
+        add_child(&c, &node->cuda_launch.block);
+        add_child(&c, &node->cuda_launch.shared_mem);
+        add_child(&c, &node->cuda_launch.stream);
+        break;
+    case NODE_VA_START:
+        add_child(&c, &node->va_start_args.ap);
+        add_child(&c, &node->va_start_args.last_arg);
+        break;
+    case NODE_VA_END:
+        add_child(&c, &node->va_end_args.ap);
+        break;
+    case NODE_VA_COPY:
+        add_child(&c, &node->va_copy_args.dest);
+        add_child(&c, &node->va_copy_args.src);
+        break;
+    case NODE_VA_ARG:
+        add_child(&c, &node->va_arg_val.ap);
+        break;
+
+    // No children. NODE_IMPORT and NODE_RAW_STMT do hold nodes, but not as
+    // children: see ast_children() in ast.h.
+    case NODE_EXPR_LITERAL:
+    case NODE_EXPR_VAR:
+    case NODE_BREAK:
+    case NODE_CONTINUE:
+    case NODE_LABEL:
+    case NODE_TYPE_ALIAS:
+    case NODE_FIELD:
+    case NODE_ENUM_VARIANT:
+    case NODE_INCLUDE:
+    case NODE_LINK:
+    case NODE_IMPORT:
+    case NODE_RAW_STMT:
+    case NODE_PREPROC_DIRECTIVE:
+    case NODE_ASM:
+    case NODE_PLUGIN:
+    case NODE_REFLECTION:
+    case NODE_AST_COMMENT:
+    case NODE_ERRONEOUS:
+        break;
+
+    default:
+        break;
+    }
+    return c;
+}
+#if defined(__GNUC__) && !defined(__TINYC__)
+#pragma GCC diagnostic pop
+#endif
+
 Type *type_new(TypeKind kind)
 {
     Type *t = xmalloc(sizeof(Type));
