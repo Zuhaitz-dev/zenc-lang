@@ -585,7 +585,7 @@ static void lemit_expr(ParserContext *ctx, ASTNode *node, int depth)
             {
                 fval = f->binary.right;
             }
-            else if (f->kind == NODE_FIELD)
+            else if (f->kind == NODE_FIELD_INIT)
             {
                 fval = f->var_decl.init_expr;
             }

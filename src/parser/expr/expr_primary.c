@@ -1429,7 +1429,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             break;
                         }
                         ASTNode *val = parse_expression(ctx, l);
-                        ASTNode *assign = ast_create(NODE_VAR_DECL);
+                        ASTNode *assign = ast_create(NODE_FIELD_INIT);
                         char name[16];
                         snprintf(name, sizeof(name), "_v%d", idx);
                         assign->token = t;
@@ -1467,7 +1467,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                             return NULL;
                         }
                         ASTNode *val = parse_expression(ctx, l);
-                        ASTNode *assign = ast_create(NODE_VAR_DECL);
+                        ASTNode *assign = ast_create(NODE_FIELD_INIT);
                         assign->token = t;
                         assign->var_decl.name = token_strdup(fn);
                         assign->var_decl.init_expr = val;
@@ -1725,7 +1725,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                         trait_type->name = xstrdup(expected->name);
                                         init->type_info = trait_type;
 
-                                        ASTNode *f_self = ast_create(NODE_VAR_DECL);
+                                        ASTNode *f_self = ast_create(NODE_FIELD_INIT);
                                         f_self->var_decl.name = xstrdup("self");
                                         f_self->var_decl.init_expr = def;
 
@@ -1742,7 +1742,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                         vtable_ref->unary.op = xstrdup("&");
                                         vtable_ref->unary.operand = vtable_var;
 
-                                        ASTNode *f_vtable = ast_create(NODE_VAR_DECL);
+                                        ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
                                         f_vtable->var_decl.name = xstrdup("vtable");
                                         f_vtable->var_decl.init_expr = vtable_ref;
 
@@ -1766,7 +1766,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 trait_type->name = xstrdup(expected->name);
                                 init->type_info = trait_type;
 
-                                ASTNode *f_self = ast_create(NODE_VAR_DECL);
+                                ASTNode *f_self = ast_create(NODE_FIELD_INIT);
                                 f_self->var_decl.name = xstrdup("self");
                                 f_self->var_decl.init_expr = def;
 
@@ -1783,7 +1783,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 vtable_ref->unary.op = xstrdup("&");
                                 vtable_ref->unary.operand = vtable_var;
 
-                                ASTNode *f_vtable = ast_create(NODE_VAR_DECL);
+                                ASTNode *f_vtable = ast_create(NODE_FIELD_INIT);
                                 f_vtable->var_decl.name = xstrdup("vtable");
                                 f_vtable->var_decl.init_expr = vtable_ref;
 

@@ -19,6 +19,8 @@ static const char *node_type_name(int type)
         return "RETURN";
     case NODE_VAR_DECL:
         return "VAR_DECL";
+    case NODE_FIELD_INIT:
+        return "FIELD_INIT";
     case NODE_CONST:
         return "CONST";
     case NODE_TYPE_ALIAS:
@@ -304,6 +306,7 @@ static void json_emit_node(ParserContext *ctx, ASTNode *node, int pretty, int de
     {
     case NODE_FUNCTION:
     case NODE_VAR_DECL:
+    case NODE_FIELD_INIT:
     case NODE_CONST:
     case NODE_TYPE_ALIAS:
     case NODE_STRUCT:

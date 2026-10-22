@@ -159,6 +159,7 @@ typedef enum
     NODE_EXPR_CAST,          ///< Type cast.
     NODE_EXPR_SIZEOF,        ///< Sizeof expression.
     NODE_EXPR_STRUCT_INIT,   ///< Struct initializer.
+    NODE_FIELD_INIT,         ///< Field of a struct initializer (var_decl: name, init_expr).
     NODE_EXPR_ARRAY_LITERAL, ///< Array literal.
     NODE_EXPR_TUPLE_LITERAL, ///< Tuple literal.
     NODE_EXPR_SLICE,         ///< Slice operation.

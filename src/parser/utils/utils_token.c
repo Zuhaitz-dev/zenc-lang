@@ -183,7 +183,7 @@ char *ast_to_string_recursive(ASTNode *node, int depth)
                     strcat(buf, ", ");
                 }
             }
-            if (field->kind == NODE_VAR_DECL)
+            if (field->kind == NODE_FIELD_INIT)
             {
                 if (strlen(buf) + (field->var_decl.name ? strlen(field->var_decl.name) : 0) + 4 <
                     buf_size)

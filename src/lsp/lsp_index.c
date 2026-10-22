@@ -324,19 +324,9 @@ static void lsp_walk_node(LSPIndex *idx, ASTNode *node, int depth)
             lsp_index_add_ref(idx, node->token, node->definition_token, node);
         }
 
-        // Struct literal fields are NODE_VAR_DECLs named after the field, not
-        // declarations: walk only their values. Trait methods are prototypes,
-        // kept out of the index.
-        if (node->kind == NODE_EXPR_STRUCT_INIT)
+        // Walk every child list. Trait methods are prototypes, kept out of the index.
+        if (node->kind != NODE_TRAIT)
         {
-            for (ASTNode *f = node->struct_init.fields; f; f = f->next)
-            {
-                lsp_walk_node(idx, f->var_decl.init_expr, depth + 1);
-            }
-        }
-        else if (node->kind != NODE_TRAIT)
-        {
-            // Walk every child list.
             ASTChildren children = ast_children(node);
             for (int i = 0; i < children.count; i++)
             {
