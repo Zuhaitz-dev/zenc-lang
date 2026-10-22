@@ -59,14 +59,25 @@ mad_of() {
     fi
 }
 
+# Runs a command with its output discarded and prints how many milliseconds it took, on a
+# monotonic clock: `date` follows the wall clock, which can jump backwards and gave negative
+# times. Exits with the command's status.
+time_ms() {
+    python3 -c '
+import subprocess, sys, time
+start = time.monotonic()
+code = subprocess.call(sys.argv[1:], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+print(int((time.monotonic() - start) * 1000))
+sys.exit(code)
+' "$@"
+}
+
 echo "=== Compiler Benchmark: Full Suite Transpilation ==="
 FILE_COUNT=$(find tests -name "*.zc" -not -name "_*.zc" | wc -l)
 for _ in $(seq 1 "$ITERATIONS"); do
-    START=$(date +%s%3N)
-    find tests -name "*.zc" -not -name "_*.zc" -print0 |
-        xargs -0 -L 1 "$ZC" transpile -o .bench_comp_temp.c -w > /dev/null 2>&1
-    END=$(date +%s%3N)
-    comp_times+=($((END - START)))
+    # Some tests are meant not to compile: the status of the whole run does not matter.
+    comp_times+=("$(time_ms bash -c 'find tests -name "*.zc" -not -name "_*.zc" -print0 |
+        xargs -0 -L 1 "$0" transpile -o .bench_comp_temp.c -w' "$ZC")")
 done
 rm -f .bench_comp_temp.c
 mapfile -t comp_sorted < <(printf '%s\n' "${comp_times[@]}" | sort -n)
@@ -84,13 +95,10 @@ for bench in tests/bench/*.zc; do
     name=$(basename "$bench" .zc)
     echo -n "Compiling $name... "
 
-    COMP_START=$(date +%s%3N)
-    if ! "$ZC" build "$bench" -o "bench_$name" -w > /dev/null 2>&1; then
+    if ! COMP_TIME=$(time_ms "$ZC" build "$bench" -o "bench_$name" -w); then
         echo "FAILED"
         continue
     fi
-    COMP_END=$(date +%s%3N)
-    COMP_TIME=$((COMP_END - COMP_START))
     echo "compiled in ${COMP_TIME}ms"
 
     # Warmup run (discarded)

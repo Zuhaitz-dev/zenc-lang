@@ -51,4 +51,7 @@ jobs:
         skip-fetch-gh-pages: true
 
     - name: Check Benchmark Regressions (magnitude-aware)
+      # The baseline comes from earlier runs on other runners, whose speed varies
+      # by up to 2x; on a pull request a regression is reported as a warning only.
+      continue-on-error: ${{ github.event_name == 'pull_request' }}
       run: python3 tests/scripts/check_benchmarks.py

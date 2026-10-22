@@ -81,9 +81,13 @@ def main():
         return 0
 
     entries = previous_entries()
-    # The last stored entry is this run (the action just pushed it); the
-    # baseline is the median of the runs before it.
-    history = entries[:-1][-BASELINE_RUNS:]
+    # On a push to main the action has just stored this run: leave it out of the
+    # baseline. On a pull request it stores nothing, so the last entry is the
+    # latest run of main and belongs in the baseline.
+    sha = os.environ.get("GITHUB_SHA")
+    if entries and sha and entries[-1].get("commit", {}).get("id") == sha:
+        entries = entries[:-1]
+    history = entries[-BASELINE_RUNS:]
     if not history:
         print("-> Not enough stored benchmark data yet; skipping comparison.")
         return 0
@@ -108,6 +112,9 @@ def main():
               % len(history))
         for name, baseline, cur, ratio, threshold in regressions:
             print("   %s: %.3g -> %.3g (%.2fx, threshold %.1fx)"
+                  % (name, baseline, cur, ratio, threshold))
+            # Shown in the run summary, also when the step is allowed to fail.
+            print("::warning title=Benchmark regression::%s: %.3g -> %.3g ms (%.2fx, threshold %.1fx)"
                   % (name, baseline, cur, ratio, threshold))
         return 1
 
