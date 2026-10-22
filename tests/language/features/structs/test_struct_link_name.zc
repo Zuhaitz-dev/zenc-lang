@@ -1,0 +1,75 @@
+// structs: test_struct_link_name
+// A struct with @link_name is emitted under that C name wherever it is used,
+// not only in the statements the link name pass used to visit. The values are
+// built field by field: a struct literal does not use the link name yet.
+
+@link_name("c_point")
+struct Point {
+    x: int;
+}
+
+impl Point {
+    fn make(x: int) -> Point {
+        let p: Point;
+        p.x = x;
+        return p;
+    }
+}
+
+test "link name inside if" {
+    let r = 0;
+    if r == 0 {
+        let p: Point;
+        p.x = 1;
+        r = p.x;
+    }
+    assert r == 1;
+}
+
+test "link name inside while" {
+    let r = 0;
+    while r == 0 {
+        let p: Point;
+        p.x = 1;
+        r = p.x;
+    }
+    assert r == 1;
+}
+
+test "link name inside for" {
+    let r = 0;
+    for i in 0..1 {
+        let p: Point;
+        p.x = i + 1;
+        r = p.x;
+    }
+    assert r == 1;
+}
+
+test "link name inside match" {
+    let n = 1;
+    let r = 0;
+    match n {
+        1 => {
+            let p: Point;
+            p.x = 1;
+            r = p.x;
+        },
+        _ => {},
+    }
+    assert r == 1;
+}
+
+test "link name inside a method" {
+    let p = Point::make(1);
+    assert p.x == 1;
+}
+
+test "link name inside a lambda" {
+    let f = fn() -> int {
+        let p: Point;
+        p.x = 1;
+        return p.x;
+    };
+    assert f() == 1;
+}
