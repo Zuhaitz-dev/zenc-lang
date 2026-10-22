@@ -322,10 +322,13 @@ void analyze_lambda_captures(ParserContext *ctx, ASTNode *lambda)
     int num_local_decls = 0;
     find_declared_vars(lambda->lambda.body, &local_decls, &num_local_decls);
 
-    char **captures = xmalloc(sizeof(char *) * 32);
-    char **capture_types = xmalloc(sizeof(char *) * 32);
-    Type **captured_types_info = xmalloc(sizeof(Type *) * 32);
-    int *capture_modes = xmalloc(sizeof(int) * 32);
+    // Each capture is an explicit one or a name used in the body: that bounds the lists
+    // (+1 so a lambda that captures nothing does not ask for 0 bytes).
+    size_t max_captures = (size_t)lambda->lambda.explicit_capture_count + (size_t)num_refs + 1;
+    char **captures = xmalloc(sizeof(char *) * max_captures);
+    char **capture_types = xmalloc(sizeof(char *) * max_captures);
+    Type **captured_types_info = xmalloc(sizeof(Type *) * max_captures);
+    int *capture_modes = xmalloc(sizeof(int) * max_captures);
     int capture_count = 0;
 
     for (int i = 0; i < lambda->lambda.explicit_capture_count; i++)
