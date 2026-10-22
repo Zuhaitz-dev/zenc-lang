@@ -143,7 +143,7 @@ DEFINES += -DZC_HAS_ASTDUMP_BACKEND=$(ZC_BACKENDS)
 
 # Source files read from src-sources.txt, filtered by feature selection.
 ALL_SRCS := $(shell cat src-sources.txt)
-ZC_FILTER_LSP = $(if $(filter-out 1,$(ZC_LSP)),src/lsp/lsp_main.c src/lsp/lsp_analysis.c src/lsp/lsp_semantic.c src/lsp/lsp_index.c src/lsp/lsp_formatter.c src/lsp/lsp_project.c src/lsp/lsp_c_headers.c src/lsp/lsp_config.c src/lsp/json_rpc.c)
+ZC_FILTER_LSP = $(if $(filter-out 1,$(ZC_LSP)),src/lsp/lsp_main.c src/lsp/lsp_analysis.c src/lsp/lsp_semantic.c src/lsp/lsp_index.c src/lsp/lsp_locals.c src/lsp/lsp_formatter.c src/lsp/lsp_project.c src/lsp/lsp_c_headers.c src/lsp/lsp_config.c src/lsp/json_rpc.c)
 ZC_FILTER_REPL = $(if $(filter-out 1,$(ZC_REPL)),src/repl/% src/platform/console.c)
 ZC_FILTER_PLUGINS = $(if $(filter-out 1,$(ZC_PLUGINS)),src/plugins/% src/parser/utils/utils_plugins.c)
 ZC_FILTER_BACKENDS = $(if $(filter-out 1,$(ZC_BACKENDS)),src/codegen/codegen_backend_cpp.c src/codegen/codegen_backend_cuda.c src/codegen/codegen_backend_objc.c src/codegen/codegen_backend_json.c src/codegen/codegen_backend_lisp.c src/codegen/codegen_backend_dot.c src/codegen/codegen_backend_astdump.c)
@@ -565,8 +565,8 @@ test-lsp: $(TARGET) $(PLUGINS) zc-lsp
 # Unit tests in C of the compiler's internals (tests/unit/, with utest.h). They link
 # the compiler objects, without main.o: tests/unit/unit_main.c provides main().
 UNIT_TEST_SRCS = $(wildcard tests/unit/*.c tests/unit/*/*.c)
-# tests/unit/lsp/ also links the LSP index, which only needs the core; skipped without the LSP.
-UNIT_TEST_LSP_OBJS = $(if $(filter 1,$(ZC_LSP)),$(OBJ_DIR)/src/lsp/lsp_index.o)
+# tests/unit/lsp/ also links the LSP pieces that only need the core; skipped without the LSP.
+UNIT_TEST_LSP_OBJS = $(if $(filter 1,$(ZC_LSP)),$(OBJ_DIR)/src/lsp/lsp_index.o $(OBJ_DIR)/src/lsp/lsp_locals.o)
 UNIT_TEST_SRCS := $(if $(filter 1,$(ZC_LSP)),$(UNIT_TEST_SRCS),$(filter-out tests/unit/lsp/%,$(UNIT_TEST_SRCS)))
 
 test-unit: $(TOOL_BASE_OBJS) $(UNIT_TEST_LSP_OBJS)
