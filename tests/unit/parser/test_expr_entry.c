@@ -66,3 +66,33 @@ UTEST(lambda_captures, an_outer_lambda_takes_what_the_inner_one_captures)
     ASSERT_TRUE(captures(lambda, "k"));
     ASSERT_FALSE(captures(lambda, "y"));
 }
+
+UTEST(lambda_captures, not_its_own_loop_variable)
+{
+    ASTNode *lambda = first_lambda(parse_source("fn main() {\n"
+                                                "    let k = 7;\n"
+                                                "    let f = fn() -> int {\n"
+                                                "        let r = 0;\n"
+                                                "        for i in 0..3 { r = r + i + k; }\n"
+                                                "        return r;\n"
+                                                "    };\n"
+                                                "}\n"));
+    ASSERT_TRUE(lambda != NULL);
+    ASSERT_TRUE(captures(lambda, "k"));
+    ASSERT_FALSE(captures(lambda, "i"));
+}
+
+UTEST(lambda_captures, not_its_own_destructured_names)
+{
+    ASTNode *lambda = first_lambda(parse_source("fn main() {\n"
+                                                "    let k = 7;\n"
+                                                "    let f = fn(x: int) -> int {\n"
+                                                "        let (a, b) = (x, k);\n"
+                                                "        return a + b;\n"
+                                                "    };\n"
+                                                "}\n"));
+    ASSERT_TRUE(lambda != NULL);
+    ASSERT_TRUE(captures(lambda, "k"));
+    ASSERT_FALSE(captures(lambda, "a"));
+    ASSERT_FALSE(captures(lambda, "b"));
+}
