@@ -9,6 +9,9 @@ if [ ! -f "$ZC" ]; then
 fi
 
 TEST_DIR="tests/misra"
+# Builds write next to a real file: `zc build -o /dev/null` cannot create its temporary C file.
+OUT_DIR=$(mktemp -d)
+trap 'rm -rf "$OUT_DIR"' EXIT
 PASSED=0
 FAILED=0
 TOTAL=0
@@ -31,7 +34,7 @@ for test_file in "$TEST_DIR"/*.zc; do
     expect_pass=$(grep -c "// EXPECT: PASS" "$test_file")
     
     # Run compiler with --misra
-    output=$($ZC build "$test_file" --misra -o /dev/null 2>&1)
+    output=$($ZC build "$test_file" --misra -o "$OUT_DIR/out" 2>&1)
     exit_code=$?
     # Only the diagnostic lines count: the echoed source line carries the
     # "// EXPECT: ..." comment itself, which would always match.

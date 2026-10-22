@@ -1,0 +1,31 @@
+// A program that follows the guidelines builds end to end with --misra:
+// the generated C compiles and links.
+// EXPECT: PASS
+
+fn is_big(n: int) -> bool {
+    let big: bool = false;
+    if n > 10 {
+        big = true;
+    }
+    return big;
+}
+
+fn count_big(limit: int) -> int {
+    let total: int = 0;
+    let i: int = 0;
+    while i < limit {
+        if is_big(i) == true {
+            total = total + 1;
+        }
+        i = i + 1;
+    }
+    return total;
+}
+
+fn main() -> int {
+    let code: int = 1;
+    if count_big(15) == 4 {
+        code = 0;
+    }
+    return code;
+}
