@@ -264,8 +264,9 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 int is_brace = (lexer_peek(l).kind == TOK_LBRACE);
                 lexer_next(l);
-                bindings = xcalloc(8, sizeof(char *));  // Initial capacity
-                binding_refs = xcalloc(8, sizeof(int)); // unused but consistent
+                int binding_cap = 8;
+                bindings = xcalloc((size_t)binding_cap, sizeof(char *));
+                binding_refs = xcalloc((size_t)binding_cap, sizeof(int));
 
                 while (lexer_peek(l).kind != TOK_RPAREN && lexer_peek(l).kind != TOK_RBRACE)
                 {
@@ -281,6 +282,13 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                     {
                         zpanic_at(b, "Expected binding");
                         break;
+                    }
+
+                    if (binding_count >= binding_cap)
+                    {
+                        binding_cap *= 2;
+                        bindings = xrealloc(bindings, sizeof(char *) * (size_t)(binding_cap));
+                        binding_refs = xrealloc(binding_refs, sizeof(int) * (size_t)(binding_cap));
                     }
 
                     if (is_brace && lexer_peek(l).kind == TOK_COLON)
@@ -673,7 +681,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                         char *method_name = xmalloc(suffix.len + 1);
                         strncpy(method_name, suffix.start, suffix.len);
                         method_name[suffix.len] = 0;
-                        char *tmp = xmalloc(strlen(acc) + suffix.len + 32);
+                        char *tmp = NULL;
 
                         if (def || is_opaque_alias)
                         {
@@ -714,7 +722,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                         {
                                             zfree(acc);
                                             acc = concrete;
-                                            strcpy(tmp, acc);
+                                            tmp = acc;
                                             zfree(v_mangled);
                                             zfree(concrete_type);
                                             break;
@@ -727,7 +735,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 {
                                     zfree(acc);
                                     acc = v_mangled;
-                                    strcpy(tmp, acc);
+                                    tmp = acc;
                                 }
                             }
                             else
@@ -741,7 +749,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 {
                                     zfree(acc);
                                     acc = direct;
-                                    strcpy(tmp, acc);
+                                    tmp = acc;
                                 }
                                 else
                                 {
@@ -757,7 +765,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                         {
                                             zfree(acc);
                                             acc = concrete;
-                                            strcpy(tmp, acc);
+                                            tmp = acc;
                                             zfree(method_name);
                                             zfree(concrete_type);
                                             break;
@@ -792,7 +800,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                             {
                                                 zfree(acc);
                                                 acc = xstrdup(t_m);
-                                                strcpy(tmp, acc);
+                                                tmp = acc;
                                                 found_trait = 1;
                                                 break;
                                             }
@@ -803,7 +811,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                     {
                                         zfree(acc);
                                         acc = direct;
-                                        strcpy(tmp, acc);
+                                        tmp = acc;
                                     }
                                     else
                                     {
@@ -1005,7 +1013,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                 char *combined = merge_underscores(combined_raw);
                                 zfree(acc);
                                 acc = combined;
-                                strcpy(tmp, acc);
+                                tmp = acc;
                             }
                         }
                         zfree(method_name);

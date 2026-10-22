@@ -475,7 +475,8 @@ struct ParserContext
         char *current_func_ret_type;  ///< Return type of current function.
         Type *current_func_ret_type_info;
         char *expected_init_type;      ///< Expected type for initializer (from let declaration).
-        int loop_defer_boundary[64];   ///< Defer stack index at start of each loop (max 64).
+        int *loop_defer_boundary;      ///< Defer stack index at start of each enclosing loop.
+        int loop_defer_capacity;       ///< Allocated slots of loop_defer_boundary.
         int loop_depth;                ///< Current loop nesting depth.
         int func_defer_boundary;       ///< Defer stack index at function entry.
         int pending_closure_frees[64]; ///< Lambda IDs whose ctx needs freeing (max 64).

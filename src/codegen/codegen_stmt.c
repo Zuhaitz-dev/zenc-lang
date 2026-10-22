@@ -15,6 +15,20 @@
 #include "codegen_internal.h"
 #include "zprep_plugin.h"
 
+// Enters a loop: records where its defers start, so `break`/`continue` know how many to run.
+void codegen_loop_enter(ParserContext *ctx)
+{
+    if (ctx->cg.loop_depth >= ctx->cg.loop_defer_capacity)
+    {
+        int capacity = ctx->cg.loop_defer_capacity ? ctx->cg.loop_defer_capacity * 2 : 16;
+        ctx->cg.loop_defer_boundary =
+            xrealloc(ctx->cg.loop_defer_boundary, sizeof(int) * (size_t)capacity);
+        ctx->cg.loop_defer_capacity = capacity;
+    }
+    ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
+    ctx->cg.loop_depth++;
+}
+
 // Name of the struct with Drop that a call statement produces and discards, or NULL.
 static char *discarded_drop_type(ParserContext *ctx, ASTNode *node)
 {
@@ -91,11 +105,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "%s:;\n", node->for_stmt.loop_label);
         }
-        if (ctx->cg.loop_depth < 64)
-        {
-            ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
-        }
-        ctx->cg.loop_depth++;
+        codegen_loop_enter(ctx);
         EMIT(ctx, "for (");
         if (node->for_stmt.init)
         {
@@ -224,11 +234,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "%s:;\n", node->do_while_stmt.loop_label);
         }
-        if (ctx->cg.loop_depth < 64)
-        {
-            ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
-        }
-        ctx->cg.loop_depth++;
+        codegen_loop_enter(ctx);
         EMIT(ctx, "do ");
         if (node->do_while_stmt.loop_label)
         {
@@ -261,11 +267,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "%s:;\n", node->loop_stmt.loop_label);
         }
-        if (ctx->cg.loop_depth < 64)
-        {
-            ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
-        }
-        ctx->cg.loop_depth++;
+        codegen_loop_enter(ctx);
         EMIT(ctx, "while (1) ");
         if (node->loop_stmt.loop_label)
         {
@@ -293,11 +295,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             EMIT(ctx, "%s:;\n", node->repeat_stmt.loop_label);
         }
-        if (ctx->cg.loop_depth < 64)
-        {
-            ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
-        }
-        ctx->cg.loop_depth++;
+        codegen_loop_enter(ctx);
         EMIT(ctx, "for (int _rpt_i = 0; _rpt_i < (%s); _rpt_i++) ", node->repeat_stmt.count);
         if (node->repeat_stmt.loop_label)
         {
@@ -326,11 +324,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             EMIT(ctx, "%s:;\n", node->for_range.loop_label);
         }
         // Track loop entry for defer boundary
-        if (ctx->cg.loop_depth < 64)
-        {
-            ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
-        }
-        ctx->cg.loop_depth++;
+        codegen_loop_enter(ctx);
 
         EMIT(ctx, "for (");
         if (z_path_match_compiler(ctx->config->cc, "tcc"))

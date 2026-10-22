@@ -1,0 +1,227 @@
+// language/control-flow: test_deeply_nested_loops
+// 70 nested loops: `break` in the innermost ones must run only the defers
+// of its own loop (loop defer boundaries used to be kept for 64 loops only).
+// Generated: one `loop` per level, each left with `break`.
+
+test "break_runs_only_its_own_defers_past_64_loops" {
+    let n = 0;
+    let inner_defers = 0;
+    let outer_defers = 0;
+    loop {
+        loop {
+            loop {
+                loop {
+                    loop {
+                        loop {
+                            loop {
+                                loop {
+                                    loop {
+                                        loop {
+                                            loop {
+                                                loop {
+                                                    loop {
+                                                        loop {
+                                                            loop {
+                                                                loop {
+                                                                    loop {
+                                                                        loop {
+                                                                            loop {
+                                                                                loop {
+                                                                                    loop {
+                                                                                        loop {
+                                                                                            loop {
+                                                                                                loop {
+                                                                                                    loop {
+                                                                                                        loop {
+                                                                                                            loop {
+                                                                                                                loop {
+                                                                                                                    loop {
+                                                                                                                        loop {
+                                                                                                                            loop {
+                                                                                                                                loop {
+                                                                                                                                    loop {
+                                                                                                                                        loop {
+                                                                                                                                            loop {
+                                                                                                                                                loop {
+                                                                                                                                                    loop {
+                                                                                                                                                        loop {
+                                                                                                                                                            loop {
+                                                                                                                                                                loop {
+                                                                                                                                                                    loop {
+                                                                                                                                                                        loop {
+                                                                                                                                                                            loop {
+                                                                                                                                                                                loop {
+                                                                                                                                                                                    loop {
+                                                                                                                                                                                        loop {
+                                                                                                                                                                                            loop {
+                                                                                                                                                                                                loop {
+                                                                                                                                                                                                    loop {
+                                                                                                                                                                                                        loop {
+                                                                                                                                                                                                            loop {
+                                                                                                                                                                                                                loop {
+                                                                                                                                                                                                                    loop {
+                                                                                                                                                                                                                        loop {
+                                                                                                                                                                                                                            loop {
+                                                                                                                                                                                                                                loop {
+                                                                                                                                                                                                                                    loop {
+                                                                                                                                                                                                                                        loop {
+                                                                                                                                                                                                                                            loop {
+                                                                                                                                                                                                                                                loop {
+                                                                                                                                                                                                                                                    loop {
+                                                                                                                                                                                                                                                        loop {
+                                                                                                                                                                                                                                                            loop {
+                                                                                                                                                                                                                                                                loop {
+                                                                                                                                                                                                                                                                    loop {
+                                                                                                                                                                                                                                                                        loop {
+                                                                                                                                                                                                                                                                            loop {
+                                                                                                                                                                                                                                                                                loop {
+                                                                                                                                                                                                                                                                                    loop {
+                                                                                                                                                                                                                                                                                        defer outer_defers = outer_defers + 1;
+                                                                                                                                                                                                                                                                                        loop {
+                                                                                                                                                                                                                                                                                            defer inner_defers = inner_defers + 1;
+                                                                                                                                                                                                                                                                                            n = n + 1;
+                                                                                                                                                                                                                                                                                            assert(outer_defers == 0, "outer defer must not run before its loop ends");
+                                                                                                                                                                                                                                                                                            break;
+                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                    break;
+                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                                break;
+                                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                                            break;
+                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                        break;
+                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                    break;
+                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                break;
+                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                            break;
+                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                        break;
+                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                    break;
+                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                break;
+                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                            break;
+                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                        break;
+                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                    break;
+                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                break;
+                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                            break;
+                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                        break;
+                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                    break;
+                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                break;
+                                                                                                                                                                                                                }
+                                                                                                                                                                                                            break;
+                                                                                                                                                                                                            }
+                                                                                                                                                                                                        break;
+                                                                                                                                                                                                        }
+                                                                                                                                                                                                    break;
+                                                                                                                                                                                                    }
+                                                                                                                                                                                                break;
+                                                                                                                                                                                                }
+                                                                                                                                                                                            break;
+                                                                                                                                                                                            }
+                                                                                                                                                                                        break;
+                                                                                                                                                                                        }
+                                                                                                                                                                                    break;
+                                                                                                                                                                                    }
+                                                                                                                                                                                break;
+                                                                                                                                                                                }
+                                                                                                                                                                            break;
+                                                                                                                                                                            }
+                                                                                                                                                                        break;
+                                                                                                                                                                        }
+                                                                                                                                                                    break;
+                                                                                                                                                                    }
+                                                                                                                                                                break;
+                                                                                                                                                                }
+                                                                                                                                                            break;
+                                                                                                                                                            }
+                                                                                                                                                        break;
+                                                                                                                                                        }
+                                                                                                                                                    break;
+                                                                                                                                                    }
+                                                                                                                                                break;
+                                                                                                                                                }
+                                                                                                                                            break;
+                                                                                                                                            }
+                                                                                                                                        break;
+                                                                                                                                        }
+                                                                                                                                    break;
+                                                                                                                                    }
+                                                                                                                                break;
+                                                                                                                                }
+                                                                                                                            break;
+                                                                                                                            }
+                                                                                                                        break;
+                                                                                                                        }
+                                                                                                                    break;
+                                                                                                                    }
+                                                                                                                break;
+                                                                                                                }
+                                                                                                            break;
+                                                                                                            }
+                                                                                                        break;
+                                                                                                        }
+                                                                                                    break;
+                                                                                                    }
+                                                                                                break;
+                                                                                                }
+                                                                                            break;
+                                                                                            }
+                                                                                        break;
+                                                                                        }
+                                                                                    break;
+                                                                                    }
+                                                                                break;
+                                                                                }
+                                                                            break;
+                                                                            }
+                                                                        break;
+                                                                        }
+                                                                    break;
+                                                                    }
+                                                                break;
+                                                                }
+                                                            break;
+                                                            }
+                                                        break;
+                                                        }
+                                                    break;
+                                                    }
+                                                break;
+                                                }
+                                            break;
+                                            }
+                                        break;
+                                        }
+                                    break;
+                                    }
+                                break;
+                                }
+                            break;
+                            }
+                        break;
+                        }
+                    break;
+                    }
+                break;
+                }
+            break;
+            }
+        break;
+        }
+    break;
+    }
+    assert(n == 1, "innermost body runs once");
+    assert(inner_defers == 1, "innermost defer runs once");
+    assert(outer_defers == 1, "outer defer runs once, when its own loop ends");
+}

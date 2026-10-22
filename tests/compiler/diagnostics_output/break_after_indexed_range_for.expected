@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/break_after_indexed_range_for.zc...
+error: 'break' outside a loop
+  --> tests/compiler/diagnostics_output/break_after_indexed_range_for.zc:8:5
+   |
+8  |     break;
+   |     ^ here
+   |
+[exit 1]

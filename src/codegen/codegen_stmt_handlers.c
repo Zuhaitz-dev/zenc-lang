@@ -1064,11 +1064,7 @@ void handle_node_while(ParserContext *ctx, ASTNode *node)
     {
         EMIT(ctx, "%s:;\n", node->while_stmt.loop_label);
     }
-    if (ctx->cg.loop_depth < 64)
-    {
-        ctx->cg.loop_defer_boundary[ctx->cg.loop_depth] = ctx->cg.defer_count;
-    }
-    ctx->cg.loop_depth++;
+    codegen_loop_enter(ctx);
     EMIT(ctx, "while (");
     codegen_expression(ctx, node->while_stmt.condition);
     EMIT(ctx, ") ");

@@ -75,6 +75,9 @@ void handle_expr_call(ParserContext *ctx, ASTNode *node);
 void handle_block(ParserContext *ctx, ASTNode *node);
 void handle_reflection(ParserContext *ctx, ASTNode *node);
 
+// From codegen_stmt.c
+void codegen_loop_enter(ParserContext *ctx);
+
 // From codegen_stmt_match.c
 
 // From codegen.c
