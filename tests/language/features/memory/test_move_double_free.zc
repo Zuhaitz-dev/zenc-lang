@@ -87,3 +87,97 @@ test "partial_move_member" {
     assert(DROP_COUNT == 1, "Should drop exactly once (r)");
     assert(DROP_NULL_COUNT == 1, "Container should drop moved res (null drop)");
 }
+
+// Returning a place expression must move out of it, not make an owning copy:
+// the source and the returned value would otherwise both drop the same memory.
+struct Holder {
+    res: Resource;
+}
+
+impl Holder {
+    fn take(self) -> Resource {
+        return self.res;
+    }
+}
+
+fn take_index(p: Resource*) -> Resource {
+    return p[0];
+}
+
+struct Store {
+    items: Resource*;
+}
+
+impl Store {
+    fn take(self, idx: usize) -> Resource {
+        return self.items[idx];
+    }
+}
+
+test "return_member_moves" {
+    DROP_COUNT = 0;
+    DROP_NULL_COUNT = 0;
+
+    {
+        let h = Holder { res: Resource { data: malloc(10), id: 4 } };
+        let r = h.take();
+    }
+
+    assert(DROP_COUNT == 1, "Should drop exactly once (returned member)");
+    assert(DROP_NULL_COUNT == 1, "Source member should be zeroed after the move");
+}
+
+test "return_index_moves" {
+    DROP_COUNT = 0;
+    DROP_NULL_COUNT = 0;
+
+    {
+        let p = alloc<Resource>();
+        p[0] = Resource { data: malloc(10), id: 5 };
+        let r = take_index(p);
+        dealloc(p);
+    }
+
+    assert(DROP_COUNT == 1, "Should drop exactly once (returned element)");
+}
+
+test "return_index_moves_through_self" {
+    DROP_COUNT = 0;
+    DROP_NULL_COUNT = 0;
+
+    {
+        let s = Store { items: alloc<Resource>() };
+        s.items[0] = Resource { data: malloc(10), id: 6 };
+        let r = s.take(0);
+        dealloc(s.items);
+    }
+
+    assert(DROP_COUNT == 1, "Should drop exactly once (element returned via self)");
+}
+
+let INDEX_CALLS = 0;
+
+fn next_index() -> usize {
+    INDEX_CALLS = INDEX_CALLS + 1;
+    return 0;
+}
+
+fn take_at(p: Resource*) -> Resource {
+    return p[next_index()];
+}
+
+test "return_index_evaluates_index_once" {
+    DROP_COUNT = 0;
+    DROP_NULL_COUNT = 0;
+    INDEX_CALLS = 0;
+
+    {
+        let p = alloc<Resource>();
+        p[0] = Resource { data: malloc(10), id: 7 };
+        let r = take_at(p);
+        dealloc(p);
+    }
+
+    assert(INDEX_CALLS == 1, "The index expression should be evaluated once");
+    assert(DROP_COUNT == 1, "Should drop exactly once (element returned via index)");
+}

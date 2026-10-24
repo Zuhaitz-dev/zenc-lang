@@ -15,6 +15,30 @@
 #include "codegen_internal.h"
 #include "zprep_plugin.h"
 
+// Whether `node` names a stable storage location (a variable, a field of one, an element of
+// one, or a dereference). Only these can be moved out of and then zeroed: a field or index
+// of a temporary has no address to clear and would be evaluated twice.
+static int is_place_expression(ASTNode *node, int depth)
+{
+    if (!node || depth > 32)
+    {
+        return 0;
+    }
+    switch (node->kind)
+    {
+    case NODE_EXPR_VAR:
+        return 1;
+    case NODE_EXPR_MEMBER:
+        return is_place_expression(node->member.target, depth + 1);
+    case NODE_EXPR_INDEX:
+        return is_place_expression(node->index.array, depth + 1);
+    case NODE_EXPR_UNARY:
+        return strcmp(node->unary.op, "*") == 0;
+    default:
+        return 0;
+    }
+}
+
 // Enters a loop: emits its label, if any, and records where its defers start, so `break` and
 // `continue` know how many to run.
 void codegen_loop_enter(ParserContext *ctx, const char *label)
@@ -590,7 +614,11 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             handled = 1;
         }
 
-        if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR)
+        // Returning a place expression (`x`, `self.field`, `ptr[i]`, `*p`) of
+        // an owning type moves the value out of that place. Without this the
+        // caller receives a bitwise copy while the source keeps ownership, so
+        // both are dropped: the element is freed twice.
+        if (node->ret.value && is_place_expression(node->ret.value, 0))
         {
             char *tname = infer_type(ctx, node->ret.value);
             if (tname)
@@ -613,32 +641,50 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                         EMIT(ctx, "return ({ ");
                     }
 
-                    if (z_path_match_compiler(ctx->config->cc, "tcc"))
+                    int ret_is_self = node->ret.value->kind == NODE_EXPR_VAR &&
+                                      ctx->self_is_pointer &&
+                                      strcmp(node->ret.value->var_ref.name, "self") == 0;
+                    if (node->ret.value->kind != NODE_EXPR_VAR)
                     {
-                        EMIT(ctx, "__typeof__(");
+                        // Member, index or dereference: bind the place once (an
+                        // index may have side effects), copy from it, then zero it
+                        // so its owner does not drop the value a second time.
+                        EMIT(ctx, "__typeof__(&(");
                         codegen_expression(ctx, node->ret.value);
-                        EMIT(ctx, ")");
+                        EMIT(ctx, ")) _z_ret_place = &(");
+                        codegen_expression(ctx, node->ret.value);
+                        EMIT(ctx, "); ZC_AUTO_INIT(_z_ret_mv, *_z_ret_place); ");
+                        EMIT(ctx, "memset(_z_ret_place, 0, sizeof(_z_ret_mv)); ");
                     }
                     else
                     {
-                        EMIT(ctx, "ZC_AUTO");
-                    }
-                    EMIT(ctx, " _z_ret_mv = ");
-                    if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                    {
-                        EMIT(ctx, "*");
-                    }
-                    codegen_expression(ctx, node->ret.value);
-                    EMIT(ctx, "; memset(&");
-                    if (ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
-                    {
-                        EMIT(ctx, "*");
-                    }
-                    codegen_expression(ctx, node->ret.value);
-                    EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
-                    if (strcmp(node->ret.value->var_ref.name, "self") != 0)
-                    {
-                        EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
+                        if (z_path_match_compiler(ctx->config->cc, "tcc"))
+                        {
+                            EMIT(ctx, "__typeof__(");
+                            codegen_expression(ctx, node->ret.value);
+                            EMIT(ctx, ")");
+                        }
+                        else
+                        {
+                            EMIT(ctx, "ZC_AUTO");
+                        }
+                        EMIT(ctx, " _z_ret_mv = ");
+                        if (ret_is_self)
+                        {
+                            EMIT(ctx, "*");
+                        }
+                        codegen_expression(ctx, node->ret.value);
+                        EMIT(ctx, "; memset(&");
+                        if (ret_is_self)
+                        {
+                            EMIT(ctx, "*");
+                        }
+                        codegen_expression(ctx, node->ret.value);
+                        EMIT(ctx, ", 0, sizeof(_z_ret_mv)); ");
+                        if (!ret_is_self)
+                        {
+                            EMIT(ctx, "__z_drop_flag_%s = 0; ", node->ret.value->var_ref.name);
+                        }
                     }
                     emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
                     EMIT(ctx, "_z_ret_mv; });\n");
