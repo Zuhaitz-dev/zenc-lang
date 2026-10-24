@@ -53,7 +53,7 @@ ASTNode *lsp_find_local_decl(ASTNode *func, const char *name)
 static int is_loop(NodeType kind)
 {
     return kind == NODE_WHILE || kind == NODE_FOR || kind == NODE_FOR_RANGE || kind == NODE_LOOP ||
-           kind == NODE_REPEAT || kind == NODE_DO_WHILE;
+           kind == NODE_LOOP;
 }
 
 static int has_loop_before(ASTNode *node, int line)

@@ -42,7 +42,7 @@
 
 ## Panoramica
 
-**Zen C** è un linguaggio di programmazione di sistemi moderno che genera codice `GNU C`/`C11`. Fornisce allo sviluppatore un ricco set di funzionalità, tra cui inferenza di tipo, pattern matching, generici, tratti, async/await, e gestione manuale della memoria con funzionalità RAII, mantenendo al contempo una compatibilità al 100% con l'ABI C
+**Zen C** è un linguaggio di programmazione di sistemi moderno che genera codice `GNU C`/`C11`. Fornisce allo sviluppatore un ricco set di funzionalità, tra cui inferenza di tipo, pattern matching, generici, tratti e gestione manuale della memoria con funzionalità RAII, mantenendo al contempo una compatibilità al 100% con l'ABI C
 
 ## Community
 

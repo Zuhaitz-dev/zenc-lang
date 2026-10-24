@@ -169,21 +169,9 @@ ASTChildren ast_children(ASTNode *node)
         add_child(&c, &node->if_stmt.then_body);
         add_child(&c, &node->if_stmt.else_body);
         break;
-    case NODE_UNLESS:
-        add_child(&c, &node->unless_stmt.condition);
-        add_child(&c, &node->unless_stmt.body);
-        break;
-    case NODE_GUARD:
-        add_child(&c, &node->guard_stmt.condition);
-        add_child(&c, &node->guard_stmt.body);
-        break;
     case NODE_WHILE:
         add_child(&c, &node->while_stmt.condition);
         add_child(&c, &node->while_stmt.body);
-        break;
-    case NODE_DO_WHILE:
-        add_child(&c, &node->do_while_stmt.body);
-        add_child(&c, &node->do_while_stmt.condition);
         break;
     case NODE_FOR:
         add_child(&c, &node->for_stmt.init);
@@ -198,9 +186,6 @@ ASTChildren ast_children(ASTNode *node)
         break;
     case NODE_LOOP:
         add_child(&c, &node->loop_stmt.body);
-        break;
-    case NODE_REPEAT:
-        add_child(&c, &node->repeat_stmt.body);
         break;
     case NODE_MATCH:
         add_child(&c, &node->match_stmt.expr);
@@ -230,7 +215,6 @@ ASTChildren ast_children(ASTNode *node)
         add_child(&c, &node->binary.right);
         break;
     case NODE_EXPR_UNARY:
-    case NODE_AWAIT:
         add_child(&c, &node->unary.operand);
         break;
     case NODE_EXPR_CALL:
@@ -1369,14 +1353,6 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             FuncSig *sig = find_func(ctx, node->call.callee->var_ref.name);
             if (sig)
             {
-                if (sig->is_async)
-                {
-                    if (sig->ret_type)
-                    {
-                        return type_to_c_string(sig->ret_type, ctx->config->misra_mode);
-                    }
-                    return "void";
-                }
                 if (sig->ret_type)
                 {
                     return type_to_c_string(sig->ret_type, ctx->config->misra_mode);
@@ -1680,44 +1656,6 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
             }
         }
         return infer_type(ctx, node->unary.operand);
-    }
-
-    if (node->kind == NODE_AWAIT)
-    {
-        // Infer underlying type T from await Async<T>
-        // Check operand type for Generics <T>
-        char *op_type = infer_type(ctx, node->unary.operand);
-        if (op_type)
-        {
-            char *start = (char *)strchr(op_type, '<');
-            if (start)
-            {
-                start++; // Skip <
-                char *end = (char *)strrchr(op_type, '>');
-                if (end && end > start)
-                {
-                    ptrdiff_t len = end - start;
-                    char *extracted = xmalloc((size_t)(len + 1));
-                    strncpy(extracted, start, (size_t)(len));
-                    extracted[len] = 0;
-                    return extracted;
-                }
-            }
-        }
-
-        // Fallback: If it's a direct call await foo(), we can lookup signature even if generic
-        // syntax wasn't used
-        if (node->unary.operand->kind == NODE_EXPR_CALL &&
-            node->unary.operand->call.callee->kind == NODE_EXPR_VAR)
-        {
-            FuncSig *sig = find_func(ctx, node->unary.operand->call.callee->var_ref.name);
-            if (sig && sig->ret_type)
-            {
-                return type_to_c_string(sig->ret_type, ctx->config->misra_mode);
-            }
-        }
-
-        return "void*";
     }
 
     if (node->kind == NODE_EXPR_CAST)

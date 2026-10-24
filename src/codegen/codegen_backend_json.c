@@ -35,12 +35,6 @@ static const char *node_type_name(int type)
         return "FOR_RANGE";
     case NODE_LOOP:
         return "LOOP";
-    case NODE_REPEAT:
-        return "REPEAT";
-    case NODE_UNLESS:
-        return "UNLESS";
-    case NODE_GUARD:
-        return "GUARD";
     case NODE_BREAK:
         return "BREAK";
     case NODE_CONTINUE:
@@ -115,16 +109,12 @@ static const char *node_type_name(int type)
         return "PLUGIN";
     case NODE_TERNARY:
         return "TERNARY";
-    case NODE_DO_WHILE:
-        return "DO_WHILE";
     case NODE_TYPEOF:
         return "TYPEOF";
     case NODE_TRY:
         return "TRY";
     case NODE_REFLECTION:
         return "REFLECTION";
-    case NODE_AWAIT:
-        return "AWAIT";
     case NODE_REPL_PRINT:
         return "REPL_PRINT";
     case NODE_CUDA_LAUNCH:

@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_do_while_removed.zc...
+error: 'do ... while' was removed; use 'while'
+  --> tests/compiler/diagnostics_output/err_do_while_removed.zc:4:5
+   |
+4  |     do {
+   |     ^ here
+   |
+[exit 1]

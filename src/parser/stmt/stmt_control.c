@@ -94,64 +94,6 @@ ASTNode *parse_loop(ParserContext *ctx, Lexer *l)
     return n;
 }
 
-ASTNode *parse_repeat(ParserContext *ctx, Lexer *l)
-{
-    Token t = lexer_next(l);
-    zwarn_at(t, "repeat is deprecated. Use 'for _ in 0..N' instead.");
-    char *c = rewrite_expr_methods(ctx, parse_condition_raw(ctx, l));
-    ASTNode *b = parse_block(ctx, l);
-    ASTNode *n = ast_create(NODE_REPEAT);
-    n->token = t;
-    n->line = t.line;
-    n->repeat_stmt.count = c;
-    n->repeat_stmt.body = b;
-    return n;
-}
-
-ASTNode *parse_unless(ParserContext *ctx, Lexer *l)
-{
-    Token t = lexer_next(l);
-    ASTNode *cond = parse_expression(ctx, l);
-    ASTNode *body = parse_block(ctx, l);
-    ASTNode *n = ast_create(NODE_UNLESS);
-    n->token = t;
-    n->line = t.line;
-    n->unless_stmt.condition = cond;
-    n->unless_stmt.body = body;
-    return n;
-}
-
-ASTNode *parse_guard(ParserContext *ctx, Lexer *l)
-{
-    Token tk = lexer_next(l);
-
-    ASTNode *cond = parse_expression(ctx, l);
-
-    Token t = lexer_peek(l);
-    if (t.kind != TOK_IDENT || strncmp(t.start, "else", 4) != 0)
-    {
-        zpanic_at(t, "Expected 'else' after guard condition");
-        return NULL;
-    }
-    lexer_next(l);
-
-    ASTNode *body;
-    if (lexer_peek(l).kind == TOK_LBRACE)
-    {
-        body = parse_block(ctx, l);
-    }
-    else
-    {
-        body = parse_statement(ctx, l);
-    }
-
-    ASTNode *n = ast_create(NODE_GUARD);
-    n->token = tk;
-    n->guard_stmt.condition = cond;
-    n->guard_stmt.body = body;
-    return n;
-}
-
 ASTNode *parse_if(ParserContext *ctx, Lexer *l)
 {
     Token if_token = lexer_next(l);

@@ -23,11 +23,11 @@ static int definition_line_at(LSPIndex *index, int line, int col)
     return r->def_line;
 }
 
-UTEST(lsp_index, reference_in_an_unless)
+UTEST(lsp_index, reference_in_an_if)
 {
     LSPIndex *index = index_source("fn main() {\n"
                                    "    let v = 5;\n"
-                                   "    unless v > 10 {\n"
+                                   "    if !(v > 10) {\n"
                                    "        let u = v;\n"
                                    "    }\n"
                                    "}\n");
@@ -54,11 +54,11 @@ UTEST(lsp_index, reference_in_an_array_literal)
     ASSERT_EQ(1, definition_line_at(index, 2, 13));
 }
 
-UTEST(lsp_index, reference_in_a_repeat)
+UTEST(lsp_index, reference_in_a_for_range)
 {
     LSPIndex *index = index_source("fn main() {\n"
                                    "    let v = 5;\n"
-                                   "    repeat 2 {\n"
+                                   "    for _ in 0..2 {\n"
                                    "        let c = v;\n"
                                    "    }\n"
                                    "}\n");
@@ -74,13 +74,13 @@ UTEST(lsp_index, reference_in_a_lambda)
     ASSERT_EQ(1, definition_line_at(index, 2, 43));
 }
 
-UTEST(lsp_index, reference_in_a_do_while)
+UTEST(lsp_index, reference_in_a_while)
 {
     LSPIndex *index = index_source("fn main() {\n"
                                    "    let v = 5;\n"
-                                   "    do {\n"
+                                   "    while 0 < 1 {\n"
                                    "        let d = v;\n"
-                                   "    } while 0;\n"
+                                   "    }\n"
                                    "}\n");
     ASSERT_EQ(1, definition_line_at(index, 3, 16));
 }

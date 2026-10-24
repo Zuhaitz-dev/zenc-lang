@@ -652,60 +652,6 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         // Check the deferred statement
         check_node(tc, node->defer_stmt.stmt, depth + 1);
         break;
-    case NODE_GUARD:
-        // Guard clause: if !condition return
-        {
-            int old_stmt_ctx = tc->is_stmt_context;
-            tc->is_stmt_context = 0;
-            check_node(tc, node->guard_stmt.condition, depth + 1);
-            tc->is_stmt_context = old_stmt_ctx;
-        }
-        if (node->guard_stmt.condition && node->guard_stmt.condition->type_info)
-        {
-            Type *cond_type = resolve_alias(node->guard_stmt.condition->type_info);
-            if (tc->pctx->config->misra_mode)
-            {
-                misra_check_condition_boolean(tc->pctx, node->guard_stmt.condition->type_info,
-                                              node->guard_stmt.condition->token);
-            }
-            else if (cond_type->kind != TYPE_BOOL && !is_integer_type(cond_type) &&
-                     cond_type->kind != TYPE_POINTER && cond_type->kind != TYPE_STRING)
-            {
-                const char *hints[] = {"Guard conditions must be boolean, integer, or pointer",
-                                       NULL};
-                tc_error_with_hints(tc, node->guard_stmt.condition->token,
-                                    "Condition must be a truthy type", hints);
-            }
-        }
-        check_node(tc, node->guard_stmt.body, depth + 1);
-        break;
-    case NODE_UNLESS:
-        // Unless is like if !condition
-        {
-            int old_stmt_ctx = tc->is_stmt_context;
-            tc->is_stmt_context = 0;
-            check_node(tc, node->unless_stmt.condition, depth + 1);
-            tc->is_stmt_context = old_stmt_ctx;
-        }
-        if (node->unless_stmt.condition && node->unless_stmt.condition->type_info)
-        {
-            Type *cond_type = resolve_alias(node->unless_stmt.condition->type_info);
-            if (tc->pctx->config->misra_mode)
-            {
-                misra_check_condition_boolean(tc->pctx, node->unless_stmt.condition->type_info,
-                                              node->unless_stmt.condition->token);
-            }
-            else if (cond_type->kind != TYPE_BOOL && !is_integer_type(cond_type) &&
-                     cond_type->kind != TYPE_POINTER && cond_type->kind != TYPE_STRING)
-            {
-                const char *hints[] = {"Unless conditions must be boolean, integer, or pointer",
-                                       NULL};
-                tc_error_with_hints(tc, node->unless_stmt.condition->token,
-                                    "Condition must be a truthy type", hints);
-            }
-        }
-        check_node(tc, node->unless_stmt.body, depth + 1);
-        break;
     case NODE_EXPECT:
     case NODE_ASSERT:
         // Check assert/expect condition
@@ -824,7 +770,6 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         check_struct_init(tc, node, depth + 1);
         break;
     case NODE_LOOP:
-    case NODE_REPEAT:
         check_loop_passes(tc, node, depth + 1);
         break;
     case NODE_TERNARY:
@@ -964,9 +909,6 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         {
             check_node(tc, node->destruct.init_expr, depth + 1);
         }
-        break;
-    case NODE_DO_WHILE:
-        check_loop_passes(tc, node, depth + 1);
         break;
     case NODE_BREAK:
         if (tc->loop_break_count > 0)

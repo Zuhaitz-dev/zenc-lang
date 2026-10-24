@@ -2,7 +2,6 @@
 // EXPECT: MISRA Rule 5.1
 // EXPECT: MISRA Rule 5.1
 // EXPECT: MISRA Rule 5.1
-// EXPECT: MISRA Rule 5.1
 
 // ============================================================================
 // VIOLATION SECTION
@@ -20,16 +19,13 @@ impl S {
     fn long_method_name_that_should_collide_A(self) { self.x = 1; }
     fn long_method_name_that_should_collide_B(self) { self.x = 2; }
 
-    // 3. Async methods collision
-    async fn long_async_method_name_that_should_collide_A(self) { self.x = 3; }
-    async fn long_async_method_name_that_should_collide_B(self) { self.x = 4; }
 }
 
 trait Action {
     fn execute(self);
 }
 
-// 4. Trait implementations collision
+// 3. Trait implementations collision
 trait CollisionTrait {
     fn long_trait_method_name_that_should_collide_A(self);
 }
@@ -50,13 +46,6 @@ fn very_long_function_name_that_is_now_compliant_A() {}
 @link_name("distinct_global_2")
 fn very_long_function_name_that_is_now_compliant_B() {}
 
-impl S {
-    @link_name("distinct_async_impl")
-    async fn very_long_async_method_name_that_is_now_compliant(self) {
-        self.x = 5;
-    }
-}
-
 impl Action for S {
     @link_name("distinct_trait_impl")
     fn execute(self) { self.x = 6; }
@@ -67,6 +56,5 @@ fn main() {
 
     // Compliance cases are reachable and link correctly
     very_long_function_name_that_is_now_compliant_A();
-    s.very_long_async_method_name_that_is_now_compliant();
     s.execute();
 }

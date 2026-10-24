@@ -213,54 +213,33 @@ void emit_func_signature(ParserContext *ctx, ASTNode *func, const char *name_ove
     }
 
     // Return type
-    if (func->func.is_async)
+    char *ret_str;
+    if (func->func.ret_type_info)
     {
-        // Async functions use _impl_ for the actual implementation;
-        // this signature is for prototype declarations.
-        if (func->func.ret_type)
-        {
-            EMIT(ctx, "%s ", func->func.ret_type);
-        }
-        else
-        {
-            EMIT(ctx, "void ");
-        }
+        ret_str = type_to_c_string(func->func.ret_type_info, ctx->config->misra_mode);
+    }
+    else if (func->func.ret_type)
+    {
+        ret_str = xstrdup(func->func.ret_type);
     }
     else
     {
-        char *ret_str;
-        if (func->func.ret_type_info)
-        {
-            ret_str = type_to_c_string(func->func.ret_type_info, ctx->config->misra_mode);
-        }
-        else if (func->func.ret_type)
-        {
-            ret_str = xstrdup(func->func.ret_type);
-        }
-        else
-        {
-            ret_str = xstrdup("void");
-        }
-
-        char *fn_ptr = (char *)strstr(ret_str, "(*)");
-
-        if (fn_ptr)
-        {
-            ptrdiff_t prefix_len = fn_ptr - ret_str + 2; // Include "(*"
-            EMIT(ctx, "%.*s%s(", (int)prefix_len, ret_str, final_name);
-            ret_suffix = xstrdup(fn_ptr + 2);
-        }
-        else
-        {
-            EMIT(ctx, "%s %s(", ret_str, final_name);
-        }
-        zfree(ret_str);
+        ret_str = xstrdup("void");
     }
 
-    if (func->func.is_async)
+    char *fn_ptr = (char *)strstr(ret_str, "(*)");
+
+    if (fn_ptr)
     {
-        EMIT(ctx, "%s(", final_name);
+        ptrdiff_t prefix_len = fn_ptr - ret_str + 2; // Include "(*"
+        EMIT(ctx, "%.*s%s(", (int)prefix_len, ret_str, final_name);
+        ret_suffix = xstrdup(fn_ptr + 2);
     }
+    else
+    {
+        EMIT(ctx, "%s %s(", ret_str, final_name);
+    }
+    zfree(ret_str);
 
     // Args
     if (func->func.count == 0 && !func->func.is_varargs)
@@ -516,71 +495,4 @@ int is_simple_enum(ParserContext *ctx, const char *enum_name)
         v = v->next;
     }
     return 1;
-}
-
-void handle_node_await_internal(ParserContext *ctx, ASTNode *node)
-{
-    // Determine the function name from the awaited expression
-    ASTNode *operand = node->unary.operand;
-    const char *fname = NULL;
-    if (operand && operand->kind == NODE_EXPR_CALL && operand->call.callee)
-    {
-        if (operand->call.callee->kind == NODE_EXPR_VAR)
-        {
-            fname = operand->call.callee->var_ref.name;
-        }
-    }
-
-    if (!fname)
-    {
-        // Fallback: use infer_type result as the return type
-        char *inf = infer_type(ctx, node);
-        EMIT(ctx, "({ %s _r = ", inf ? inf : "void");
-        codegen_expression(ctx, operand);
-        EMIT(ctx, "; _r; })");
-        zfree(inf);
-        return;
-    }
-
-    // Get the return type for the get function
-    char *ret_type = "void";
-    if (node->type_info)
-    {
-        char *t = type_to_c_string(node->type_info, ctx->config->misra_mode);
-        if (t && strcmp(t, "void") != 0)
-        {
-            ret_type = t;
-        }
-    }
-    else if (node->resolved_type)
-    {
-        ret_type = node->resolved_type;
-    }
-
-    // Generate: ({ struct fname_Future _f; fname_init(&_f, args...);
-    //             while (!fname_poll(&_f)); fname_get(&_f); })
-    EMIT(ctx, "({ struct %s_Future _f; ", fname);
-    EMIT(ctx, "%s_init(&_f", fname);
-
-    // Extract arguments from the call expression
-    if (operand->kind == NODE_EXPR_CALL)
-    {
-        ASTNode *arg = operand->call.args;
-        while (arg)
-        {
-            EMIT(ctx, ", ");
-            codegen_expression(ctx, arg);
-            arg = arg->next;
-        }
-    }
-
-    EMIT(ctx, "); while (!%s_poll(&_f)); ", fname);
-    if (strcmp(ret_type, "void") != 0 && strcmp(ret_type, "void*") != 0)
-    {
-        EMIT(ctx, "%s_get(&_f); })", fname);
-    }
-    else
-    {
-        EMIT(ctx, " })");
-    }
 }

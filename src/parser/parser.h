@@ -106,7 +106,6 @@ typedef struct FuncSig
     Type **arg_types;     ///< Argument types.
     Type *ret_type;       ///< Return type.
     int is_varargs;       ///< 1 if variadic.
-    int is_async;         ///< 1 if async.
     int required;         ///< 1 if return value must be used.
     int is_pure;          ///< 1 if marked @pure.
     char *link_name;      ///< Overriding C identifier (from @link_name).
@@ -462,13 +461,11 @@ struct ParserContext
         FILE *hoist_out;    ///< File stream for hoisting code (e.g. from plugins).
         int skip_preamble;  ///< If 1, codegen won't emit standard preamble (includes etc).
         int is_repl;        ///< 1 if running in REPL mode.
-        int has_async;      ///< 1 if async/await features are used in the program.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
 
         ASTNode *global_user_structs; ///< List of user defined structs.
         char *current_impl_type;      ///< Type currently being implemented (in impl block).
         int tmp_counter;              ///< Counter for temporary variables.
-        int in_async_body;            ///< 1 if currently generating async poll body.
         ASTNode *defer_stack[1024];   ///< Stack of deferred nodes (max 1024).
         int defer_count;              ///< Counter for defer statements in current scope.
         ASTNode *current_lambda;      ///< Current lambda being generated.
@@ -722,7 +719,7 @@ const char *normalize_type_name(const char *name);
  * @brief Registers a function.
  */
 void register_func(ParserContext *ctx, Scope *scope, const char *name, int count, char **defaults,
-                   Type **arg_types, Type *ret_type, int is_varargs, int is_async, int is_pure,
+                   Type **arg_types, Type *ret_type, int is_varargs, int is_pure,
                    const char *link_name, Token decl_token, int is_export);
 
 /**
@@ -860,8 +857,8 @@ ASTNode *parse_expect(ParserContext *ctx, Lexer *l);
 ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tk);
 char *token_get_string_content(Token t);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
-ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_async, int is_extern,
-                        const char *link_name, int is_export);
+ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
+                        int is_export);
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
 void parse_pending_bodies(ParserContext *ctx);
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_packed, int align,
@@ -940,9 +937,6 @@ void instantiate_generic_multi(ParserContext *ctx, const char *name, char **args
 // stmt/ declarations
 ASTNode *parse_match(ParserContext *ctx, Lexer *l);
 ASTNode *parse_loop(ParserContext *ctx, Lexer *l);
-ASTNode *parse_repeat(ParserContext *ctx, Lexer *l);
-ASTNode *parse_unless(ParserContext *ctx, Lexer *l);
-ASTNode *parse_guard(ParserContext *ctx, Lexer *l);
 ASTNode *parse_defer(ParserContext *ctx, Lexer *l);
 ASTNode *parse_asm(ParserContext *ctx, Lexer *l);
 ASTNode *parse_if(ParserContext *ctx, Lexer *l);

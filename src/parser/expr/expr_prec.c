@@ -584,129 +584,12 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
         }
     }
 
-    // --- PREFIX: await expression ---
-    if (t.kind == TOK_AWAIT)
+    // --- PREFIX: await (removed) ---
+    if (t.kind == TOK_IDENT && t.len == 5 && strncmp(t.start, "await", 5) == 0)
     {
-        lexer_next(l); // consume await
-        ASTNode *operand = parse_expr_prec(ctx, l, PREC_UNARY);
-
-        lhs = ast_create(NODE_AWAIT);
-        lhs->unary.operand = operand;
-        // Type inference: await Async<T> yields T
-        // If operand is a call to an async function, look up its ret_type (not
-        // Async)
-        if (operand->kind == NODE_EXPR_CALL && operand->call.callee->kind == NODE_EXPR_VAR)
-        {
-            FuncSig *sig = find_func(ctx, operand->call.callee->var_ref.name);
-            if (sig && sig->is_async && sig->ret_type)
-            {
-                lhs->type_info = sig->ret_type;
-                lhs->resolved_type = type_to_string(sig->ret_type);
-            }
-            else if (sig && !sig->is_async)
-            {
-                // Not an async function - shouldn't await it
-                lhs->type_info = type_new(TYPE_VOID);
-                lhs->resolved_type = xstrdup("void");
-            }
-            else
-            {
-                lhs->type_info = type_new_ptr(type_new(TYPE_VOID));
-                lhs->resolved_type = xstrdup("void*");
-            }
-        }
-        else
-        {
-            // Awaiting a variable - look up its type and extract T from Async<T>
-            if (operand->kind == NODE_EXPR_VAR)
-            {
-                ZenSymbol *sym = find_symbol_entry(ctx, operand->var_ref.name);
-                if (sym)
-                {
-                    char *var_type = sym->type_name;
-                    if (!var_type && sym->type_info)
-                    {
-                        var_type = type_to_string(sym->type_info);
-                    }
-                    if (var_type)
-                    {
-                        // Extract T from Async<T>
-                        char *start = (char *)strchr(var_type, '<');
-                        if (start)
-                        {
-                            start++; // Skip <
-                            char *end = (char *)strrchr(var_type, '>');
-                            if (end && end > start)
-                            {
-                                ptrdiff_t len = end - start;
-                                char *inner_type = xmalloc((size_t)(len + 1));
-                                strncpy(inner_type, start, (size_t)(len));
-                                inner_type[len] = 0;
-                                lhs->resolved_type = inner_type;
-                                // Try to create proper type_info
-                                if (is_primitive_type_name(inner_type))
-                                {
-                                    if (strcmp(inner_type, "string") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_STRING);
-                                    }
-                                    else if (strcmp(inner_type, "int") == 0 ||
-                                             strcmp(inner_type, "i32") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_INT);
-                                    }
-                                    else if (strcmp(inner_type, "bool") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_BOOL);
-                                    }
-                                    else if (strcmp(inner_type, "float") == 0 ||
-                                             strcmp(inner_type, "f32") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_F32);
-                                    }
-                                    else if (strcmp(inner_type, "double") == 0 ||
-                                             strcmp(inner_type, "f64") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_F64);
-                                    }
-                                    else if (strcmp(inner_type, "char") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_CHAR);
-                                    }
-                                    else if (strcmp(inner_type, "void") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_VOID);
-                                    }
-                                    else if (strcmp(inner_type, "usize") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_USIZE);
-                                    }
-                                    else if (strcmp(inner_type, "isize") == 0)
-                                    {
-                                        lhs->type_info = type_new(TYPE_ISIZE);
-                                    }
-                                    else
-                                    {
-                                        lhs->type_info = type_new(TYPE_INT);
-                                    }
-                                }
-                                else
-                                {
-                                    lhs->type_info = type_new(TYPE_STRUCT);
-                                    lhs->type_info->name = xstrdup(inner_type);
-                                }
-                                goto await_done;
-                            }
-                        }
-                    }
-                }
-            }
-            // Fallback to void* if we couldn't determine the type
-            lhs->type_info = type_new_ptr(type_new(TYPE_VOID));
-            lhs->resolved_type = xstrdup("void*");
-        await_done:;
-        }
-
+        lexer_next(l);
+        zerror_at(t, "'await' was removed; async/await is no longer supported");
+        lhs = parse_expr_prec(ctx, l, PREC_UNARY);
         goto after_unary;
     }
 
@@ -1142,8 +1025,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             int is_ternary = 0;
             if (next.kind == TOK_INT || next.kind == TOK_FLOAT || next.kind == TOK_STRING ||
                 next.kind == TOK_IDENT || next.kind == TOK_LPAREN || next.kind == TOK_LBRACE ||
-                next.kind == TOK_SIZEOF || next.kind == TOK_DEFER || next.kind == TOK_AUTOFREE ||
-                next.kind == TOK_FSTRING || next.kind == TOK_CHAR)
+                next.kind == TOK_SIZEOF || next.kind == TOK_DEFER || next.kind == TOK_FSTRING ||
+                next.kind == TOK_CHAR)
             {
                 is_ternary = 1;
             }

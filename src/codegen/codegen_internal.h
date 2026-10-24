@@ -34,8 +34,6 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node);
 void handle_node_const(ParserContext *ctx, ASTNode *node);
 void handle_node_field(ParserContext *ctx, ASTNode *node);
 void handle_node_if(ParserContext *ctx, ASTNode *node);
-void handle_node_unless(ParserContext *ctx, ASTNode *node);
-void handle_node_guard(ParserContext *ctx, ASTNode *node);
 void handle_node_while(ParserContext *ctx, ASTNode *node);
 
 // From codegen_expr_core.c
@@ -50,7 +48,6 @@ void handle_raw_stmt(ParserContext *ctx, ASTNode *node);
 void handle_ast_comment(ParserContext *ctx, ASTNode *node);
 void handle_erroneous(ParserContext *ctx, ASTNode *node);
 void handle_ternary(ParserContext *ctx, ASTNode *node);
-void handle_await(ParserContext *ctx, ASTNode *node);
 void handle_va_start(ParserContext *ctx, ASTNode *node);
 void handle_va_end(ParserContext *ctx, ASTNode *node);
 void handle_va_copy(ParserContext *ctx, ASTNode *node);

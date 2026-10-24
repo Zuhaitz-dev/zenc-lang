@@ -15,11 +15,11 @@ done_search:
     
     assert result == 3;
     
-    // Test do-while
+    // Test while
     let x = 0;
-    do {
+    while x < 3 {
         x++;
-    } while x < 3;
+    }
     
     assert x == 3;
     

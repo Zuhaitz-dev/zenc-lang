@@ -1,0 +1,6 @@
+// ARGS: build
+fn main() {
+    repeat 3 {
+        println "no";
+    }
+}

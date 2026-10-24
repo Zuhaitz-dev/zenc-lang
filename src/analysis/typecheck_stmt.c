@@ -176,10 +176,6 @@ static ASTNode *loop_body(ASTNode *loop)
         return loop->for_stmt.body;
     case NODE_FOR_RANGE:
         return loop->for_range.body;
-    case NODE_REPEAT:
-        return loop->repeat_stmt.body;
-    case NODE_DO_WHILE:
-        return loop->do_while_stmt.body;
     default:
         return NULL;
     }
@@ -231,11 +227,6 @@ static int stmt_has_exit_break(ASTNode *node, const char *loop_label, int nested
     case NODE_MATCH_CASE:
         return stmt_has_exit_break(node->match_case.body, loop_label, nested);
 
-    case NODE_GUARD:
-        return stmt_has_exit_break(node->guard_stmt.body, loop_label, nested);
-    case NODE_UNLESS:
-        return stmt_has_exit_break(node->unless_stmt.body, loop_label, nested);
-
     case NODE_DEFER:
         return stmt_has_exit_break(node->defer_stmt.stmt, loop_label, nested);
 
@@ -243,8 +234,6 @@ static int stmt_has_exit_break(ASTNode *node, const char *loop_label, int nested
     case NODE_WHILE:
     case NODE_FOR:
     case NODE_FOR_RANGE:
-    case NODE_REPEAT:
-    case NODE_DO_WHILE:
         // Nested loop: unlabeled breaks here target the nested loop, but a
         // labeled break naming our loop still exits ours.
         return stmt_has_exit_break(loop_body(node), loop_label, 1);
@@ -701,49 +690,8 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         check_node(tc, node->loop_stmt.body, depth + 1);
         break;
 
-    case NODE_REPEAT:
-        check_node(tc, node->repeat_stmt.body, depth + 1);
-        break;
-
-    case NODE_DO_WHILE:
-    {
-        misra_check_compound_body(tc->pctx, node->do_while_stmt.body, "do-while");
-        int old_stmt_ctx = tc->is_stmt_context;
-        tc->is_stmt_context = 0;
-        check_node(tc, node->do_while_stmt.body, depth + 1);
-        check_node(tc, node->do_while_stmt.condition, depth + 1);
-        tc->is_stmt_context = old_stmt_ctx;
-
-        if (node->do_while_stmt.condition && node->do_while_stmt.condition->type_info)
-        {
-            Type *cond_type = resolve_alias(node->do_while_stmt.condition->type_info);
-            if (tc->pctx->config->misra_mode)
-            {
-                if (cond_type->kind != TYPE_BOOL)
-                {
-                    misra_check_condition_boolean(tc->pctx,
-                                                  node->do_while_stmt.condition->type_info,
-                                                  node->do_while_stmt.condition->token);
-                }
-                int inv;
-                if (is_expression_invariant(tc, node->do_while_stmt.condition, &inv))
-                {
-                    misra_check_invariant_condition(tc->pctx, node->do_while_stmt.condition->token);
-                }
-            }
-            else if (cond_type->kind != TYPE_BOOL && !is_integer_type(cond_type) &&
-                     cond_type->kind != TYPE_POINTER && cond_type->kind != TYPE_STRING)
-            {
-                const char *hints[] = {"Do-while conditions must be boolean, integer, or pointer",
-                                       NULL};
-                tc_error_with_hints(tc, node->do_while_stmt.condition->token,
-                                    "Condition must be a truthy type", hints);
-            }
-        }
-        break;
     default:
         break;
-    }
     }
 
     tc->loop_break_count = 0; // Reset for pass 2 (avoid double counts)
@@ -792,14 +740,6 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
             break;
         case NODE_LOOP:
             check_node(tc, node->loop_stmt.body, depth + 1);
-            break;
-        case NODE_REPEAT:
-            check_node(tc, node->repeat_stmt.body, depth + 1);
-            break;
-        case NODE_DO_WHILE:
-            misra_check_compound_body(tc->pctx, node->do_while_stmt.body, "do-while");
-            check_node(tc, node->do_while_stmt.body, depth + 1);
-            check_node(tc, node->do_while_stmt.condition, depth + 1);
             break;
         default:
             break;
@@ -865,7 +805,7 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
     }
 
     // If the loop is an infinite loop and has no breaks, it is unconditionally unreachable after.
-    if ((node->kind == NODE_LOOP || node->kind == NODE_REPEAT) && !final_state)
+    if (node->kind == NODE_LOOP && !final_state)
     {
         tc->is_unreachable = 1;
     }

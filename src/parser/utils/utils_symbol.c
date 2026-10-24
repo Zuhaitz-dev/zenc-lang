@@ -119,7 +119,7 @@ void init_builtins(void)
 }
 
 void register_func(ParserContext *ctx, Scope *scope, const char *name, int count, char **defaults,
-                   Type **arg_types, Type *ret_type, int is_varargs, int is_async, int is_pure,
+                   Type **arg_types, Type *ret_type, int is_varargs, int is_pure,
                    const char *link_name, Token decl_token, int is_export)
 {
     if (ctx->config->mode_lsp || ctx->config->misra_mode)
@@ -133,7 +133,6 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
             existing->arg_types = arg_types;
             existing->ret_type = ret_type;
             existing->is_varargs = is_varargs;
-            existing->is_async = is_async;
             existing->is_pure = is_pure;
         }
     }
@@ -158,7 +157,6 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
     f->arg_types = arg_types;
     f->ret_type = ret_type;
     f->is_varargs = is_varargs;
-    f->is_async = is_async;
     f->is_pure = is_pure;
     f->required = 0;
 

@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_await_removed.zc...
+error: 'await' was removed; async/await is no longer supported
+  --> tests/compiler/diagnostics_output/err_await_removed.zc:5:5
+   |
+5  |     await work();
+   |     ^ here
+   |
+[exit 1]

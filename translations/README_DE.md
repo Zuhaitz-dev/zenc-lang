@@ -42,7 +42,7 @@
 
 ## Übersicht
 
-**Zen C** ist eine moderne Systemprogrammiersprache, die zu menschenlesbarem `GNU C`/`C11` kompiliert. Es bietet einen reichhaltigen Funktionsumfang, darunter Typinferenz, Pattern Matching, Generics, Traits, Async/Await und manuelles Speichermanagement mit RAII-Fähigkeiten – und das alles bei 100%iger C-ABI-Kompatibilität.
+**Zen C** ist eine moderne Systemprogrammiersprache, die zu menschenlesbarem `GNU C`/`C11` kompiliert. Es bietet einen reichhaltigen Funktionsumfang, darunter Typinferenz, Pattern Matching, Generics, Traits und manuelles Speichermanagement mit RAII-Fähigkeiten – und das alles bei 100%iger C-ABI-Kompatibilität.
 
 ## Community
 

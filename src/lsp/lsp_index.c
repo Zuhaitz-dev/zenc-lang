@@ -144,7 +144,7 @@ static int function_signature(ASTNode *node, char *out, size_t size)
         return 0;
     }
     size_t used = 0;
-    str_appendf(out, size, &used, "%sfn ", node->func.is_async ? "async " : "");
+    str_appendf(out, size, &used, "fn ");
     int depth = 0;
     int pending_space = 0;
     char quote = 0;

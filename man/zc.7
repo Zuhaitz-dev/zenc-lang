@@ -59,9 +59,6 @@ Zen C provides manual memory management with ergonomic helpers:
 .B defer statement
 Execute code when scope exits
 .TP
-.B autofree modifier
-Automatically free variable on scope exit
-.TP
 .B Drop trait
 Implement custom cleanup logic (RAII pattern)
 .SS Example
@@ -70,7 +67,8 @@ fn process_file() {
     var f = fopen("data.txt", "r");
     defer fclose(f);  // Automatic cleanup
     
-    autofree var buffer = malloc(1024);
+    var buffer = malloc(1024);
+    defer free(buffer);
     // ...
 } // buffer freed, file closed automatically
 .fi
@@ -117,17 +115,6 @@ Conditional loop
 Infinite loop (use
 .B break
 to exit)
-.TP
-.TP
-.BI "repeat " "n"
-Execute block n times
-.SS Advanced Control
-.TP
-.B guard condition else { ... }
-Early return if condition false
-.TP
-.B unless condition { ... }
-Execute if condition false
 .SH OPERATORS
 .SS Null-Safety Operators
 .TP
@@ -177,19 +164,8 @@ impl Drawable for Circle {
 }
 .fi
 .SH CONCURRENCY
-Zen C provides async/await built on pthreads:
-.PP
-.nf
-async fn fetch() -> string {
-    // Background execution
-    return "data";
-}
-
-fn main() {
-    var future = fetch();
-    var result = await future;
-}
-.fi
+Concurrency uses the standard library thread and synchronization primitives
+(see \fIstd/thread.zc\fR).
 .SH METAPROGRAMMING
 .SS Compile-Time Execution
 .TP

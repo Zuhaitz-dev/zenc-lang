@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_async_removed.zc...
+error: 'async' was removed; call the function directly or use std/thread.zc
+  --> tests/compiler/diagnostics_output/err_async_removed.zc:2:1
+   |
+2  | async fn fetch() -> int {
+   | ^ here
+   |
+[exit 1]

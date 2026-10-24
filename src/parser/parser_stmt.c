@@ -159,12 +159,12 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
     // Keywords / Special
     if (tk.kind == TOK_DO)
     {
-        Token do_tok = lexer_next(l); // eat 'do'
+        zerror_at(tk, "'do ... while' was removed; use 'while'");
+        lexer_next(l); // eat 'do'
         ctx->cg.loop_depth++;
         ASTNode *body = parse_block(ctx, l);
         ctx->cg.loop_depth--;
 
-        // Expect 'while'
         Token while_tok = lexer_peek(l);
         if (while_tok.kind != TOK_IDENT || strncmp(while_tok.start, "while", 5) != 0 ||
             while_tok.len != 5)
@@ -172,19 +172,13 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             zpanic_at(while_tok, "Expected 'while' after do block");
         }
         lexer_next(l); // eat 'while'
-
         ASTNode *cond = parse_expression(ctx, l);
+        (void)cond;
         if (lexer_peek(l).kind == TOK_SEMICOLON)
         {
             lexer_next(l);
         }
-
-        ASTNode *n = ast_create(NODE_DO_WHILE);
-        n->token = do_tok;
-        n->do_while_stmt.body = body;
-        n->do_while_stmt.condition = cond;
-        n->do_while_stmt.loop_label = NULL;
-        return n;
+        return body;
     }
     if (tk.kind == TOK_TRAIT)
     {
@@ -193,27 +187,6 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
     if (tk.kind == TOK_IMPL)
     {
         return parse_impl(ctx, l);
-    }
-    if (tk.kind == TOK_AUTOFREE)
-    {
-        lexer_next(l);
-        if (lexer_peek(l).kind != TOK_IDENT || strncmp(lexer_peek(l).start, "let", 3) != 0)
-        {
-            zpanic_at(lexer_peek(l), "Expected 'let' after autofree");
-        }
-        s = parse_var_decl(ctx, l, 0);
-        if (!s)
-        {
-            return NULL;
-        }
-        s->var_decl.is_autofree = 1;
-        // Mark symbol as autofree to suppress unused variable warning
-        ZenSymbol *sym = find_symbol_entry(ctx, s->var_decl.name);
-        if (sym)
-        {
-            sym->is_autofree = 1;
-        }
-        return s;
     }
     if (tk.kind == TOK_TEST)
     {
@@ -344,6 +317,22 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         {
             lexer_next(l); // consume 'plugin'
             return parse_plugin(ctx, l, tk);
+        }
+
+        // `autofree` was removed: point users at the replacement, then parse the
+        // declaration as a normal `let` so recovery does not cascade into C.
+        if (strncmp(tk.start, "autofree", 8) == 0 && tk.len == 8)
+        {
+            Lexer lookahead = *l;
+            lexer_next(&lookahead);
+            Token next = lexer_peek(&lookahead);
+            if (next.kind == TOK_IDENT && next.len == 3 && strncmp(next.start, "let", 3) == 0)
+            {
+                zerror_at(tk, "'autofree' was removed; declare the variable normally and add "
+                              "'defer free(x)'");
+                lexer_next(l);
+                tk = lexer_peek(l);
+            }
         }
 
         if (strncmp(tk.start, "let", 3) == 0 && tk.len == 3)
@@ -477,15 +466,35 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         }
         if (strncmp(tk.start, "repeat", 6) == 0 && tk.len == 6)
         {
-            return parse_repeat(ctx, l);
+            zerror_at(tk, "'repeat' was removed; use 'for _ in 0..n'");
+            lexer_next(l);
+            char *count = parse_condition_raw(ctx, l);
+            (void)count;
+            return lexer_peek(l).kind == TOK_LBRACE ? parse_block(ctx, l) : parse_statement(ctx, l);
         }
         if (strncmp(tk.start, "unless", 6) == 0 && tk.len == 6)
         {
-            return parse_unless(ctx, l);
+            zerror_at(tk, "'unless' was removed; use 'if !<condition>'");
+            lexer_next(l);
+            ASTNode *cond = parse_expression(ctx, l);
+            (void)cond;
+            return lexer_peek(l).kind == TOK_LBRACE ? parse_block(ctx, l) : parse_statement(ctx, l);
         }
         if (strncmp(tk.start, "guard", 5) == 0 && tk.len == 5)
         {
-            return parse_guard(ctx, l);
+            zerror_at(tk, "'guard' was removed; use 'if !<condition> { ... }'");
+            lexer_next(l);
+            ASTNode *cond = parse_expression(ctx, l);
+            (void)cond;
+            Token else_tok = lexer_peek(l);
+            if (else_tok.kind != TOK_IDENT || else_tok.len != 4 ||
+                strncmp(else_tok.start, "else", 4) != 0)
+            {
+                zpanic_at(else_tok, "Expected 'else' after guard condition");
+                return NULL;
+            }
+            lexer_next(l);
+            return lexer_peek(l).kind == TOK_LBRACE ? parse_block(ctx, l) : parse_statement(ctx, l);
         }
 
         // CUDA launch: launch kernel(args) with { grid: X, block: Y };
@@ -695,16 +704,6 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
                         else if (next->kind == NODE_LOOP)
                         {
                             next->loop_stmt.loop_label = label_name;
-                            return next;
-                        }
-                        else if (next->kind == NODE_REPEAT)
-                        {
-                            next->repeat_stmt.loop_label = label_name;
-                            return next;
-                        }
-                        else if (next->kind == NODE_DO_WHILE)
-                        {
-                            next->do_while_stmt.loop_label = label_name;
                             return next;
                         }
                     }
@@ -950,13 +949,6 @@ ASTNode *parse_block(ParserContext *ctx, Lexer *l)
             if (!sym->is_used && (sym->kind == SYM_VARIABLE) && sym->name[0] != '_' &&
                 strcmp(sym->name, "it") != 0 && strcmp(sym->name, "self") != 0)
             {
-                // Skip autofree variables (used implicitly for cleanup)
-                if (sym->is_autofree)
-                {
-                    sym = sym->next;
-                    continue;
-                }
-
                 // RAII: Don't warn if type implements Drop (it is used implicitly)
                 int has_drop = (sym->type_info && sym->type_info->traits.has_drop);
                 if (!has_drop && sym->type_info && sym->type_info->name)

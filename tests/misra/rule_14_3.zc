@@ -18,14 +18,7 @@ fn test_misra_invariant_for() {
     }
 }
 
-fn test_misra_invariant_do_while() {
-    do {
-        break;
-    } while (0); // Violation (Invariant)
-}
-
 fn main() {
     test_misra_invariant_while();
     test_misra_invariant_for();
-    test_misra_invariant_do_while();
 }

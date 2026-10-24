@@ -157,10 +157,6 @@ void emit_preamble(ParserContext *ctx)
              "typedef size_t usize;\ntypedef char* string;\n"
              "#ifndef __CUDACC__\ntypedef intptr_t any;\n#else\ntypedef intptr_t zc_any;\n#define "
              "any zc_any\n#endif\n");
-        if (ctx->cg.has_async)
-        {
-            EMIT(ctx, "%s", "typedef int (*PollFn)(void*);\n");
-        }
         EMIT(ctx, "%s",
              "#ifdef ZC_STATIC_PLUGIN\n#define ZC_FUNC static\n#define ZC_GLOBAL "
              "static\n#else\n#define ZC_FUNC\n#define ZC_GLOBAL\n#endif\n");
@@ -201,10 +197,6 @@ void emit_preamble(ParserContext *ctx)
              "{0x07,0xd5,0x59,0x30,0x7c,0x7f,0x66,0x75,0x30,0x69,0x7f,0x65,0x3c,0x30,0x59,0x7c,"
              "0x79,0x7e,0x73,0x71};\n");
 
-        EMIT(ctx, "%s",
-             "static __attribute__((unused)) void _z_autofree_impl(void *p) { void **pp = "
-             "(void**)p; if(*pp) { "
-             "z_free(*pp); *pp = NULL; } }\n");
         EMIT(ctx, "%s",
              "#define __zenc_assert(cond, ...) if (!(cond)) { fprintf(stderr, \"  Assertion "
              "failed: \" __VA_ARGS__); fprintf(stderr, \"\\n\"); _zc_test_failures++; }\n");

@@ -198,7 +198,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
 
                     // We can reuse the tuple_types collected during parsing!
                     register_func(ctx, ctx->current_scope, mangled, tuple_count, NULL, tuple_types,
-                                  ret_t, 0, 0, 0, mangled, vt, is_export);
+                                  ret_t, 0, 0, mangled, vt, is_export);
                 }
                 else
                 {
@@ -210,7 +210,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
                     {
                         ret_t->link_name = xstrdup(link_name);
                     }
-                    register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0, 0, 0,
+                    register_func(ctx, ctx->current_scope, mangled, 1, NULL, at, ret_t, 0, 0,
                                   mangled, vt, is_export);
                 }
             }

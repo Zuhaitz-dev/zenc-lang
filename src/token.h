@@ -48,7 +48,6 @@ typedef enum
     TOK_SIZEOF,     ///< 'sizeof' keyword.
     TOK_DEF,        ///< 'def' keyword.
     TOK_DEFER,      ///< 'defer' keyword.
-    TOK_AUTOFREE,   ///< 'autofree' keyword.
     TOK_QUESTION,   ///< ?
     TOK_USE,        ///< 'use' keyword.
     TOK_QQ,         ///< ?? (null coalescing).
@@ -67,8 +66,6 @@ typedef enum
     TOK_UNION,      ///< 'union' keyword.
     TOK_ASM,        ///< 'asm' keyword.
     TOK_VOLATILE,   ///< 'volatile' keyword.
-    TOK_ASYNC,      ///< 'async' keyword.
-    TOK_AWAIT,      ///< 'await' keyword.
     TOK_PREPROC,    ///< Preprocessor directive (#...).
     TOK_ALIAS,      ///< 'alias' keyword.
     TOK_COMMENT,    ///< Comment (usually skipped).

@@ -151,21 +151,6 @@ test "test_swap" {
     "  ✓ swap works!";
 }
 
-test "test_autofree" {
-    println "Testing autofree...";
-    {
-        autofree let p: char* = (char*)malloc(1024);
-        if (p == NULL) { eprintln "Malloc failed!"; }
-        strcpy(p, "Auto-freed string");
-        print f"Allocated: {p}"; println "";
-    }
-    println "Exited block successfully (hopefully freed)";
-    {
-        autofree let p1 = malloc(10);
-        autofree let p2 = malloc(20);
-    }
-}
-
 test "test_raii_drop" {
     DROP_COUNT = 0;
     "Entering scope...";

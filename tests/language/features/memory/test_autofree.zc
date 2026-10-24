@@ -1,7 +1,0 @@
-// autofree: automatic resource cleanup on scope exit
-
-test "autofree_basic" {
-    autofree let p: int* = (int*)malloc(sizeof(int));
-    *p = 42;
-    expect_eq(*p, 42, "autofree pointer works");
-}

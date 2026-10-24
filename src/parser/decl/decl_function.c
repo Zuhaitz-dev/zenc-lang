@@ -56,8 +56,8 @@ static int in_generic_impl(ParserContext *ctx)
                    (def->kind == NODE_ENUM && def->enm.is_template));
 }
 
-ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_async, int is_extern,
-                        const char *link_name, int is_export)
+ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
+                        int is_export)
 {
     lexer_next(l);
     Token name_tok = lexer_next(l);
@@ -70,11 +70,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_async, int is_exter
         check_c_identifier(name_tok);
     }
     char *name = token_strdup(name_tok);
-
-    if (is_async)
-    {
-        ctx->cg.has_async = 1;
-    }
 
     char *gen_param = NULL;
     if (lexer_peek(l).kind == TOK_LANGLE)
@@ -208,7 +203,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_async, int is_exter
     if (!gen_param && !ctx->current_impl_struct)
     {
         register_func(ctx, ctx->current_scope->parent, name, count, defaults, arg_types,
-                      ret_type_obj, is_varargs, is_async, 0, link_name, name_tok, is_export);
+                      ret_type_obj, is_varargs, 0, link_name, name_tok, is_export);
         // Note: required is set after return by caller (parser_core.c)
     }
 
@@ -295,7 +290,6 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_async, int is_exter
     node->func.default_values = default_values;
     node->func.ret_type_info = ret_type_obj;
     node->func.is_varargs = is_varargs;
-    node->func.is_async = is_async;
     node->func.is_extern = is_extern;
     node->func.c_type_overrides = ctype_overrides;
     node->link_name = link_name ? xstrdup(link_name) : NULL;

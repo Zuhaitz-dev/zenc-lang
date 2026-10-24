@@ -409,7 +409,6 @@ int is_reserved_keyword(Token t)
     case TOK_SIZEOF:
     case TOK_DEF:
     case TOK_DEFER:
-    case TOK_AUTOFREE:
     case TOK_USE:
     case TOK_TRAIT:
     case TOK_IMPL:
@@ -420,8 +419,6 @@ int is_reserved_keyword(Token t)
     case TOK_UNION:
     case TOK_ASM:
     case TOK_VOLATILE:
-    case TOK_ASYNC:
-    case TOK_AWAIT:
     case TOK_ALIAS:
     case TOK_OPAQUE:
         return 1;

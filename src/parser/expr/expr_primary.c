@@ -1836,20 +1836,7 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
             {
                 node->definition_token = sig->decl_token;
             }
-            if (sig->is_async)
-            {
-                // Async functions return their inner type directly (no Async<T> wrapper)
-                if (sig->ret_type)
-                {
-                    node->type_info = sig->ret_type;
-                    node->resolved_type = type_to_string(sig->ret_type);
-                }
-                else
-                {
-                    node->resolved_type = xstrdup("void");
-                }
-            }
-            else if (sig->ret_type)
+            if (sig->ret_type)
             {
                 node->type_info = sig->ret_type;
                 node->resolved_type = type_to_string(sig->ret_type);

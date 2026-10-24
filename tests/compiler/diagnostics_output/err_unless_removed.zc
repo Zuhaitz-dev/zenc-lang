@@ -1,0 +1,6 @@
+// ARGS: build
+fn main() {
+    unless 1 > 2 {
+        println "no";
+    }
+}

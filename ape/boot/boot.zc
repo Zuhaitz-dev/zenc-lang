@@ -102,8 +102,9 @@ fn main(argc: int, argv: string*) {
       continue;
     }
 
-    autofree let cmdv = (char**)malloc((cmd_argc + 1) * sizeof(char*));
+    let cmdv = (char**)malloc((cmd_argc + 1) * sizeof(char*));
     if !cmdv { return 1 }
+    defer free(cmdv);
     for (let k = 0; k < cmd_argc; k++) { cmdv[k] = argv[start + k] }
     cmdv[cmd_argc] = NULL;
 

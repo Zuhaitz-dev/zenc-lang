@@ -51,7 +51,6 @@ typedef struct ZenSymbol
     Type *type_info;         ///< Formal type definition.
     Token decl_token;        ///< Token where the symbol was declared.
     int is_used;             ///< 1 if reference count > 0.
-    int is_autofree;         ///< 1 if RAII.
     int is_immutable;        ///< 1 if value cannot be changed.
     int is_static;           ///< 1 if static storage.
     int is_export;           ///< 1 if visible outside module.

@@ -102,12 +102,8 @@ static const char *node_type_name(int type)
         return "LAMBDA";
     case NODE_TERNARY:
         return "TERNARY";
-    case NODE_DO_WHILE:
-        return "DO_WHILE";
     case NODE_ASM:
         return "ASM";
-    case NODE_AWAIT:
-        return "AWAIT";
     default:
         return "UNKNOWN";
     }

@@ -42,7 +42,7 @@
 
 ## Descripción General
 
-**Zen C** es un lenguaje de programación de sistemas moderno que se compila a `GNU C`/`C11` legible por humanos. Proporciona un conjunto rico de características que incluyen inferencia de tipos, coincidencia de patrones (pattern matching), genéricos, traits, async/await y gestión manual de memoria con capacidades RAII, todo manteniendo una compatibilidad total con el ABI de C.
+**Zen C** es un lenguaje de programación de sistemas moderno que se compila a `GNU C`/`C11` legible por humanos. Proporciona un conjunto rico de características que incluyen inferencia de tipos, coincidencia de patrones (pattern matching), genéricos, traits y gestión manual de memoria con capacidades RAII, todo manteniendo una compatibilidad total con el ABI de C.
 
 ## Comunidad
 

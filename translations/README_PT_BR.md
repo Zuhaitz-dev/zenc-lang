@@ -42,7 +42,7 @@
 
 ## Visão Geral
 
-**Zen C** é uma moderna linguagem de programação de sistemas que compila para `GNU C`/`C11` legível para humanos. Oferece um rico conjunto de funcionalidades, incluindo inferência de tipos, correspondência de padrões, genéricos, traits, async/await, e gerenciamento manual de memória com capacidades RAII - tudo enquanto mantém 100% de compatibilidade ABI com C.
+**Zen C** é uma moderna linguagem de programação de sistemas que compila para `GNU C`/`C11` legível para humanos. Oferece um rico conjunto de funcionalidades, incluindo inferência de tipos, correspondência de padrões, genéricos, traits e gerenciamento manual de memória com capacidades RAII - tudo enquanto mantém 100% de compatibilidade ABI com C.
 
 ## Comunidade
 

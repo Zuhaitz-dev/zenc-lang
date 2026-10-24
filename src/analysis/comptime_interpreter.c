@@ -1198,18 +1198,6 @@ static void exec_stmt(CInterp *ci, ASTNode *node)
         }
         break;
     }
-    case NODE_REPEAT:
-    {
-        int64_t n = node->repeat_stmt.count ? atoll(node->repeat_stmt.count) : 0;
-        for (int64_t i = 0; i < n && !ci->error_happened; i++)
-        {
-            if (node->repeat_stmt.body)
-            {
-                exec_stmt(ci, node->repeat_stmt.body);
-            }
-        }
-        break;
-    }
     case NODE_BREAK:
     case NODE_CONTINUE:
         // Not directly supported in comptime loops; ignore

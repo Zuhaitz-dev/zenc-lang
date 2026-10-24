@@ -410,7 +410,7 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
     add_instantiated_func(ctx, new_fn);
 
     register_func(ctx, ctx->global_scope, mangled, new_fn->func.count, new_fn->func.defaults,
-                  new_fn->func.arg_types, new_fn->func.ret_type_info, new_fn->func.is_varargs, 0,
+                  new_fn->func.arg_types, new_fn->func.ret_type_info, new_fn->func.is_varargs,
                   new_fn->func.pure, new_fn->link_name, new_fn->token, new_fn->func.is_export);
 
     trigger_instantiations(ctx, new_fn->func.body);
@@ -670,8 +670,8 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
 
         register_func(ctx, ctx->global_scope, meth->func.name, meth->func.count,
                       meth->func.defaults, meth->func.arg_types, meth->func.ret_type_info,
-                      meth->func.is_varargs, (meth->kind == NODE_FUNCTION && meth->func.is_async),
-                      meth->func.pure, meth->link_name, meth->token, meth->func.is_export);
+                      meth->func.is_varargs, meth->func.pure, meth->link_name, meth->token,
+                      meth->func.is_export);
 
         // Handle generic return types in methods (e.g., Option<T> -> Option_int)
         if (meth->func.ret_type &&
@@ -760,13 +760,13 @@ static void register_enum_constructor(ParserContext *ctx, const char *m, const c
     {
         Type **at = xmalloc(sizeof(Type *));
         at[0] = payload;
-        register_func(ctx, ctx->global_scope, mangled_var, 1, NULL, at, ret_t, 0, 0, 0, NULL, token,
+        register_func(ctx, ctx->global_scope, mangled_var, 1, NULL, at, ret_t, 0, 0, NULL, token,
                       is_export);
     }
     else
     {
-        register_func(ctx, ctx->global_scope, mangled_var, 0, NULL, NULL, ret_t, 0, 0, 0, NULL,
-                      token, is_export);
+        register_func(ctx, ctx->global_scope, mangled_var, 0, NULL, NULL, ret_t, 0, 0, NULL, token,
+                      is_export);
     }
     zfree(mangled_var);
 }

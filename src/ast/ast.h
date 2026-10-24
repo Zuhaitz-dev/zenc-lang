@@ -142,9 +142,6 @@ typedef enum
     NODE_FOR,                ///< For loop.
     NODE_FOR_RANGE,          ///< For-range loop (iterator).
     NODE_LOOP,               ///< Infinite loop.
-    NODE_REPEAT,             ///< Repeat loop (n times).
-    NODE_UNLESS,             ///< Unless statement (if !cond).
-    NODE_GUARD,              ///< Guard clause (if !cond return).
     NODE_BREAK,              ///< Break statement.
     NODE_CONTINUE,           ///< Continue statement.
     NODE_MATCH,              ///< Match statement.
@@ -184,11 +181,9 @@ typedef enum
     NODE_PLUGIN,             ///< Plugin invocation.
     NODE_GOTO,               ///< Goto statement.
     NODE_LABEL,              ///< Label.
-    NODE_DO_WHILE,           ///< Do-while loop.
     NODE_TYPEOF,             ///< Typeof operator.
     NODE_TRY,                ///< Try statement (error handling).
     NODE_REFLECTION,         ///< Reflection info.
-    NODE_AWAIT,              ///< Await expression.
     NODE_REPL_PRINT,         ///< Implicit print (REPL).
     NODE_CUDA_LAUNCH,        ///< CUDA kernel launch (<<<...>>>).
     NODE_VA_START,           ///< va_start intrinsic.
@@ -265,7 +260,6 @@ struct ASTNode
             int noreturn;    // @noreturn
             int pure;        // @pure
             char *section;   // @section("name")
-            int is_async;    // async function
             int is_comptime; // @comptime function
             int is_extern;   // extern fn (C linkage in C++ mode)
             // CUDA qualifiers
@@ -300,7 +294,6 @@ struct ASTNode
             char *type_str;
             ASTNode *init_expr;
             Type *type_info;
-            int is_autofree;
             int is_static;
             int is_thread_local;
             int is_export;
@@ -371,32 +364,6 @@ struct ASTNode
             ASTNode *body;
             char *loop_label;
         } loop_stmt;
-
-        struct
-        {
-            char *count;
-            ASTNode *body;
-            char *loop_label;
-        } repeat_stmt;
-
-        struct
-        {
-            ASTNode *condition;
-            ASTNode *body;
-        } unless_stmt;
-
-        struct
-        {
-            ASTNode *condition;
-            ASTNode *body;
-        } guard_stmt;
-
-        struct
-        {
-            ASTNode *condition;
-            ASTNode *body;
-            char *loop_label;
-        } do_while_stmt;
 
         struct
         {

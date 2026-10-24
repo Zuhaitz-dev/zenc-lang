@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_repeat_removed.zc...
+error: 'repeat' was removed; use 'for _ in 0..n'
+  --> tests/compiler/diagnostics_output/err_repeat_removed.zc:3:5
+   |
+3  |     repeat 3 {
+   |     ^ here
+   |
+[exit 1]

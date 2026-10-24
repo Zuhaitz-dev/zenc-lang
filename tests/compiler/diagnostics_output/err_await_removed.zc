@@ -1,0 +1,6 @@
+// ARGS: build
+fn work() {}
+
+fn main() {
+    await work();
+}

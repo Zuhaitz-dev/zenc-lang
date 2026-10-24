@@ -99,12 +99,11 @@ static int is_keyword(const char *w, size_t len)
     }
 
     static const char *more[] = {
-        "and",      "asm",      "alias",   "assert",   "async",    "await",  "autofree", "comptime",
-        "def",      "defer",    "eprint",  "eprintln", "expect",   "extern", "false",    "import",
-        "inline",   "match",    "module",  "noreturn", "not",      "null",   "opaque",   "or",
-        "print",    "printf",   "println", "private",  "public",   "sizeof", "switch",   "test",
-        "true",     "typeof",   "union",   "use",      "volatile", "impl",   "trait",    "in",
-        "external", "continue", NULL};
+        "and",      "asm",      "alias",  "assert", "comptime", "def",      "defer",    "eprint",
+        "eprintln", "expect",   "extern", "false",  "import",   "inline",   "match",    "module",
+        "noreturn", "not",      "null",   "opaque", "or",       "print",    "printf",   "println",
+        "private",  "public",   "sizeof", "switch", "test",     "true",     "typeof",   "union",
+        "use",      "volatile", "impl",   "trait",  "in",       "external", "continue", NULL};
     for (size_t i = 0; more[i]; i++)
     {
         size_t klen = strlen(more[i]);

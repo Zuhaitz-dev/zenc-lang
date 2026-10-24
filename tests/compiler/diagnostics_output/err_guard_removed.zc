@@ -1,0 +1,6 @@
+// ARGS: build
+fn main() {
+    guard 1 > 2 else {
+        return;
+    }
+}

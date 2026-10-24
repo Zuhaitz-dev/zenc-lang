@@ -29,13 +29,13 @@ fn test_complex_generics<T>(val: T, condition: bool) -> T {
         break;
     }
 
-    // 6. Unless
-    unless !condition {
+    // 6. Negated if
+    if !(!condition) {
         // Should execute
     }
 
-    // 7. Guard
-    guard condition else {
+    // 7. Early return
+    if !condition {
         return val;
     }
 

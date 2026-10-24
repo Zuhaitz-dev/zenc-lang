@@ -1315,11 +1315,6 @@ static void lemit_func(ParserContext *ctx, ASTNode *node, int depth, int *first)
                     {
                         walk_stack[walk_sp++] = cur->loop_stmt.body;
                     }
-                    if (cur->kind == NODE_DO_WHILE && cur->do_while_stmt.body &&
-                        walk_sp < WALK_STACK_SIZE)
-                    {
-                        walk_stack[walk_sp++] = cur->do_while_stmt.body;
-                    }
                 }
             }
             if (vcnt > 0)

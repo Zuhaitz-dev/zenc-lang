@@ -1,0 +1,5 @@
+// ARGS: build
+fn main() {
+    autofree let p = malloc(16);
+    free(p);
+}

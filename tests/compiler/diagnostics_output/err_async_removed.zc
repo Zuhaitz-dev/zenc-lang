@@ -1,0 +1,6 @@
+// ARGS: build
+async fn fetch() -> int {
+    return 1;
+}
+
+fn main() {}

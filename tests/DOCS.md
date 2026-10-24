@@ -20,9 +20,8 @@ tests/
 │   ├── parser/            # Parser-specific tests
 │   └── typecheck/         # Type-checker integration tests
 ├── language/
-│   ├── async/             # Async/await features
 │   ├── basic/             # Basic syntax and semantics
-│   ├── control-flow/      # If, match, loops, goto, defer, guard
+│   ├── control-flow/      # If, match, loops, goto, defer
 │   ├── features/          # Language features by category:
 │   │   ├── aliases/       #   Type aliases
 │   │   ├── arrays-slices/ #   Arrays and slices
@@ -76,7 +75,7 @@ tests/
 | Pattern | Purpose | Example |
 |---------|---------|---------|
 | `test_<feature>.zc` | Main test for a feature | `test_if.zc` |
-| `test_<feature>_<scenario>.zc` | Specific scenario | `test_async_concurrent.zc` |
+| `test_<feature>_<scenario>.zc` | Specific scenario | `test_vec_iter.zc` |
 | `_<prefix>_<name>.zc` | Helper module (skipped by runner) | `_test_cfg.zc` |
 | `rule_<N>_<M>.zc` | MISRA rule | `rule_10_1.zc` |
 | `rule_zen_<N>_<M>.zc` | Zen-specific rule | `rule_zen_2_2.zc` |

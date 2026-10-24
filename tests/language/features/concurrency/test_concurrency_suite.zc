@@ -1,47 +1,9 @@
 // concurrency: test_concurrency_suite
 import "std/thread.zc"
 
-async fn double_slowly(x: int) -> int {
-    return x * 2;
-}
-
-async fn add_async(a: int, b: int) -> int {
-    return a + b;
-}
-
-async fn say_hello() {
-    puts("Hello from async!");
-}
-
-struct Point {
-    x: int;
-    y: int;
-}
-
-async fn make_point(x: int, y: int) -> Point {
-    return Point{x: x, y: y};
-}
-
 struct Counter {
     val: int;
     lock: Mutex;
-}
-
-test "test_async_basics" {
-    let result1 = await double_slowly(21);
-    let result2 = await add_async(10, 20);
-    assert(result1 == 42, "Async double failed");
-    assert(result2 == 30, "Async add failed");
-}
-
-test "test_async_struct_return" {
-    let p = await make_point(5, 7);
-    assert(p.x == 5, "Async struct x failed");
-    assert(p.y == 7, "Async struct y failed");
-}
-
-test "test_async_void" {
-    await say_hello();
 }
 
 test "test_thread" {

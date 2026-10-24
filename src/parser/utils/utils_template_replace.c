@@ -1442,20 +1442,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     case NODE_LOOP:
         new_node->loop_stmt.body = copy_ast_replacing(ctx, n->loop_stmt.body, p, c, os, ns);
         break;
-    case NODE_REPEAT:
-        new_node->repeat_stmt.count = n->repeat_stmt.count ? xstrdup(n->repeat_stmt.count) : NULL;
-        new_node->repeat_stmt.body = copy_ast_replacing(ctx, n->repeat_stmt.body, p, c, os, ns);
-        break;
-    case NODE_UNLESS:
-        new_node->unless_stmt.condition =
-            copy_ast_replacing(ctx, n->unless_stmt.condition, p, c, os, ns);
-        new_node->unless_stmt.body = copy_ast_replacing(ctx, n->unless_stmt.body, p, c, os, ns);
-        break;
-    case NODE_GUARD:
-        new_node->guard_stmt.condition =
-            copy_ast_replacing(ctx, n->guard_stmt.condition, p, c, os, ns);
-        new_node->guard_stmt.body = copy_ast_replacing(ctx, n->guard_stmt.body, p, c, os, ns);
-        break;
     case NODE_BREAK:
     case NODE_CONTINUE:
         // No members to copy besides next (handled at end)
@@ -1506,11 +1492,6 @@ ASTNode *copy_ast_replacing(ParserContext *ctx, ASTNode *n, const char *p, const
     case NODE_LABEL:
         new_node->label_stmt.label_name =
             n->label_stmt.label_name ? xstrdup(n->label_stmt.label_name) : NULL;
-        break;
-    case NODE_DO_WHILE:
-        new_node->while_stmt.condition =
-            copy_ast_replacing(ctx, n->while_stmt.condition, p, c, os, ns);
-        new_node->while_stmt.body = copy_ast_replacing(ctx, n->while_stmt.body, p, c, os, ns);
         break;
     case NODE_TRY:
         new_node->try_stmt.expr = copy_ast_replacing(ctx, n->try_stmt.expr, p, c, os, ns);

@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_autofree_removed.zc...
+error: 'autofree' was removed; declare the variable normally and add 'defer free(x)'
+  --> tests/compiler/diagnostics_output/err_autofree_removed.zc:3:5
+   |
+3  |     autofree let p = malloc(16);
+   |     ^ here
+   |
+[exit 1]

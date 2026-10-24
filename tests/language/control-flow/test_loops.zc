@@ -87,25 +87,6 @@ test "test_arrays_loop" {
     print_nums(nums);
 }
 
-test "test_do_while" {
-    let x = 0;
-    
-    // Basic do-while (runs at least once)
-    do {
-        x++;
-    } while x < 5;
-    
-    assert(x == 5, "do-while x expected 5");
-    
-    // Do-while with false condition (still runs once)
-    let y = 0;
-    do {
-        y = 100;
-    } while false;
-    
-    assert(y == 100, "do-while false expected 100");
-}
-
 test "test_range_loops_generic" {
     println "Testing range loops with different types...";
     

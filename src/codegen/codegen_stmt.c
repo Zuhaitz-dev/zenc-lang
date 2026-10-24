@@ -163,8 +163,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         [NODE_CONST] = handle_node_const,
         [NODE_FIELD] = handle_node_field,
         [NODE_IF] = handle_node_if,
-        [NODE_UNLESS] = handle_node_unless,
-        [NODE_GUARD] = handle_node_guard,
         [NODE_WHILE] = handle_node_while,
         [NODE_COMPTIME] = handle_node_comptime,
     };
@@ -268,18 +266,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     case NODE_LABEL:
         EMIT(ctx, "%s:;\n", node->label_stmt.label_name);
         break;
-    case NODE_DO_WHILE:
-    {
-        codegen_loop_enter(ctx, node->do_while_stmt.loop_label);
-        EMIT(ctx, "do ");
-        codegen_loop_body(ctx, node->do_while_stmt.body, node->do_while_stmt.loop_label, 0);
-        EMIT(ctx, " while (");
-        codegen_expression(ctx, node->do_while_stmt.condition);
-        EMIT(ctx, ");\n");
-        codegen_loop_exit(ctx, node->do_while_stmt.loop_label);
-        break;
-    }
-    // Loop constructs: loop, repeat, for-in
+    // Loop constructs: loop, for-in
     case NODE_LOOP:
     {
         // loop { ... } => while (1) { ... }
@@ -287,14 +274,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "while (1) ");
         codegen_loop_body(ctx, node->loop_stmt.body, node->loop_stmt.loop_label, 0);
         codegen_loop_exit(ctx, node->loop_stmt.loop_label);
-        break;
-    }
-    case NODE_REPEAT:
-    {
-        codegen_loop_enter(ctx, node->repeat_stmt.loop_label);
-        EMIT(ctx, "for (int _rpt_i = 0; _rpt_i < (%s); _rpt_i++) ", node->repeat_stmt.count);
-        codegen_loop_body(ctx, node->repeat_stmt.body, node->repeat_stmt.loop_label, 0);
-        codegen_loop_exit(ctx, node->repeat_stmt.loop_label);
         break;
     }
     case NODE_FOR_RANGE:
@@ -831,12 +810,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         codegen_expression(ctx, node->repl_print.expr);
         EMIT(ctx,
              "); fprintf(stdout, _z_str(_zval), _z_arg(_zval)); fprintf(stdout, \"\\n\"); }\n");
-        break;
-    }
-    case NODE_AWAIT:
-    {
-        handle_node_await_internal(ctx, node);
-        EMIT(ctx, ";\n");
         break;
     }
     case NODE_EXPR_LITERAL:

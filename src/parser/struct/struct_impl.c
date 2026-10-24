@@ -194,7 +194,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
             if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
             {
-                ASTNode *f = parse_function(ctx, l, 0, 0, attrs.link_name, 0);
+                ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
                 if (!f)
                 {
                     continue;
@@ -226,8 +226,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                 {
                     register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
                                   f->func.defaults, f->func.arg_types, f->func.ret_type_info,
-                                  f->func.is_varargs, f->func.is_async, f->func.pure, f->link_name,
-                                  f->token, 0);
+                                  f->func.is_varargs, f->func.pure, f->link_name, f->token, 0);
                 }
 
                 if (!h)
@@ -240,59 +239,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                 }
                 tl = f;
             }
-            else if (lexer_peek(l).kind == TOK_ASYNC)
+            else if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 5 &&
+                     strncmp(lexer_peek(l).start, "async", 5) == 0)
             {
-                lexer_next(l); // eat async
-                if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
-                {
-                    ASTNode *f = parse_function(ctx, l, 1, 0, attrs.link_name, 0);
-                    if (!f)
-                    {
-                        continue;
-                    }
-                    ATTACH_DOC_COMMENT(ctx, f);
-                    f->func.is_async = 1;
-                    // Mangle: Type_Trait_Method
-                    {
-                        char *tmp = mangle_method_symbol(name2, name1, f->func.name);
-                        zfree(f->func.name);
-                        f->func.name = tmp;
-                    }
-
-                    patch_and_fix_self(ctx, f, full_target_name);
-                    f->link_name = attrs.link_name;
-                    f->cfg_condition = attrs.cfg_condition;
-                    f->func.pure = attrs.is_pure;
-                    f->func.unused = attrs.is_unused;
-
-                    // Register function for lookup
-                    if (f->func.generic_params)
-                    {
-                        register_func_template(ctx, f->func.name, f->func.generic_params, f);
-                    }
-                    else
-                    {
-                        register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
-                                      f->func.defaults, f->func.arg_types, f->func.ret_type_info,
-                                      f->func.is_varargs, f->func.is_async, f->func.pure,
-                                      f->link_name, f->token, 0);
-                    }
-
-                    if (!h)
-                    {
-                        h = f;
-                    }
-                    else
-                    {
-                        tl->next = f;
-                    }
-                    tl = f;
-                }
-                else
-                {
-                    zpanic_at(lexer_peek(l), "Expected 'fn' after 'async'");
-                    return NULL;
-                }
+                zerror_at(lexer_peek(l), "'async' was removed; call the method directly");
+                lexer_next(l);
             }
             else
             {
@@ -412,7 +363,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
                 if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
                 {
-                    ASTNode *f = parse_function(ctx, l, 0, 0, attrs.link_name, 0);
+                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
                     if (!f)
                     {
                         continue;
@@ -463,67 +414,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                     }
                     tl = f;
                 }
-                else if (lexer_peek(l).kind == TOK_ASYNC)
+                else if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 5 &&
+                         strncmp(lexer_peek(l).start, "async", 5) == 0)
                 {
-                    lexer_next(l); // eat async
-                    if (lexer_peek(l).kind == TOK_IDENT &&
-                        strncmp(lexer_peek(l).start, "fn", 2) == 0)
-                    {
-                        ASTNode *f = parse_function(ctx, l, 1, 0, attrs.link_name, 0);
-                        if (!f)
-                        {
-                            continue;
-                        }
-                        f->func.is_async = 1;
-                        {
-                            char *tmp = mangle_method_symbol(name1, NULL, f->func.name);
-                            zfree(f->func.name);
-                            f->func.name = tmp;
-                        }
-
-                        patch_and_fix_self(ctx, f, full_struct_name);
-
-                        if (attrs.cfg_condition)
-                        {
-                            f->cfg_condition = attrs.cfg_condition;
-                        }
-                        f->func.pure = attrs.is_pure;
-                        f->func.unused = attrs.is_unused;
-                        f->link_name = attrs.link_name;
-
-                        register_func_template(ctx, f->func.name, gen_param, f);
-
-                        if (f->func.count > 0 && f->func.param_names &&
-                            strcmp(f->func.param_names[0], "self") == 0)
-                        {
-                            Type *t_struct = type_new(TYPE_STRUCT);
-                            t_struct->name = xstrdup(name1);
-                            t_struct->count = 1;
-                            t_struct->args = xmalloc(sizeof(Type *));
-                            t_struct->args[0] = type_new(TYPE_GENERIC);
-                            t_struct->args[0]->name = xstrdup(gen_param);
-
-                            Type *t_ptr = type_new(TYPE_POINTER);
-                            t_ptr->inner = t_struct;
-
-                            f->func.arg_types[0] = t_ptr;
-                        }
-
-                        if (!h)
-                        {
-                            h = f;
-                        }
-                        else
-                        {
-                            tl->next = f;
-                        }
-                        tl = f;
-                    }
-                    else
-                    {
-                        zpanic_at(lexer_peek(l), "Expected 'fn' after 'async'");
-                        return NULL;
-                    }
+                    zerror_at(lexer_peek(l), "'async' was removed; call the method directly");
+                    lexer_next(l);
                 }
                 else
                 {
@@ -572,7 +467,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
                 if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
                 {
-                    ASTNode *f = parse_function(ctx, l, 0, 0, attrs.link_name, 0);
+                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
                     if (!f)
                     {
                         return NULL;
@@ -602,8 +497,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                     {
                         register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
                                       f->func.defaults, f->func.arg_types, f->func.ret_type_info,
-                                      f->func.is_varargs, 0, f->func.pure, f->link_name, f->token,
-                                      0);
+                                      f->func.is_varargs, f->func.pure, f->link_name, f->token, 0);
                     }
 
                     if (!h)
@@ -616,54 +510,11 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                     }
                     tl = f;
                 }
-                else if (lexer_peek(l).kind == TOK_ASYNC)
+                else if (lexer_peek(l).kind == TOK_IDENT && lexer_peek(l).len == 5 &&
+                         strncmp(lexer_peek(l).start, "async", 5) == 0)
                 {
+                    zerror_at(lexer_peek(l), "'async' was removed; call the method directly");
                     lexer_next(l);
-                    if (lexer_peek(l).kind == TOK_IDENT &&
-                        strncmp(lexer_peek(l).start, "fn", 2) == 0)
-                    {
-                        ASTNode *f = parse_function(ctx, l, 1, 0, attrs.link_name, 0);
-                        if (!f)
-                        {
-                            continue;
-                        }
-                        f->func.is_async = 1;
-                        {
-                            char *tmp = mangle_method_symbol(name1, NULL, f->func.name);
-                            zfree(f->func.name);
-                            f->func.name = tmp;
-                        }
-                        patch_and_fix_self(ctx, f, name1);
-
-                        if (attrs.cfg_condition)
-                        {
-                            f->cfg_condition = attrs.cfg_condition;
-                        }
-                        f->func.pure = attrs.is_pure;
-                        f->func.unused = attrs.is_unused;
-                        f->link_name = attrs.link_name;
-
-                        if (f->func.generic_params)
-                        {
-                            register_func_template(ctx, f->func.name, f->func.generic_params, f);
-                        }
-                        else
-                        {
-                            register_func(ctx, ctx->current_scope, f->func.name, f->func.count,
-                                          f->func.defaults, f->func.arg_types,
-                                          f->func.ret_type_info, f->func.is_varargs, 1,
-                                          f->func.pure, f->link_name, f->token, 0);
-                        }
-                        if (!h)
-                        {
-                            h = f;
-                        }
-                        else
-                        {
-                            tl->next = f;
-                        }
-                        tl = f;
-                    }
                 }
                 else
                 {

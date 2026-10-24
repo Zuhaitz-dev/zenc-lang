@@ -1,0 +1,8 @@
+   Compiling tests/compiler/diagnostics_output/err_guard_removed.zc...
+error: 'guard' was removed; use 'if !<condition> { ... }'
+  --> tests/compiler/diagnostics_output/err_guard_removed.zc:3:5
+   |
+3  |     guard 1 > 2 else {
+   |     ^ here
+   |
+[exit 1]

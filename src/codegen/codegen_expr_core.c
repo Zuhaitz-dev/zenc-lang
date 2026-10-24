@@ -589,11 +589,6 @@ void handle_ternary(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, "))");
 }
 
-void handle_await(ParserContext *ctx, ASTNode *node)
-{
-    handle_node_await_internal(ctx, node);
-}
-
 void handle_va_start(ParserContext *ctx, ASTNode *node)
 {
     EMIT(ctx, "va_start(");

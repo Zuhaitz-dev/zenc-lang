@@ -884,7 +884,6 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
                 sig->arg_types = n->func.arg_types;
                 sig->ret_type = n->func.ret_type_info;
                 sig->is_varargs = n->func.is_varargs;
-                sig->is_async = n->func.is_async;
                 sig->required = 0;
                 sig->next = NULL;
                 return sig;

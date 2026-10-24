@@ -1,9 +1,10 @@
    Compiling tests/compiler/diagnostics_output/warn_at.zc...
-warning: repeat is deprecated. Use 'for _ in 0..N' instead.
-  --> tests/compiler/diagnostics_output/warn_at.zc:5:5
+warning: Unused variable 'unused'
+  --> tests/compiler/diagnostics_output/warn_at.zc:5:9
    |
-5  |     repeat 3 {
-   |     ^ here
+5  |     let unused = 1;
+   |         ^ here
    |
+   = note: Consider removing it or prefixing with '_'
     Finished build in Xs with 0 errors and 1 warnings
 [exit 0]

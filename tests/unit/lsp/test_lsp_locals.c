@@ -31,10 +31,10 @@ UTEST(lsp_find_local_decl, a_let_in_the_body)
     ASSERT_STREQ("v", decl->var_decl.name);
 }
 
-UTEST(lsp_find_local_decl, a_let_inside_unless)
+UTEST(lsp_find_local_decl, a_let_inside_if)
 {
     ASTNode *func = function_in("fn main() {\n"
-                                "    unless 1 > 2 {\n"
+                                "    if !(1 > 2) {\n"
                                 "        let v = 5;\n"
                                 "    }\n"
                                 "}\n",
@@ -96,10 +96,10 @@ UTEST(lsp_has_loop_before, a_loop_in_the_body)
     ASSERT_TRUE(lsp_has_loop_before(func, 3));
 }
 
-UTEST(lsp_has_loop_before, a_loop_inside_unless)
+UTEST(lsp_has_loop_before, a_loop_inside_if)
 {
     ASTNode *func = function_in("fn main() {\n"
-                                "    unless 1 > 2 {\n"
+                                "    if !(1 > 2) {\n"
                                 "        loop {\n"
                                 "            break;\n"
                                 "        }\n"
@@ -141,10 +141,10 @@ UTEST(lsp_has_loop_before, a_for_in_loop)
     ASSERT_TRUE(lsp_has_loop_before(func, 3));
 }
 
-UTEST(lsp_has_loop_before, a_repeat_loop)
+UTEST(lsp_has_loop_before, a_for_range_loop)
 {
     ASTNode *func = function_in("fn main() {\n"
-                                "    repeat 3 {\n"
+                                "    for _ in 0..3 {\n"
                                 "        break;\n"
                                 "    }\n"
                                 "}\n",
@@ -152,12 +152,12 @@ UTEST(lsp_has_loop_before, a_repeat_loop)
     ASSERT_TRUE(lsp_has_loop_before(func, 3));
 }
 
-UTEST(lsp_has_loop_before, a_do_while_loop)
+UTEST(lsp_has_loop_before, a_while_loop)
 {
     ASTNode *func = function_in("fn main() {\n"
-                                "    do {\n"
+                                "    while 1 > 0 {\n"
                                 "        break;\n"
-                                "    } while 1 > 0;\n"
+                                "    }\n"
                                 "}\n",
                                 "main");
     ASSERT_TRUE(lsp_has_loop_before(func, 3));
