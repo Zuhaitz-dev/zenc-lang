@@ -7,7 +7,7 @@
 :: system -c 'out=usr/bin/zip; [ -e "$out" ] && echo "    [+] $out: exists"'
 :: system -c 'chmod 755 usr/bin/zip'
 :: system -c 'chmod 755 usr/bin/unzip'
-:: system -c 'out=usr/cosmocc.zip; [ -e "$out" ] || curl -o "$out" https://cosmo.zip/pub/cosmocc/cosmocc.zip'
+:: system -c 'out=usr/cosmocc.zip; [ -e "$out" ] || curl -fL -o "$out" https://cosmo.zip/pub/cosmocc/cosmocc.zip || curl -fL -o "$out" https://github.com/jart/cosmopolitan/releases/download/4.0.2/cosmocc-4.0.2.zip'
 :: system -c 'out=usr/cosmocc.zip; [ -e "$out" ] && echo "    [+] $out: exists"'
 :: system -c 'out=usr; [ -e "$out/bin/cosmocc" ] || usr/bin/unzip -d "$out" usr/cosmocc.zip'
 :: system -c 'out=usr; [ -e "$out/bin/cosmocc" ] || unzip -d "$out" usr/cosmocc.zip'

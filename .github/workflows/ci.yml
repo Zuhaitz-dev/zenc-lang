@@ -496,28 +496,36 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # cosmo.zip (the rolling upstream distribution) is currently unreachable;
+      # pin a release from GitHub so this job is reproducible. Bump both this
+      # value and the cache key when upgrading.
+      COSMOCC_VERSION: "4.0.2"
     steps:
     - uses: actions/checkout@v4
     
     - name: APE dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y zip wget
+        sudo apt-get install -y zip unzip wget
 
     - name: Cache cosmocc
       uses: actions/cache@v4
       with:
         path: $HOME/cosmocc
-        key: cosmocc-${{ hashFiles('**/ci.yml') }}
+        key: cosmocc-${{ env.COSMOCC_VERSION }}-${{ hashFiles('**/ci.yml') }}
 
     - name: Setup cosmocc
       run: |
         if [ ! -d "$HOME/cosmocc/bin" ]; then
-          wget https://cosmo.zip/pub/cosmocc/cosmocc.zip
-          mkdir -p $HOME/cosmocc
-          unzip cosmocc.zip -d $HOME/cosmocc
+          mkdir -p "$HOME/cosmocc"
+          url="https://github.com/jart/cosmopolitan/releases/download/${COSMOCC_VERSION}/cosmocc-${COSMOCC_VERSION}.zip"
+          wget -q --tries=3 --timeout=120 "$url" -O /tmp/cosmocc.zip
+          unzip -q /tmp/cosmocc.zip -d "$HOME/cosmocc"
+          rm -f /tmp/cosmocc.zip
+          test -x "$HOME/cosmocc/bin/cosmocc"
         fi
-        echo "$HOME/cosmocc/bin" >> $GITHUB_PATH
+        echo "$HOME/cosmocc/bin" >> "$GITHUB_PATH"
 
     - name: Build APE
       run: |
