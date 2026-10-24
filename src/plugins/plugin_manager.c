@@ -295,10 +295,6 @@ int zptr_unload_plugin(const char *name)
     (void)name;
     return 0;
 }
-ZEN_CONST ZPlugin *zptr_get_static_plugin(const char *name)
-{
-    (void)name;
-    return NULL;
-}
+// `zptr_get_static_plugin` is defined by static_plugins.c in both configurations.
 
 #endif
