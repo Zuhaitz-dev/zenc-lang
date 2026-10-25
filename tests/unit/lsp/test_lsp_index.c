@@ -31,7 +31,7 @@ UTEST(lsp_index, reference_in_an_if)
                                    "        let u = v;\n"
                                    "    }\n"
                                    "}\n");
-    ASSERT_EQ(1, definition_line_at(index, 2, 11));
+    ASSERT_EQ(1, definition_line_at(index, 2, 9));
     ASSERT_EQ(1, definition_line_at(index, 3, 16));
 }
 

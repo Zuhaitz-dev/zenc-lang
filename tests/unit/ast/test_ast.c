@@ -15,11 +15,11 @@ UTEST(ast_children, if_gives_condition_then_else_in_order)
 
 UTEST(ast_children, a_slot_can_replace_the_child)
 {
-    ASTNode *node = ast_create(NODE_UNLESS);
+    ASTNode *node = ast_create(NODE_IF);
     ASTNode *cond = ast_create(NODE_EXPR_VAR);
     ASTChildren c = ast_children(node);
     *c.slots[0] = cond;
-    ASSERT_TRUE(node->unless_stmt.condition == cond);
+    ASSERT_TRUE(node->if_stmt.condition == cond);
 }
 
 UTEST(ast_children, import_does_not_enter_the_module)
