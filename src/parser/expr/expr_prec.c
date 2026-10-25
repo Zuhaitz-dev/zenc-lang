@@ -588,7 +588,8 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
             ASTNode *n = ast_create(NODE_RAW_STMT);
             n->token = t_str;
             char *stmt_code = xmalloc(strlen(code) + 12);
-            sprintf(stmt_code, "%s; exit(1);", code); /* safe */
+            // Hosted panics terminate the process after printing.
+            sprintf(stmt_code, "%s; exit(1);", code); /* safe */ // whitelisted
             zfree(code);
             n->raw_stmt.content = stmt_code;
             take_fstring_exprs(ctx, n);
