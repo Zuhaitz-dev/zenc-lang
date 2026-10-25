@@ -258,12 +258,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     emit_func_signature(ctx, node, NULL);
     EMIT(ctx, "\n{\n");
     emitter_indent(&ctx->cg.emitter);
-    if (ctx->config->misra_mode && node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
-    {
-        char *safe_ret_type = type_to_c_string(node->func.ret_type_info, ctx->config->misra_mode);
-        EMIT(ctx, "%s _misra_ret = 0;\n", safe_ret_type);
-        zfree(safe_ret_type);
-    }
     char *prev_ret = ctx->cg.current_func_ret_type;
     Type *prev_ret_info = ctx->cg.current_func_ret_type_info;
     ctx->cg.current_func_ret_type = node->func.ret_type;
@@ -359,19 +353,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     ctx->cg.current_func_ret_type_info = prev_ret_info;
     ctx->self_is_pointer = prev_self_is_ptr;
 
-    if (ctx->config->misra_mode)
-    {
-        EMIT(ctx, "goto _misra_end_of_func;\n");
-        EMIT(ctx, "_misra_end_of_func:\n");
-        if (node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
-        {
-            EMIT(ctx, "return _misra_ret;\n");
-        }
-        else
-        {
-            EMIT(ctx, "return;\n");
-        }
-    }
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
     if (node->cfg_condition)

@@ -611,14 +611,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 ASTNode *def = find_struct_def(ctx, clean);
                 if (def && def->type_info && def->type_info->traits.has_drop)
                 {
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "_misra_ret = ({ ");
-                    }
-                    else
-                    {
-                        EMIT(ctx, "return ({ ");
-                    }
+                    EMIT(ctx, "return ({ ");
 
                     int ret_is_self = node->ret.value->kind == NODE_EXPR_VAR &&
                                       ctx->self_is_pointer &&
@@ -667,11 +660,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     }
                     emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
                     EMIT(ctx, "_z_ret_mv; });\n");
-
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "goto _misra_end_of_func;\n");
-                    }
                     handled = 1;
                 }
                 zfree(tname);
@@ -710,46 +698,17 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 codegen_expression(ctx, node->ret.value);
                 EMIT(ctx, "; ");
                 emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "_misra_ret = _z_ret; goto _misra_end_of_func; }\n");
-                }
-                else
-                {
-                    emitter_dedent(&ctx->cg.emitter);
-                    EMIT(ctx, "return _z_ret; }\n");
-                }
+                emitter_dedent(&ctx->cg.emitter);
+                EMIT(ctx, "return _z_ret; }\n");
             }
             else if (has_defers)
             {
                 emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
-                else
-                {
-                    EMIT(ctx, "return;\n");
-                }
+                EMIT(ctx, "return;\n");
             }
             else
             {
-                if (ctx->config->misra_mode)
-                {
-                    if (ctx->cg.current_func_ret_type &&
-                        strcmp(ctx->cg.current_func_ret_type, "void") != 0)
-                    {
-                        EMIT(ctx, "_misra_ret = ");
-                    }
-                    else
-                    {
-                    }
-                }
-                else
-                {
-                    EMIT(ctx, "return ");
-                }
+                EMIT(ctx, "return ");
 
                 if (node->ret.value && node->ret.value->kind == NODE_EXPR_VAR &&
                     ctx->self_is_pointer && strcmp(node->ret.value->var_ref.name, "self") == 0)
@@ -765,10 +724,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     // return &self; -> return self; (since self is already a pointer in C)
                     codegen_expression(ctx, node->ret.value->unary.operand);
                     EMIT(ctx, ";\n");
-                    if (ctx->config->misra_mode)
-                    {
-                        EMIT(ctx, "goto _misra_end_of_func;\n");
-                    }
                     break;
                 }
                 if (node->ret.value)
@@ -776,10 +731,6 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                     codegen_expression(ctx, node->ret.value);
                 }
                 EMIT(ctx, ";\n");
-                if (ctx->config->misra_mode)
-                {
-                    EMIT(ctx, "goto _misra_end_of_func;\n");
-                }
             }
         }
         break;

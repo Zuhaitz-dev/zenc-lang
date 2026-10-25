@@ -760,8 +760,10 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
     }
     else
     {
+        // MISRA profiles cannot use __builtin_trap (GNU extension, and cppcheck
+        // treats it as an implicitly declared function). Fail safe instead.
         EMIT(ctx, "static inline long _z_check_bounds(long index, long limit) { if((index < 0) || "
-                  "(index >= limit)) { __builtin_trap(); } return index; }\n");
+                  "(index >= limit)) { for (;;) { } } return index; }\n");
     }
 
     ASTNode *local = nodes;

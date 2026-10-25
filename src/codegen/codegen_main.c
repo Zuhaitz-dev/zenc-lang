@@ -499,6 +499,25 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
 {
     (void)ctx;
+    // The dispatch is only useful when a type actually implements Drop; emitting
+    // it unconditionally leaves an unused macro in every translation unit.
+    int any_drop = 0;
+    for (ASTNode *s = structs; s; s = s->next)
+    {
+        if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
+            !s->strct.is_template)
+        {
+            any_drop = 1;
+            break;
+        }
+    }
+    if (!any_drop)
+    {
+        // F-string interpolation drops its temporary through _z_drop even for
+        // non-owning values; emit the no-op form so those TUs still compile.
+        EMIT(ctx, "#define _z_drop(x) ((void)(x))\n");
+        return;
+    }
     if (ctx->config->use_cpp && !ctx->config->use_cuda)
     {
         EMIT(ctx, "// Global Generic Drop Dispatch (C++ Overloads)\n");
