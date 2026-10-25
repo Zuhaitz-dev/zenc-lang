@@ -382,7 +382,7 @@ int emit_move_invalidation(ParserContext *ctx, ASTNode *node)
         else if (node->kind == NODE_EXPR_MEMBER)
         {
             // For members: memset(&foo.bar, 0, sizeof(foo.bar))
-            EMIT(ctx, "memset(&");
+            EMIT(ctx, "(void)memset(&");
             codegen_expression(ctx, node);
             EMIT(ctx, ", 0, sizeof(");
             codegen_expression(ctx, node);

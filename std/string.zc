@@ -142,7 +142,8 @@ impl String {
         let other_len = (*other).vec.len;
         let new_len = self.vec.len + other_len;
         self.vec.grow_to_fit(new_len);
-        memcpy(self.vec.data + self.vec.len, (*other).vec.data, other_len * sizeof(char));
+        let base = self.vec.data;
+        memcpy(&base[self.vec.len], (*other).vec.data, other_len * sizeof(char));
         self.vec.len = new_len;
     }
 
@@ -154,7 +155,8 @@ impl String {
         let slen: usize = strlen(s);
         let new_len = self.vec.len + slen + 1;
         self.vec.grow_to_fit(new_len);
-        memcpy(self.vec.data + self.vec.len, s, slen * sizeof(char));
+        let base = self.vec.data;
+        memcpy(&base[self.vec.len], s, slen * sizeof(char));
         self.vec.len = new_len;
         self.vec.data[new_len - 1] = 0;
     }
@@ -191,7 +193,8 @@ impl String {
         let slen: usize = strlen(s);
         let new_len = ptr.vec.len + slen + 1;
         ptr.vec.grow_to_fit(new_len);
-        memcpy(ptr.vec.data + ptr.vec.len, s, slen * sizeof(char));
+        let base = ptr.vec.data;
+        memcpy(&base[ptr.vec.len], s, slen * sizeof(char));
         ptr.vec.len = new_len;
         ptr.vec.data[new_len - 1] = 0;
     }
@@ -280,7 +283,8 @@ impl String {
         }
         let v = Vec<char>::with_capacity(len + 1);
         if (len > 0) {
-            memcpy(v.data, self.vec.data + start, len * sizeof(char));
+            let base = self.vec.data;
+            memcpy(v.data, &base[start], len * sizeof(char));
         }
         v.len = len + 1;
         v.data[len] = 0;
@@ -294,7 +298,8 @@ impl String {
     }
     /// Returns whether the substring `target` occurs.
     fn contains_str(self, target: char*) -> bool {
-        return self.find_str(target).is_some();
+        let found = self.find_str(target);
+        return found.is_some();
     }
 
     /// Returns the first index of `target`, or `None`.
@@ -398,7 +403,8 @@ impl String {
             v.push(pad_char);
         }
         if (current_len > 0) {
-            memcpy(v.data + diff, self.vec.data, current_len * sizeof(char));
+            let dst = v.data;
+            memcpy(&dst[diff], self.vec.data, current_len * sizeof(char));
         }
         v.len = v.len + current_len;
         v.push(0);
@@ -461,7 +467,8 @@ impl String {
     
     /// Returns whether the character `target` occurs.
     fn contains(self, target: char) -> bool {
-        return self.find(target).is_some();
+        let found = self.find(target);
+        return found.is_some();
     }
     
     /// Returns whether the string starts with `prefix`.
@@ -479,7 +486,8 @@ impl String {
         if slen > len { return false; }
         let offset = (int)(len - slen);
         let zero: c_int = 0;
-        return strcmp(self.c_str() + offset, suffix) == zero;
+        let base = self.c_str();
+        return strcmp(&base[offset], suffix) == zero;
     }
     
     /// Ensures capacity for at least `cap` bytes.
