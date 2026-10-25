@@ -1,0 +1,55 @@
+// language/features/match: test_match_expr_arm_values
+// The value of an arm of a match expression can be another match
+// expression, an if expression or a string literal.
+enum Value { Hour(int), Day(int) }
+
+fn kind(left: Value, right: Value) -> int {
+    return match left {
+        Value::Hour(_a) => match right { Value::Hour(_b) => 1, _ => 2 },
+        _ => 3,
+    };
+}
+
+test "match_expr_arm_is_match" {
+    assert(kind(Value::Hour(1), Value::Hour(2)) == 1, "inner first arm");
+    assert(kind(Value::Hour(1), Value::Day(2)) == 2, "inner default");
+    assert(kind(Value::Day(1), Value::Hour(2)) == 3, "outer default");
+}
+
+fn size(v: Value) -> int {
+    return match v {
+        Value::Hour(h) => if h > 12 { 2 } else { 1 },
+        _ => 0,
+    };
+}
+
+test "match_expr_arm_is_if" {
+    assert(size(Value::Hour(13)) == 2, "then branch");
+    assert(size(Value::Hour(3)) == 1, "else branch");
+    assert(size(Value::Day(3)) == 0, "default");
+}
+
+fn label(v: Value) -> string {
+    return match v { Value::Hour(_h) => "hour", _ => "day" };
+}
+
+test "match_expr_arm_is_string" {
+    assert(label(Value::Hour(1)) == "hour", "string value");
+    assert(label(Value::Day(1)) == "day", "default string");
+}
+
+// An arm can also leave instead of giving a value.
+fn hour_or_minus_one(v: Value) -> int {
+    let hour = match v { Value::Hour(x) => x, _ => return -1 };
+    return hour;
+}
+
+fn hour_or_abort(v: Value) -> int {
+    return match v { Value::Hour(x) => x, _ => assert(false, "not an hour") };
+}
+
+test "match_expr_arm_leaves" {
+    assert(hour_or_minus_one(Value::Hour(5)) == 5, "value arm");
+    assert(hour_or_minus_one(Value::Day(5)) == -1, "return arm");
+    assert(hour_or_abort(Value::Hour(4)) == 4, "assert arm compiles");
+}

@@ -525,34 +525,36 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         int is_string_literal =
             (body->kind == NODE_EXPR_LITERAL && body->literal.kind == LITERAL_STRING);
 
-        if (is_expr)
+        int gives_no_value =
+            (body->kind == NODE_RETURN || body->kind == NODE_ASSERT || body->kind == NODE_EXPECT);
+        if (is_expr && gives_no_value)
+        {
+            // An arm that returns, asserts or expects has no value to assign.
+            codegen_node_single(ctx, body);
+        }
+        else if (is_expr)
         {
             EMIT(ctx, "_r_%d = ", id);
-            if (is_string_literal)
+            if (body->kind == NODE_BLOCK)
             {
-                codegen_node_single(ctx, body);
+                int saved = ctx->cg.defer_count;
+                EMIT(ctx, "({ ");
+                ASTNode *stmt = body->block.statements;
+                while (stmt)
+                {
+                    emit_source_mapping(ctx, stmt);
+                    codegen_node_single(ctx, stmt);
+                    stmt = stmt->next;
+                }
+                emit_defers_down_to(ctx, saved);
+                ctx->cg.defer_count = saved;
+                EMIT(ctx, " })");
             }
             else
             {
-                if (body->kind == NODE_BLOCK)
-                {
-                    int saved = ctx->cg.defer_count;
-                    EMIT(ctx, "({ ");
-                    ASTNode *stmt = body->block.statements;
-                    while (stmt)
-                    {
-                        emit_source_mapping(ctx, stmt);
-                        codegen_node_single(ctx, stmt);
-                        stmt = stmt->next;
-                    }
-                    emit_defers_down_to(ctx, saved);
-                    ctx->cg.defer_count = saved;
-                    EMIT(ctx, " })");
-                }
-                else
-                {
-                    codegen_node_single(ctx, body);
-                }
+                // The value form: a nested match or if gives a value and a
+                // string literal is not printed.
+                codegen_expression(ctx, body);
             }
             EMIT(ctx, ";");
         }
