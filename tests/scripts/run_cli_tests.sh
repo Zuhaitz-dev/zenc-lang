@@ -174,6 +174,27 @@ else
     check "zc <file> builds without a command" 0
 fi
 
+# The intermediate C file must not overwrite a C file of the user with the
+# same name as the output. The builds run inside the directory, so they need
+# an absolute path to zc.
+zc_abs="$(cd "$(dirname "$ZC")" && pwd)/$(basename "$ZC")"
+mkdir -p "$workdir/own_c"
+printf 'fn main() {\n    println "own-c-ok"\n}\n' > "$workdir/own_c/foo.zc"
+printf '// user code\n' > "$workdir/own_c/foo.c"
+printf '// user code\n' > "$workdir/own_c/app.c"
+(cd "$workdir/own_c" && "$zc_abs" build -w foo.zc >/dev/null 2>&1)
+if [ -x "$workdir/own_c/foo" ] && [ "$(cat "$workdir/own_c/foo.c" 2>/dev/null)" = "// user code" ]; then
+    check "zc build keeps a user C file named like the output" 1
+else
+    check "zc build keeps a user C file named like the output" 0
+fi
+(cd "$workdir/own_c" && "$zc_abs" build -w foo.zc -o app >/dev/null 2>&1)
+if [ -x "$workdir/own_c/app" ] && [ "$(cat "$workdir/own_c/app.c" 2>/dev/null)" = "// user code" ]; then
+    check "zc build -o keeps a user C file named like the output" 1
+else
+    check "zc build -o keeps a user C file named like the output" 0
+fi
+
 out=$("$ZC" frobnicate "$workdir/smoke.zc" -o "$workdir/smoke_unknown" 2>&1)
 rc=$?
 if [ "$rc" -ne 0 ] && echo "$out" | grep -q "unknown command 'frobnicate'" &&

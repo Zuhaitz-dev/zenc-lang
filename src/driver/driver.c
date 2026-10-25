@@ -333,8 +333,11 @@ static int compile_program(ZenCompiler *compiler)
     {
         size_t out_len = strlen(compiler->config.output_file);
         size_t ext_len = strlen(ext_p);
-        if (out_len >= ext_len &&
-            strcmp(compiler->config.output_file + out_len - ext_len, ext_p) == 0)
+        // Without --emit-c the C file is a temporary: it must not take the name
+        // of a C file of the user (foo.zc next to its own foo.c).
+        if (!compiler->config.emit_c ||
+            (out_len >= ext_len &&
+             strcmp(compiler->config.output_file + out_len - ext_len, ext_p) == 0))
         {
             snprintf(temp_source_buf, sizeof(temp_source_buf), "%s.tmp%s",
                      compiler->config.output_file, ext_p);
