@@ -1,0 +1,10 @@
+// MISRA Rule 17.7: a return value used in a return statement is used.
+// EXPECT: PASS
+
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn main() -> int {
+    return add(1, 2);
+}

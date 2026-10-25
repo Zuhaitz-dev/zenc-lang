@@ -169,7 +169,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         tc->func_return_count++;
         if (node->ret.value)
         {
+            // A returned expression is used: do not apply the statement-context
+            // rules (notably Rule 17.7, unused return value) to calls inside it.
+            int old_stmt_ctx = tc->is_stmt_context;
+            tc->is_stmt_context = 0;
             check_node(tc, node->ret.value, depth + 1);
+            tc->is_stmt_context = old_stmt_ctx;
         }
         // Check return type compatibility with function
         if (tc->current_func)
