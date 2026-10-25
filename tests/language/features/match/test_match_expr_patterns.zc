@@ -1,0 +1,40 @@
+// language/features/match: test_match_expr_patterns
+// A match used as an expression must give its bindings the payload type and
+// accept the same patterns as a match statement.
+enum Value { Hour(u8), Day(u16) }
+
+fn same(left: Value, right: Value) -> bool {
+    match left {
+        Value::Hour(a) => return match right { Value::Hour(b) => a == b, _ => false },
+        Value::Day(a) => return match right { Value::Day(b) => a == b, _ => false },
+    }
+    return false;
+}
+
+test "match_expr_binding_compares" {
+    assert(same(Value::Hour(2), Value::Hour(2)), "equal hours");
+    assert(!same(Value::Hour(2), Value::Hour(3)), "different hours");
+    assert(!same(Value::Hour(2), Value::Day(2)), "different variants");
+}
+
+fn describe(n: int) -> int {
+    return match n {
+        0 => 10,
+        1 || 2 => 20,
+        3..10 => 30,
+        _ => 40,
+    };
+}
+
+test "match_expr_literal_patterns" {
+    assert(describe(0) == 10, "literal");
+    assert(describe(2) == 20, "alternative");
+    assert(describe(5) == 30, "range");
+    assert(describe(10) == 40, "range end is exclusive");
+}
+
+test "match_expr_string_pattern" {
+    let s = "b";
+    let r = match s { "a" => 1, "b" => 2, _ => 0 };
+    assert(r == 2, "string pattern");
+}

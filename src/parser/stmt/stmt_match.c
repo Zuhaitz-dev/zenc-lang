@@ -22,6 +22,11 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
     init_builtins();
     Token start_token = lexer_peek(l);
     lexer_next(l); // eat 'match'
+    return parse_match_after_keyword(ctx, l, start_token);
+}
+
+ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_token)
+{
     ASTNode *expr = parse_expression(ctx, l);
 
     Token t_brace = lexer_next(l);
@@ -215,7 +220,16 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                     Token val = lexer_next(l);
                     if (val.kind == TOK_IDENT)
                     {
-                        bindings[binding_count] = token_strdup(val);
+                        // A boolean literal (`has_value: true`) binds no name.
+                        char *s = token_strdup(val);
+                        if (strcmp(s, "true") == 0 || strcmp(s, "false") == 0)
+                        {
+                            bindings[binding_count] = NULL;
+                        }
+                        else
+                        {
+                            bindings[binding_count] = s;
+                        }
                     }
                     else
                     {

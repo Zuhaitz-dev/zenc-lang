@@ -935,6 +935,7 @@ void instantiate_generic_multi(ParserContext *ctx, const char *name, char **args
                                Token t);
 
 // stmt/ declarations
+ASTNode *parse_match_after_keyword(ParserContext *ctx, Lexer *l, Token start_token);
 ASTNode *parse_match(ParserContext *ctx, Lexer *l);
 ASTNode *parse_loop(ParserContext *ctx, Lexer *l);
 ASTNode *parse_defer(ParserContext *ctx, Lexer *l);
