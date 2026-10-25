@@ -29,6 +29,14 @@ enum
     MAX_PATTERN_SIZE = 1024
 };
 
+/// Conformance profile for the selected backend.
+typedef enum ZcProfile
+{
+    ZC_PROFILE_C11 = 0,        ///< Default: current C11/GNU output.
+    ZC_PROFILE_HOSTED = 1,     ///< MISRA-shaped output, permissive source policy.
+    ZC_PROFILE_MISRA_C2012 = 2 ///< MISRA C:2012 source checks and output.
+} ZcProfile;
+
 typedef struct CompilerConfig
 {
     char *input_file;
@@ -54,6 +62,8 @@ typedef struct CompilerConfig
     int warn_as_errors;
     int no_suppress_warnings;
     int misra_mode;
+    ZcProfile profile;
+    int misra_output; ///< 1 = prefer MISRA-conforming generated C.
     uint64_t diag_mask;
 
     int keep_comments;

@@ -249,9 +249,49 @@ int main(int argc, char **argv)
             cfg->mode_check = 0;
             cfg->use_typecheck = 0;
         }
+        else if (strcmp(arg, "--profile") == 0)
+        {
+            if (i + 1 >= argc)
+            {
+                fprintf(stderr, "error: --profile requires a name (c11, hosted, misra-c2012)\n");
+                return 1;
+            }
+            const char *profile = argv[++i];
+            if (strcmp(profile, "c11") == 0 || strcmp(profile, "gnu") == 0)
+            {
+                cfg->profile = ZC_PROFILE_C11;
+                cfg->misra_mode = 0;
+                cfg->misra_output = 0;
+            }
+            else if (strcmp(profile, "hosted") == 0)
+            {
+                // MISRA-shaped codegen with a permissive source policy: the
+                // translation unit is allowed to use hosted APIs.
+                cfg->profile = ZC_PROFILE_HOSTED;
+                cfg->misra_mode = 0;
+                cfg->misra_output = 1;
+            }
+            else if (strcmp(profile, "misra-c2012") == 0)
+            {
+                cfg->profile = ZC_PROFILE_MISRA_C2012;
+                cfg->misra_mode = 1;
+                cfg->misra_output = 1;
+                cfg->use_typecheck = 1;
+                zvec_push_Str(&cfg->cfg_defines, xstrdup("misra"));
+                zvec_push_Str(&cfg->cfg_defines, xstrdup("ZC_MISRA"));
+            }
+            else
+            {
+                fprintf(stderr, "error: unknown profile '%s' (expected c11, hosted, misra-c2012)\n",
+                        profile);
+                return 1;
+            }
+        }
         else if (strcmp(arg, "--misra") == 0)
         {
+            cfg->profile = ZC_PROFILE_MISRA_C2012;
             cfg->misra_mode = 1;
+            cfg->misra_output = 1;
             cfg->use_typecheck = 1;
             zvec_push_Str(&cfg->cfg_defines, xstrdup("misra"));
             zvec_push_Str(&cfg->cfg_defines, xstrdup("ZC_MISRA"));

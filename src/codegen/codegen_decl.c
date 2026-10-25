@@ -31,8 +31,10 @@ void emit_source_mapping_duplicate(ParserContext *ctx, ASTNode *node)
 
 void emit_source_mapping(ParserContext *ctx, ASTNode *node)
 {
-    if (!ctx->config->mode_debug)
+    if (!ctx->config->mode_debug || ctx->config->misra_output)
     {
+        // #line is not MISRA-conforming (Rule 20.13). A MISRA profile relies on
+        // a separate source map instead of emitting directives in the C output.
         return;
     }
 
