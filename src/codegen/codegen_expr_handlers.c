@@ -611,6 +611,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 (ctx->config->use_cpp && is_assignment && strcmp(node->binary.op, "=") == 0))
             {
                 int should_cast = ctx->config->misra_mode;
+                int ptr_left = 0;
                 if (!should_cast && node->binary.left->type_info)
                 {
                     TypeKind k = node->binary.left->type_info->kind;
@@ -635,6 +636,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                     if (c_type && strchr(c_type, '*'))
                     {
                         should_cast = 0;
+                        ptr_left = 1;
                     }
                     if (should_cast && node->binary.right->type_info)
                     {
@@ -659,6 +661,13 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                         if (c_type)
                         {
                             zfree(c_type);
+                        }
+                        // Rule 10.4: an integer literal offset beside a pointer
+                        // should have the unsigned index type.
+                        if (ptr_left && node->binary.right->kind == NODE_EXPR_LITERAL &&
+                            node->binary.right->literal.kind == LITERAL_INT)
+                        {
+                            EMIT(ctx, "(size_t)");
                         }
                         codegen_expression_with_move(ctx, node->binary.right);
                     }

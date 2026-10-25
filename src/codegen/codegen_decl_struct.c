@@ -454,15 +454,20 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);
             }
+            if (ctx->config->misra_output && node->trait.methods == NULL)
+            {
+                // Marker traits have no runtime representation; emitting an
+                // empty vtable would break ISO C and leave unused types (2.3/2.4).
+                if (node->cfg_condition)
+                {
+                    EMIT(ctx, "#endif\n");
+                }
+                node = node->next;
+                continue;
+            }
             EMIT(ctx, "typedef struct %s_VTable {\n", node->trait.name);
             emitter_indent(&ctx->cg.emitter);
             ASTNode *m = node->trait.methods;
-            if (!m)
-            {
-                // ISO C (and MISRA) forbids empty structs. Marker traits such
-                // as `Copy` have no slots, so give the vtable a placeholder.
-                EMIT(ctx, "void* _zc_unused;\n");
-            }
             while (m)
             {
                 char *ret_safe = substitute_proto_self(m->func.ret_type, "void*");

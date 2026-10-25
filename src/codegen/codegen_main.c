@@ -463,7 +463,8 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 
             char *sname = s->strct.name;
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
-            EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, sname);
+            EMIT(ctx, "%svoid %s__Drop__glue(%s *self) {\n",
+                 ctx->config->misra_output ? "static " : "", sname, sname);
 
             char glue_mangled[MAX_MANGLED_NAME_LEN];
             snprintf(glue_mangled, sizeof(glue_mangled), "%s__Drop__drop", sname);
