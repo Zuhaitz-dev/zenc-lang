@@ -38,6 +38,8 @@ include <stdarg.h>
 }
 
 // Rune to string (UTF-8); used by string interpolation of rune values.
+// Strict output has no f-string/printing path, so the helper is hosted-only.
+@cfg(not(misra))
 @unused fn _z_str_rune(r: rune) -> char* {
     @thread_local static let buffer: char[5];
     let val = (uint32_t)r;

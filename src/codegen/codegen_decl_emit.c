@@ -791,6 +791,11 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
             }
             else if (local->strct.name && !local->strct.crepr_c_type)
             {
+                if (local->cfg_condition && !cfg_condition_matches(ctx, local->cfg_condition))
+                {
+                    local = local->next;
+                    continue;
+                }
                 const char *final_name = local->link_name ? local->link_name : local->strct.name;
                 const char *keyword = local->strct.is_union ? "union" : "struct";
                 EMIT(ctx, "typedef %s %s %s;\n", keyword, final_name, final_name);

@@ -1,17 +1,17 @@
 import "./core.zc"
 
-// --- MISRA static arena ---
-// A fixed-size arena used as the allocation backend in MISRA mode (where
-// malloc/calloc/free are disallowed). It lives here rather than in arena.zc so
-// that mem.zc does not import arena.zc: arena.zc implements Drop (which
-// auto-imports mem.zc), so a mem.zc -> arena.zc edge would form an import cycle.
+// --- Hosted arena ---
+// Used by the hosted allocator (malloc/calloc/free are disallowed in strict
+// mode, which uses the typed pools below instead).
 
+@cfg(not(misra))
 struct StaticArena {
     data: byte*;
     capacity: usize;
     used: usize;
 }
 
+@cfg(not(misra))
 impl StaticArena {
     fn init(self) {
         // 64KB static buffer for MISRA modes (block scope: Rule 8.9).
@@ -77,8 +77,8 @@ impl StaticArena {
     }
 }
 
+@cfg(not(misra))
 fn _z_get_std_arena() -> StaticArena* {
-    // Block-scope statics: these are only referenced here (MISRA Rule 8.9).
     static let arena: StaticArena;
     static let initialized: bool = false;
     if (!initialized) {
@@ -88,38 +88,16 @@ fn _z_get_std_arena() -> StaticArena* {
     return &arena;
 }
 
-// --- Non-generic internal helpers for conditional compilation ---
-// These avoid the 'StringPtr' mangling bug in generic functions with @cfg attributes.
-
-@cfg(misra)
-fn _z_internal_alloc_bytes(size: usize) -> void* {
-    return _z_get_std_arena().alloc_bytes(size);
-}
+// --- Hosted internal helpers ---
 
 @cfg(not(misra))
 fn _z_internal_alloc_bytes(size: usize) -> void* {
     return calloc(1, size);
 }
 
-@cfg(misra)
-fn _z_internal_zalloc_bytes(size: usize) -> void* {
-    let ptr = _z_get_std_arena().alloc_bytes(size);
-    if (ptr != NULL) {
-        memset(ptr, 0, size);
-    }
-    return ptr;
-}
-
 @cfg(not(misra))
 fn _z_internal_zalloc_bytes(size: usize) -> void* {
     return calloc(1, size);
-}
-
-@cfg(misra)
-fn _z_internal_realloc_bytes(ptr: void*, old_size: usize, new_size: usize) -> void* {
-    // In StaticArena, realloc needs the original type/count, but we can approximate
-    // if we treat it as an array of bytes.
-    return _z_get_std_arena().realloc<byte>((byte*)ptr, old_size, new_size);
 }
 
 @cfg(not(misra))
@@ -131,12 +109,6 @@ fn _z_internal_realloc_bytes(ptr: void*, old_size: usize, new_size: usize) -> vo
     return new_ptr;
 }
 
-@cfg(misra)
-fn _z_internal_free(ptr: void*) {
-    (void)ptr;
-    // No-op in MISRA arena mode
-}
-
 @cfg(not(misra))
 fn _z_internal_free(ptr: void*) {
     if (ptr != NULL) {
@@ -144,35 +116,102 @@ fn _z_internal_free(ptr: void*) {
     }
 }
 
-// --- Public Generic API ---
-// These are NOT attribute-guarded to avoid compiler template bugs.
+@cfg(misra)
+fn _z_pool_alloc<T>(ptr: T*, old_n: usize, new_n: usize) -> T* {
+    static let data: T[4096];
+    static let used: usize = 0;
+    static let last: T* = NULL;
 
+    let result = ptr;
+    if (new_n > 0) {
+        let in_place = false;
+        if (ptr != NULL && old_n > 0 && used >= old_n) {
+            let start: usize = used - old_n;
+            if (ptr == last && start + new_n <= 4096) {
+                if (new_n > old_n) {
+                    let grow_at: usize = start + old_n;
+                    memset(&data[grow_at], 0, (new_n - old_n) * sizeof(T));
+                }
+                used = start + new_n;
+                in_place = true;
+            }
+        }
+
+        if (!in_place) {
+            if (used + new_n > 4096) {
+                !"Panic: MISRA object pool exhausted";
+            }
+            let slot: usize = used;
+            result = &data[slot];
+            used = used + new_n;
+            last = result;
+            memset(result, 0, new_n * sizeof(T));
+        }
+    }
+    return result;
+}
+
+@cfg(misra)
+fn alloc_n<T>(n: usize) -> T* {
+    return _z_pool_alloc<T>(NULL, 0, n);
+}
+
+@cfg(misra)
+fn alloc<T>() -> T* {
+    return alloc_n<T>(1);
+}
+
+@cfg(misra)
+fn zalloc<T>() -> T* {
+    return alloc_n<T>(1);
+}
+
+@cfg(misra)
+fn realloc_n<T>(ptr: T*, old_n: usize, new_n: usize) -> T* {
+    return _z_pool_alloc<T>(ptr, old_n, new_n);
+}
+
+@cfg(misra)
+fn dealloc<T>(ptr: T*) {
+    (void)ptr;
+}
+
+
+// --- Hosted public API ---
+// The raw byte API is type-erased and therefore not available in strict mode;
+// strict code uses alloc<T>() / alloc_n<T>() instead.
+
+@cfg(not(misra))
 fn alloc<T>() -> T* {
     return (T*)_z_internal_alloc_bytes(sizeof(T));
 }
 
+@cfg(not(misra))
 fn zalloc<T>() -> T* {
     return (T*)_z_internal_zalloc_bytes(sizeof(T));
 }
 
+@cfg(not(misra))
 fn alloc_n<T>(n: usize) -> T* {
     return (T*)_z_internal_alloc_bytes(n * sizeof(T));
 }
 
+@cfg(not(misra))
 fn realloc_n<T>(ptr: T*, old_n: usize, new_n: usize) -> T* {
     return (T*)_z_internal_realloc_bytes((void*)ptr, old_n * sizeof(T), new_n * sizeof(T));
 }
 
+@cfg(not(misra))
 fn dealloc<T>(ptr: T*) {
     _z_internal_free((void*)ptr);
 }
 
-// --- Raw Byte API for C Interop ---
-
+@cfg(not(misra))
 fn alloc_bytes(size: usize) -> void* {
     return _z_internal_alloc_bytes(size);
 }
 
+@cfg(not(misra))
 fn zalloc_bytes(size: usize) -> void* {
     return _z_internal_zalloc_bytes(size);
 }

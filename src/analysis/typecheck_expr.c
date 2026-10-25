@@ -273,7 +273,9 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             ZenSymbol *sym = tc_lookup(tc, node->unary.operand->var_ref.name);
             if (sym)
             {
-                node->type_info->lifetime_depth = sym->scope_depth;
+                // Static locals have static storage duration; their address
+                // escapes safely.
+                node->type_info->lifetime_depth = sym->is_static ? 0 : sym->scope_depth;
             }
         }
         else if (strcmp(op, "&_rval") == 0)

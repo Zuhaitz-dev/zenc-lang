@@ -1,0 +1,9 @@
+// Strict closures: one struct per signature, no function-pointer casts, and
+// non-capturing lambdas (captured closures are rejected by the strict policy).
+fn apply(f: fn(int) -> int, x: int) -> int {
+    return f(x);
+}
+
+fn main() -> int {
+    return (apply(fn(y: int) -> int { return y + 1; }, 2) == 3) ? 0 : 1;
+}

@@ -748,6 +748,8 @@ void register_func_template(ParserContext *ctx, const char *name, const char *pa
  * @brief Finds a function template.
  */
 GenericFuncTemplate *find_func_template(ParserContext *ctx, const char *name);
+GenericFuncTemplate *find_func_template_for_config(ParserContext *ctx, const char *name);
+int cfg_condition_matches(ParserContext *ctx, const char *cond);
 
 // Generic/template helpers
 /**
@@ -875,7 +877,7 @@ ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tk);
 char *token_get_string_content(Token t);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
-                        int is_export);
+                        int is_export, const char *cfg_condition);
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
 void parse_pending_bodies(ParserContext *ctx);
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_packed, int align,

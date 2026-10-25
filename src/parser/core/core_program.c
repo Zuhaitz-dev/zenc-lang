@@ -179,7 +179,8 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 Token next = lexer_peek(l);
                 if (next.kind == TOK_IDENT && 2 == next.len && 0 == strncmp(next.start, "fn", 2))
                 {
-                    s = parse_function(ctx, l, 0, attrs.link_name, attrs.is_export);
+                    s = parse_function(ctx, l, 0, attrs.link_name, attrs.is_export,
+                                       attrs.cfg_condition);
                     attrs.is_inline = 1;
                 }
                 else
@@ -196,7 +197,8 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                              "std/thread.zc");
                 if (next.kind == TOK_IDENT && 2 == next.len && 0 == strncmp(next.start, "fn", 2))
                 {
-                    s = parse_function(ctx, l, 0, attrs.link_name, attrs.is_export);
+                    s = parse_function(ctx, l, 0, attrs.link_name, attrs.is_export,
+                                       attrs.cfg_condition);
                 }
                 else
                 {
@@ -206,7 +208,8 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             }
             else if (0 == strncmp(t.start, "fn", 2) && 2 == t.len)
             {
-                s = parse_function(ctx, l, 0, attrs.link_name, attrs.is_export);
+                s = parse_function(ctx, l, 0, attrs.link_name, attrs.is_export,
+                                   attrs.cfg_condition);
             }
             else if (0 == strncmp(t.start, "struct", 6) && 6 == t.len)
             {
@@ -292,7 +295,8 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 Token peek = lexer_peek(l);
                 if (peek.kind == TOK_IDENT && peek.len == 2 && strncmp(peek.start, "fn", 2) == 0)
                 {
-                    s = parse_function(ctx, l, 1, attrs.link_name, attrs.is_export);
+                    s = parse_function(ctx, l, 1, attrs.link_name, attrs.is_export,
+                                       attrs.cfg_condition);
                 }
                 else if (peek.kind == TOK_IDENT && peek.len == 6 &&
                          strncmp(peek.start, "struct", 6) == 0)

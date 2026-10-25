@@ -42,12 +42,13 @@ struct VecIterRef<T> {
 impl VecIter<T> {
     /// Yields the next item, or `None` when exhausted.
     fn next(self) -> Option<T> {
+        let result = Option<T>::None();
         if (self.idx < self.count) {
             let item = self.data[self.idx];
             self.idx = self.idx + 1;
-            return Option<T>::Some(item);
+            result = Option<T>::Some(item);
         }
-        return Option<T>::None();
+        return result;
     }
     
     /// Returns an iterator yielding copies.
@@ -88,40 +89,46 @@ impl VecIter<T> {
     // Returns the first item for which `pred` returns true.
     /// Returns the first item accepted by `pred`.
     fn find(self, pred: fn(T) -> bool) -> Option<T> {
+        let result = Option<T>::None();
         while (self.idx < self.count) {
             let item = self.data[self.idx];
             self.idx = self.idx + 1;
             if (pred(item)) {
-                return Option<T>::Some(item);
+                result = Option<T>::Some(item);
+                break;
             }
         }
-        return Option<T>::None();
+        return result;
     }
 
     // Returns true when `pred` accepts at least one remaining item.
     /// Returns whether `pred` accepts at least one remaining item.
     fn any(self, pred: fn(T) -> bool) -> bool {
+        let result = false;
         while (self.idx < self.count) {
             let item = self.data[self.idx];
             self.idx = self.idx + 1;
             if (pred(item)) {
-                return true;
+                result = true;
+                break;
             }
         }
-        return false;
+        return result;
     }
 
     // Returns true when `pred` accepts every remaining item.
     /// Returns whether `pred` accepts every remaining item.
     fn all(self, pred: fn(T) -> bool) -> bool {
+        let result = true;
         while (self.idx < self.count) {
             let item = self.data[self.idx];
             self.idx = self.idx + 1;
             if (!pred(item)) {
-                return false;
+                result = false;
+                break;
             }
         }
-        return true;
+        return result;
     }
 
     // Collects the remaining items accepted by `pred` into a new Vec.
@@ -154,12 +161,13 @@ impl VecIter<T> {
 impl VecIterRef<T> {
     /// Yields the next item, or `None` when exhausted.
     fn next(self) -> VecIterResult<T> {
+        let result = VecIterResult<T> { ptr: NULL };
         if (self.idx < self.count) {
             let item = &self.data[self.idx];
             self.idx = self.idx + 1;
-            return VecIterResult<T> { ptr: item };
+            result = VecIterResult<T> { ptr: item };
         }
-        return VecIterResult<T> { ptr: NULL };
+        return result;
     }
     
     /// Returns an iterator yielding copies.
@@ -176,14 +184,16 @@ impl VecIterRef<T> {
     // Returns the first item for which `pred` returns true.
     /// Returns the first item accepted by `pred`.
     fn find(self, pred: fn(T*) -> bool) -> VecIterResult<T> {
+        let result = VecIterResult<T> { ptr: NULL };
         while (self.idx < self.count) {
             let item = &self.data[self.idx];
             self.idx = self.idx + 1;
             if (pred(item)) {
-                return VecIterResult<T> { ptr: item };
+                result = VecIterResult<T> { ptr: item };
+                break;
             }
         }
-        return VecIterResult<T> { ptr: NULL };
+        return result;
     }
 }
 
@@ -195,14 +205,15 @@ impl Vec<T> {
 
     /// Creates a new Vec with an initial capacity.
     fn with_capacity(cap: usize) -> Vec<T> {
-        if (cap == 0) {
-            return Vec<T> { data: NULL, len: 0, cap: 0 };
+        let result = Vec<T> { data: NULL, len: 0, cap: 0 };
+        if (cap > 0) {
+            result = Vec<T> {
+                data: alloc_n<T>(cap),
+                len: 0,
+                cap: cap
+            };
         }
-        return Vec<T> {
-            data: alloc_n<T>(cap),
-            len: 0,
-            cap: cap
-        };
+        return result;
     }
 
     fn grow(self) {
@@ -214,17 +225,15 @@ impl Vec<T> {
 
     /// Ensures capacity for at least `new_len` items.
     fn grow_to_fit(self, new_len: usize) {
-        if self.cap >= new_len {
-            return;
-        }
+        if (self.cap < new_len) {
+            let old_cap = self.cap;
+            if (self.cap == 0) { self.cap = 8; }
+            while self.cap < new_len {
+                self.cap = self.cap * 2;
+            }
 
-        let old_cap = self.cap;
-        if (self.cap == 0) { self.cap = 8; }
-        while self.cap < new_len {
-            self.cap = self.cap * 2;
+            self.data = realloc_n<T>(self.data, old_cap, self.cap);
         }
-
-        self.data = realloc_n<T>(self.data, old_cap, self.cap);
     }
 
     /// Returns an iterator yielding copies.
@@ -282,11 +291,12 @@ impl Vec<T> {
 
     /// Removes and returns the last item, or `None` when empty.
     fn pop_opt(self) -> Option<T> {
-        if (self.len == 0) {
-            return Option<T>::None();
+        let result = Option<T>::None();
+        if (self.len > 0) {
+            self.len = self.len - 1;
+            result = Option<T>::Some(self.data[self.len]);
         }
-        self.len = self.len - 1;
-        return Option<T>::Some(self.data[self.len]);
+        return result;
     }
 
     /// Removes and returns the item at `idx`.
@@ -350,12 +360,16 @@ impl Vec<T> {
 
     /// Returns whether an equal item exists.
     fn contains(self, item: T) -> bool {
+        let result = false;
         let i: usize = 0;
         while i < self.len {
-            if memcmp(&self.data[i], &item, sizeof(T)) == 0 { return true; }
+            if memcmp(&self.data[i], &item, sizeof(T)) == 0 {
+                result = true;
+                break;
+            }
             i++;
         }
-        return false;
+        return result;
     }
 
     /// Returns whether the Vec is empty.
@@ -409,13 +423,18 @@ impl Vec<T> {
     // Structural equality check.
     // Returns true if both vectors have the same length and identical elements.
     fn eq(self, other: Vec<T>*) -> bool {
-        if self.len != (*other).len { return false; }
-        let i: usize = 0;
-        while i < self.len {
-            if memcmp(&self.data[i], &(*other).data[i], sizeof(T)) != 0 { return false; }
-            i = i + 1;
+        let result = (self.len == (*other).len);
+        if (result) {
+            let i: usize = 0;
+            while i < self.len {
+                if memcmp(&self.data[i], &(*other).data[i], sizeof(T)) != 0 {
+                    result = false;
+                    break;
+                }
+                i = i + 1;
+            }
         }
-        return true;
+        return result;
     }
 
     // Prevent Drop from freeing memory (simulates move)
@@ -477,38 +496,36 @@ impl Vec<T> {
     fn mul_assign(self, count: usize) {
         if (count == 0) {
             self.clear();
-            return;
-        }
-        if (count == 1) {
-            return;
-        }
-        let original_len = self.len;
-        self.grow_to_fit(self.len * count);
-        let c: usize = 1;
-        while c < count {
-            let base = self.data;
-            memcpy(&base[original_len * c], self.data, original_len * sizeof(T));
-            self.len += original_len;
-            c += 1;
+        } else if (count > 1) {
+            let original_len = self.len;
+            self.grow_to_fit(self.len * count);
+            let c: usize = 1;
+            while c < count {
+                let base = self.data;
+                memcpy(&base[original_len * c], self.data, original_len * sizeof(T));
+                self.len += original_len;
+                c += 1;
+            }
         }
     }
 
     /// Returns a deep copy.
     fn clone(self) -> Vec<T> {
-        if (self.len == 0) {
-            return Vec<T> { data: NULL, len: 0, cap: 0 };
+        let result = Vec<T> { data: NULL, len: 0, cap: 0 };
+        if (self.len > 0) {
+            let new_data = alloc_n<T>(self.len);
+            let i: usize = 0;
+            while i < self.len {
+                new_data[i] = self.data[i];
+                i = i + 1;
+            }
+            result = Vec<T> {
+                data: new_data,
+                len: self.len,
+                cap: self.len
+            };
         }
-        let new_data = alloc_n<T>(self.len);
-        let i: usize = 0;
-        while i < self.len {
-            new_data[i] = self.data[i];
-            i = i + 1;
-        }
-        return Vec<T> {
-            data: new_data,
-            len: self.len,
-            cap: self.len
-        };
+        return result;
     }
 }
 

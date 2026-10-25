@@ -18,7 +18,7 @@
 // value, cast the literal to the other operand's essential type.
 static void emit_literal_cast_for_comparison(ParserContext *ctx, ASTNode *operand, ASTNode *other)
 {
-    if (!ctx->config->misra_output || !operand || !other || !other->type_info)
+    if (!ctx->config->misra_output || !operand || !other)
     {
         return;
     }
@@ -26,15 +26,16 @@ static void emit_literal_cast_for_comparison(ParserContext *ctx, ASTNode *operan
     {
         return;
     }
-    if (!is_int_type(other->type_info->kind))
+    char *ts = other->type_info ? type_to_c_string(other->type_info, 1) : infer_type(ctx, other);
+    if (!ts)
     {
         return;
     }
-    char *ts = type_to_c_string(other->type_info, 1);
-    if (ts)
+    int is_unsigned = strstr(ts, "unsigned") || strstr(ts, "uint") || strcmp(ts, "size_t") == 0 ||
+                      strcmp(ts, "usize") == 0 || strcmp(ts, "byte") == 0;
+    if (is_unsigned)
     {
         EMIT(ctx, "(%s)", ts);
-        zfree(ts);
     }
 }
 
@@ -630,6 +631,24 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                         c_type =
                             type_to_c_string(node->binary.left->type_info, ctx->config->misra_mode);
                     }
+                    if ((!c_type || strcmp(c_type, "unknown") == 0 ||
+                         strcmp(c_type, "void") == 0) &&
+                        node->binary.left)
+                    {
+                        // Variable expressions may only carry resolved_type; use
+                        // the inferred C type so literals on the other side can
+                        // be balanced (Rule 10.4).
+                        if (c_type)
+                        {
+                            zfree(c_type);
+                            c_type = NULL;
+                        }
+                        char *inferred = infer_type(ctx, node->binary.left);
+                        if (inferred && strcmp(inferred, "unknown") != 0)
+                        {
+                            c_type = xstrdup(inferred);
+                        }
+                    }
                     // Pointer arithmetic must not cast the integer offset to
                     // the pointer type (`p + (T*)i` is invalid C), nor cast a
                     // pointer operand to the integer type (`i + (int)p`).
@@ -647,6 +666,26 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                             should_cast = 0;
                         }
                         zfree(rt);
+                    }
+                    // Casting a struct/union (including a tagged enum) to its
+                    // own type is not valid C.
+                    if (should_cast && node->binary.left->type_info)
+                    {
+                        TypeKind lk = node->binary.left->type_info->kind;
+                        int non_scalar = (lk == TYPE_STRUCT);
+                        if (lk == TYPE_ENUM && node->binary.left->type_info->name)
+                        {
+                            ASTNode *edef =
+                                find_struct_def(ctx, node->binary.left->type_info->name);
+                            if (edef && enum_has_payload(edef))
+                            {
+                                non_scalar = 1;
+                            }
+                        }
+                        if (non_scalar)
+                        {
+                            should_cast = 0;
+                        }
                     }
                     if (should_cast && c_type && strcmp(c_type, "unknown") != 0 &&
                         strcmp(c_type, "void") != 0)

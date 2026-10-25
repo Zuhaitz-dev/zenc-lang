@@ -78,8 +78,9 @@ fn _z_qsort_range<T>(arr: T*, lo: int, hi: int) {
 }
 
 fn sort<T>(arr: T*, len: usize) {
-    if (len <= 1) { return; }
-    _z_qsort_range(arr, 0, (int)len - 1);
+    if (len > 1) {
+        _z_qsort_range(arr, 0, (int)len - 1);
+    }
 }
 
 fn sort_int(arr: int*, len: usize) {

@@ -226,6 +226,51 @@ GenericFuncTemplate *find_func_template(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+// Generic templates may be declared more than once with different @cfg
+// conditions (e.g. alloc_n<T> has a MISRA pool variant and a hosted malloc
+// variant). Template lookup must pick the variant that matches the active
+// profile, otherwise the last parsed definition always wins.
+int cfg_condition_matches(ParserContext *ctx, const char *cond)
+{
+    if (!cond)
+    {
+        return 1;
+    }
+    if (!strstr(cond, "ZC_CFG_misra"))
+    {
+        return 1; // Unknown/other conditions: preserve previous behaviour.
+    }
+    int misra = ctx->config->misra_mode;
+    if (strstr(cond, "!defined(ZC_CFG_misra)"))
+    {
+        return !misra;
+    }
+    if (strstr(cond, "defined(ZC_CFG_misra)"))
+    {
+        return misra;
+    }
+    return 1;
+}
+
+static int template_cfg_matches(ParserContext *ctx, ASTNode *node)
+{
+    return cfg_condition_matches(ctx, node ? node->cfg_condition : NULL);
+}
+
+GenericFuncTemplate *find_func_template_for_config(ParserContext *ctx, const char *name)
+{
+    GenericFuncTemplate *t = ctx->func_templates;
+    while (t)
+    {
+        if (strcmp(t->name, name) == 0 && template_cfg_matches(ctx, t->func_node))
+        {
+            return t;
+        }
+        t = t->next;
+    }
+    return NULL;
+}
+
 void register_generic(ParserContext *ctx, char *name)
 {
     for (int i = 0; i < ctx->known_generics_count; i++)

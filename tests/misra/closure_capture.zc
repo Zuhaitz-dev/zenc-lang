@@ -1,0 +1,10 @@
+// A captured closure needs a void* context, which requires a void* -> object
+// pointer conversion (Rule 11.5). The strict profile rejects it; state must be
+// passed explicitly instead.
+// EXPECT: captured closures are not supported
+
+fn main() -> int {
+    let base = 1;
+    let f = fn(y: int) -> int { return base + y; };
+    return f(2) - 3;
+}

@@ -414,7 +414,17 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
         }
     }
 
-    codegen_walker(ctx, node->func.body);
+    // MISRA output emits the body statements directly in the function block.
+    // A redundant nested block around them makes cppcheck's 15.5 checker treat
+    // an `if` before the final return as a second exit point.
+    if (ctx->config->misra_mode && node->func.body->kind == NODE_BLOCK)
+    {
+        codegen_walker(ctx, node->func.body->block.statements);
+    }
+    else
+    {
+        codegen_walker(ctx, node->func.body);
+    }
     // Cleanup after the last statement is unreachable when the body cannot fall
     // through; emitting it duplicates the defers already run by each return.
     if (!block_cannot_fall_through(node->func.body))

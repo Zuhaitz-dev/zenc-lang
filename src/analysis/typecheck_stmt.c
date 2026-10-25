@@ -64,10 +64,12 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     // MISRA: Mark type as used
     mark_type_as_used(tc, node->var_decl.type_info);
 
-    // Initialize lifetime depth for escape analysis if this is a local variable
+    // Initialize lifetime depth for escape analysis if this is a local variable.
+    // Static locals have static storage duration, so a pointer to them escapes
+    // safely (depth 0).
     if (node->var_decl.type_info && tc->current_func)
     {
-        node->var_decl.type_info->lifetime_depth = tc->current_depth;
+        node->var_decl.type_info->lifetime_depth = node->var_decl.is_static ? 0 : tc->current_depth;
     }
 
     if (node->var_decl.init_expr)

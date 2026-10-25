@@ -252,6 +252,17 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
         is_still_generic = 1;
     }
 
+    // Parse-time placeholder resolution still sees `T`; keep any template.
+    // Real instantiations pick the variant whose @cfg matches the profile.
+    if (!is_still_generic)
+    {
+        GenericFuncTemplate *matched = find_func_template_for_config(ctx, name);
+        if (matched)
+        {
+            tpl = matched;
+        }
+    }
+
     char buf[MAX_ERROR_MSG_LEN];
     snprintf(buf, sizeof(buf), "%s__%s", name, clean_type);
     char *mangled = merge_underscores(buf);
