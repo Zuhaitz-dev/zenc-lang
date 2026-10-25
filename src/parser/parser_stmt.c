@@ -323,10 +323,11 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         // declaration as a normal `let` so recovery does not cascade into C.
         if (strncmp(tk.start, "autofree", 8) == 0 && tk.len == 8)
         {
-            Lexer lookahead = *l;
-            lexer_next(&lookahead);
-            Token next = lexer_peek(&lookahead);
-            if (next.kind == TOK_IDENT && next.len == 3 && strncmp(next.start, "let", 3) == 0)
+            Lexer af_look = *l;
+            lexer_next(&af_look);
+            Token af_next = lexer_peek(&af_look);
+            if (af_next.kind == TOK_IDENT && af_next.len == 3 &&
+                strncmp(af_next.start, "let", 3) == 0)
             {
                 zerror_at(tk, "'autofree' was removed; declare the variable normally and add "
                               "'defer free(x)'");

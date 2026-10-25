@@ -1096,7 +1096,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
         char *ptr_token = (char *)strstr(inner, "(*");
         if (ptr_token)
         {
-            long prefix_len = ptr_token - inner + 2; // "void (*"
+            ptrdiff_t prefix_len = ptr_token - inner + 2; // "void (*"
             char *res = xmalloc(strlen(inner) + 2);
             strncpy(res, inner, (size_t)(prefix_len));
             res[prefix_len] = 0;
