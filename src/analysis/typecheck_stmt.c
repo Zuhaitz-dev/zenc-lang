@@ -683,7 +683,16 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         loop_start = tc->pctx->move_state ? move_state_clone(tc->pctx->move_state) : NULL;
         tc->loop_start_state = loop_start;
 
+        // The range variable is only visible in the body (like C's for-init).
+        tc_enter_scope(tc);
+        Type *range_type = node->for_range.start ? node->for_range.start->type_info : NULL;
+        if (!range_type)
+        {
+            range_type = type_new(TYPE_INT);
+        }
+        add_symbol(tc->pctx, node->for_range.var_name, NULL, range_type, 0);
         check_node(tc, node->for_range.body, depth + 1);
+        tc_exit_scope(tc);
         break;
 
     case NODE_LOOP:
@@ -736,7 +745,17 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
             check_node(tc, node->for_stmt.step, depth + 1);
             break;
         case NODE_FOR_RANGE:
+            tc_enter_scope(tc);
+            {
+                Type *range_type = node->for_range.start ? node->for_range.start->type_info : NULL;
+                if (!range_type)
+                {
+                    range_type = type_new(TYPE_INT);
+                }
+                add_symbol(tc->pctx, node->for_range.var_name, NULL, range_type, 0);
+            }
             check_node(tc, node->for_range.body, depth + 1);
+            tc_exit_scope(tc);
             break;
         case NODE_LOOP:
             check_node(tc, node->loop_stmt.body, depth + 1);

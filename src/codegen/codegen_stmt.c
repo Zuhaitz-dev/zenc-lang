@@ -281,7 +281,20 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         codegen_loop_enter(ctx, node->for_range.loop_label);
 
         EMIT(ctx, "for (");
-        if (z_path_match_compiler(ctx->config->cc, "tcc"))
+        if (ctx->config->misra_output)
+        {
+            // The minimal MISRA preamble has no ZC_AUTO/typeof macro.
+            char *range_type = NULL;
+            if (node->for_range.start && node->for_range.start->type_info &&
+                node->for_range.start->type_info->kind != TYPE_UNKNOWN)
+            {
+                range_type =
+                    type_to_c_string(node->for_range.start->type_info, ctx->config->misra_mode);
+            }
+            EMIT(ctx, "%s %s = ", range_type ? range_type : "int32_t", node->for_range.var_name);
+            zfree(range_type);
+        }
+        else if (z_path_match_compiler(ctx->config->cc, "tcc"))
         {
             EMIT(ctx, "__typeof__((");
             codegen_expression(ctx, node->for_range.start);
