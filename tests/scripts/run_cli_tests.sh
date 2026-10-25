@@ -134,6 +134,32 @@ output_check "bare strings print without semicolons" 'fn main() {
 x is 3
 last"
 
+# --- assert ------------------------------------------------------------------
+
+# Outside a test, a failed assert stops the program with exit code 1.
+printf 'fn main() {\n    assert(1 == 2, "boom");\n    println "after";\n}\n' > "$workdir/assert_main.zc"
+"$ZC" build -w "$workdir/assert_main.zc" -o "$workdir/assert_main" >/dev/null 2>&1
+out=$("$workdir/assert_main" 2>&1)
+rc=$?
+if [ "$rc" -eq 1 ] && echo "$out" | grep -q "Assertion failed: boom" &&
+    ! echo "$out" | grep -q "after"; then
+    check "a failed assert outside a test stops the program" 1
+else
+    check "a failed assert outside a test stops the program" 0
+fi
+
+# Inside a test it counts as a failure and the next test still runs.
+printf 'test "first" {\n    assert(1 == 2, "boom");\n}\ntest "second" {\n    assert(1 == 1, "fine");\n}\n' > "$workdir/assert_test.zc"
+"$ZC" build -w "$workdir/assert_test.zc" -o "$workdir/assert_test" >/dev/null 2>&1
+out=$("$workdir/assert_test" 2>&1)
+rc=$?
+if [ "$rc" -eq 1 ] && echo "$out" | grep -q "Assertion failed: boom" &&
+    echo "$out" | grep -q "TEST: second ... OK" && echo "$out" | grep -q "1 test(s) failed"; then
+    check "a failed assert inside a test fails only that test" 1
+else
+    check "a failed assert inside a test fails only that test" 0
+fi
+
 out=$("$ZC" build "$workdir/smoke.zc" -o "$workdir/smoke_build" 2>&1)
 if [ -x "$workdir/smoke_build" ]; then
     check "zc build compiles a program" 1

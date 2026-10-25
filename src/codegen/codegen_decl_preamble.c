@@ -197,13 +197,17 @@ void emit_preamble(ParserContext *ctx)
              "{0x07,0xd5,0x59,0x30,0x7c,0x7f,0x66,0x75,0x30,0x69,0x7f,0x65,0x3c,0x30,0x59,0x7c,"
              "0x79,0x7e,0x73,0x71};\n");
 
+        // Inside a test a failed assert counts as a failure; outside one it stops
+        // the program. _zc_in_test is set by the test runner.
         EMIT(ctx, "%s",
              "#define __zenc_assert(cond, ...) if (!(cond)) { fprintf(stderr, \"  Assertion "
-             "failed: \" __VA_ARGS__); fprintf(stderr, \"\\n\"); _zc_test_failures++; }\n");
+             "failed: \" __VA_ARGS__); fprintf(stderr, \"\\n\"); if (!_zc_in_test) { exit(1); } "
+             "_zc_test_failures++; }\n");
         EMIT(ctx, "%s",
              "#define __zenc_expect(cond, ...) if (!(cond)) { fprintf(stderr, \"  Expectation "
              "failed: \" __VA_ARGS__); fprintf(stderr, \"\\n\"); _zc_test_failures++; }\n");
         EMIT(ctx, "static __attribute__((unused)) int _zc_test_failures = 0;\n");
+        EMIT(ctx, "static __attribute__((unused)) int _zc_in_test = 0;\n");
 
         // C++ compatible readln helper
         if (ctx->config->use_cpp)

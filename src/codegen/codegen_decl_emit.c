@@ -634,6 +634,7 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node)
         EMIT(ctx, "\nint _z_run_tests() {\n");
         emitter_indent(&ctx->cg.emitter);
         EMIT(ctx, "int _zc_total = 0;\n");
+        EMIT(ctx, "_zc_in_test = 1;\n");
         cur = node;
         int i = 0;
         while (cur)
@@ -653,6 +654,7 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node)
             }
             cur = cur->next;
         }
+        EMIT(ctx, "_zc_in_test = 0;\n");
         EMIT(ctx, "fprintf(stderr, \"\\n%%d test(s) failed\\n\", _zc_total);\n");
         EMIT(ctx, "return _zc_total;\n");
         emitter_dedent(&ctx->cg.emitter);

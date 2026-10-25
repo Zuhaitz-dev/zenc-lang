@@ -271,7 +271,7 @@ Output shows each test by name:
 #### Assertions
 | Function | Behavior |
 |:---|:---|
-| `assert(cond, msg)` | Records failure, continues to next test (no longer aborts) |
+| `assert(cond, msg)` | In a test: records failure, continues to next test (no longer aborts). Outside a test: prints the message and exits with code 1 |
 | `expect(cond, msg)` | Non-fatal — records failure but continues within the same test |
 
 Use `assert` for critical checks that should stop the current test, and `expect` when you want to verify multiple conditions without short-circuiting:
