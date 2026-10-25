@@ -289,7 +289,18 @@ void emit_preamble(ParserContext *ctx)
 // parameters of incomplete struct type in a function pointer typedef.
 void emit_closure_typedefs(ParserContext *ctx)
 {
-    if (!ctx->config->misra_mode || !ctx->closure_types)
+    if (!ctx->config->misra_mode)
+    {
+        return;
+    }
+
+    // Panic/todo calls lower to these helpers in strict output. They must
+    // follow every #include (Rule 20.1). There is no stdio or exit(), so they
+    // fail safe with a trap.
+    EMIT(ctx, "static void __zenc_panic(const char* msg) { (void)msg; for (;;) { } }\n");
+    EMIT(ctx, "static void __zenc_todo(const char* msg) { (void)msg; for (;;) { } }\n\n");
+
+    if (!ctx->closure_types)
     {
         return;
     }

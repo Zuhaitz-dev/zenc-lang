@@ -72,7 +72,7 @@ impl StringCharsIter {
 impl String {
     /// Creates a new String from a C string.
     fn new(s: char*) -> String {
-        let len = strlen(s);
+        let len: usize = strlen(s);
         let v = Vec<char>::with_capacity(len + 1);
         if (len > 0) {
             memcpy(v.data, s, len * sizeof(char));
@@ -151,7 +151,7 @@ impl String {
         if (self.vec.len > 0) {
             self.vec.len = self.vec.len - 1;
         }
-        let slen = strlen(s);
+        let slen: usize = strlen(s);
         let new_len = self.vec.len + slen + 1;
         self.vec.grow_to_fit(new_len);
         memcpy(self.vec.data + self.vec.len, s, slen * sizeof(char));
@@ -188,7 +188,7 @@ impl String {
         if (ptr.vec.len > 0) {
             ptr.vec.len = ptr.vec.len - 1;
         }
-        let slen = strlen(s);
+        let slen: usize = strlen(s);
         let new_len = ptr.vec.len + slen + 1;
         ptr.vec.grow_to_fit(new_len);
         memcpy(ptr.vec.data + ptr.vec.len, s, slen * sizeof(char));
@@ -299,7 +299,7 @@ impl String {
 
     /// Returns the first index of `target`, or `None`.
     fn find_str(self, target: char*) -> Option<usize> {
-        let t_len = strlen(target);
+        let t_len: usize = strlen(target);
         if t_len == 0 { return Option<usize>::Some(0); }
         let s_len = self.length();
         if t_len > s_len { return Option<usize>::None(); }
@@ -320,7 +320,7 @@ impl String {
     /// Returns all indices where `target` occurs.
     fn find_all_str(self, target: char*) -> Vec<usize> {
         let indices = Vec<usize>::new();
-        let t_len = strlen(target);
+        let t_len: usize = strlen(target);
         if t_len == 0 { return indices; }
         let s_len = self.length();
         if t_len > s_len { return indices; }
@@ -442,12 +442,14 @@ impl String {
     }
 
     /// Prints the string to stdout.
+    @cfg(not(misra))
     fn print(self) {
         printf("%s", self.c_str());
         fflush(stdout);
     }
 
     /// Prints the string to stdout followed by a newline.
+    @cfg(not(misra))
     fn println(self) {
         printf("%s\n", self.c_str());
     }
@@ -464,7 +466,7 @@ impl String {
     
     /// Returns whether the string starts with `prefix`.
     fn starts_with(self, prefix: char*) -> bool {
-        let plen = strlen(prefix);
+        let plen: usize = strlen(prefix);
         if plen > self.length() { return false; }
         let zero: c_int = 0;
         return strncmp(self.c_str(), prefix, plen) == zero;
@@ -472,7 +474,7 @@ impl String {
     
     /// Returns whether the string ends with `suffix`.
     fn ends_with(self, suffix: char*) -> bool {
-        let slen = strlen(suffix);
+        let slen: usize = strlen(suffix);
         let len = self.length();
         if slen > len { return false; }
         let offset = (int)(len - slen);
@@ -758,7 +760,7 @@ impl String {
     
     /// Returns a copy with all `target` replaced by `replacement`.
     fn replace(self, target: char*, replacement: char*) -> String {
-        let t_len = strlen(target);
+        let t_len: usize = strlen(target);
         if (t_len == 0) {
             return self.substring(0, self.length()); // clone
         }
