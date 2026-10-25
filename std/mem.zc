@@ -29,7 +29,6 @@ impl StaticArena {
             // In MISRA mode, we panic on exhaustion rather than returning NULL
             // to ensure deterministic failure.
             !"Panic: MISRA Static Arena exhausted!";
-            exit(1);
         }
         let ptr: void* = (byte*)self.data + aligned;
         self.used = aligned + size;
@@ -76,15 +75,15 @@ impl StaticArena {
     }
 }
 
-let _z_internal_arena: StaticArena;
-let _z_arena_initialized: bool = false;
-
 fn _z_get_std_arena() -> StaticArena* {
-    if (!_z_arena_initialized) {
-        _z_internal_arena.init();
-        _z_arena_initialized = true;
+    // Block-scope statics: these are only referenced here (MISRA Rule 8.9).
+    static let arena: StaticArena;
+    static let initialized: bool = false;
+    if (!initialized) {
+        arena.init();
+        initialized = true;
     }
-    return &_z_internal_arena;
+    return &arena;
 }
 
 // --- Non-generic internal helpers for conditional compilation ---

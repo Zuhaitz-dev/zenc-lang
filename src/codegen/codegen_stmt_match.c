@@ -14,7 +14,44 @@
 #include "ast.h"
 #include "zprep_plugin.h"
 
-static void emit_single_pattern_cond(ParserContext *ctx, const char *pat, int id, int is_ptr)
+// Tag constants are typed with the enum's concrete (mangled) type name, e.g.
+// Maybe__int32_t__Just_Tag. The variant registry stores the generic/unmangled
+// name, so match codegen derives the prefix from the matched expression's type
+// instead (Rule 10.4).
+static char *match_enum_type_name(const char *t)
+{
+    if (!t || !t[0])
+    {
+        return NULL;
+    }
+    char *s = xstrdup(t);
+    char *p = s;
+    while (*p == ' ')
+    {
+        p++;
+    }
+    if (strncmp(p, "const ", 6) == 0)
+    {
+        p += 6;
+    }
+    if (strncmp(p, "struct ", 7) == 0)
+    {
+        p += 7;
+    }
+    char *end = p + strlen(p);
+    while (end > p && (end[-1] == '*' || end[-1] == ' '))
+    {
+        *--end = '\0';
+    }
+    if (p != s)
+    {
+        memmove(s, p, strlen(p) + 1);
+    }
+    return s;
+}
+
+static void emit_single_pattern_cond(ParserContext *ctx, const char *pat, int id, int is_ptr,
+                                     const char *enum_type)
 {
     // Check for range pattern: "start..end" or "start..=end"
     char *range_incl = (char *)strstr(pat, "..=");
@@ -85,7 +122,8 @@ static void emit_single_pattern_cond(ParserContext *ctx, const char *pat, int id
 }
 
 // Helper: emit condition for a pattern (may contain OR patterns with '|')
-static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int id, int is_ptr)
+static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int id, int is_ptr,
+                                   const char *enum_type)
 {
     // Check if pattern contains '|' for OR patterns
     if (strchr(pattern, '|'))
@@ -112,29 +150,32 @@ static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int 
                 {
                     if (is_ptr)
                     {
-                        EMIT(ctx, "*_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
+                        EMIT(ctx, "*_m_%d == %s__%s_Tag", id,
+                             enum_type ? enum_type : reg->enum_name, reg->variant_name);
                     }
                     else
                     {
-                        EMIT(ctx, "_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
+                        EMIT(ctx, "_m_%d == %s__%s_Tag", id, enum_type ? enum_type : reg->enum_name,
+                             reg->variant_name);
                     }
                 }
                 else
                 {
                     if (is_ptr)
                     {
-                        EMIT(ctx, "_m_%d->tag == %s__%s_Tag", id, reg->enum_name,
-                             reg->variant_name);
+                        EMIT(ctx, "_m_%d->tag == %s__%s_Tag", id,
+                             enum_type ? enum_type : reg->enum_name, reg->variant_name);
                     }
                     else
                     {
-                        EMIT(ctx, "_m_%d.tag == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
+                        EMIT(ctx, "_m_%d.tag == %s__%s_Tag", id,
+                             enum_type ? enum_type : reg->enum_name, reg->variant_name);
                     }
                 }
             }
             else
             {
-                emit_single_pattern_cond(ctx, part, id, is_ptr);
+                emit_single_pattern_cond(ctx, part, id, is_ptr, enum_type);
             }
             first = 0;
             part = strtok_r(NULL, "|", &saveptr);
@@ -153,28 +194,32 @@ static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int 
             {
                 if (is_ptr)
                 {
-                    EMIT(ctx, "*_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
+                    EMIT(ctx, "*_m_%d == %s__%s_Tag", id, enum_type ? enum_type : reg->enum_name,
+                         reg->variant_name);
                 }
                 else
                 {
-                    EMIT(ctx, "_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
+                    EMIT(ctx, "_m_%d == %s__%s_Tag", id, enum_type ? enum_type : reg->enum_name,
+                         reg->variant_name);
                 }
             }
             else
             {
                 if (is_ptr)
                 {
-                    EMIT(ctx, "_m_%d->tag == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
+                    EMIT(ctx, "_m_%d->tag == %s__%s_Tag", id,
+                         enum_type ? enum_type : reg->enum_name, reg->variant_name);
                 }
                 else
                 {
-                    EMIT(ctx, "_m_%d.tag == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
+                    EMIT(ctx, "_m_%d.tag == %s__%s_Tag", id, enum_type ? enum_type : reg->enum_name,
+                         reg->variant_name);
                 }
             }
         }
         else
         {
-            emit_single_pattern_cond(ctx, pattern, id, is_ptr);
+            emit_single_pattern_cond(ctx, pattern, id, is_ptr, enum_type);
         }
     }
 }
@@ -288,6 +333,7 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
     char *expr_type = infer_type(ctx, node->match_stmt.expr);
     int is_option = str_is_option_type(expr_type);
     int is_result = str_is_result_type(expr_type);
+    char *expr_enum_type = match_enum_type_name(expr_type);
 
     char *enum_name = NULL;
     ASTNode *chk = node->match_stmt.cases;
@@ -404,7 +450,8 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                 // Use helper for OR patterns, range patterns, and simple patterns
                 if (c->match_case.pattern)
                 {
-                    emit_pattern_condition(ctx, c->match_case.pattern, id, has_ref_binding);
+                    emit_pattern_condition(ctx, c->match_case.pattern, id, has_ref_binding,
+                                           expr_enum_type);
                 }
                 else
                 {
@@ -595,4 +642,5 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
         }
         EMIT(ctx, " }");
     }
+    zfree(expr_enum_type);
 }

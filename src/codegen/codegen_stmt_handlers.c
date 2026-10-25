@@ -381,8 +381,10 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                 {
                     size_t stmt_sz = 256 + strlen(arg_name) * 4;
                     stmt_str = xmalloc(stmt_sz);
-                    snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);",
-                             arg_name, arg_name, arg_name, arg_name);
+                    snprintf(
+                        stmt_str, stmt_sz,
+                        "if ((__z_drop_flag_%s != 0) && (%s.drop != NULL)) { %s.drop(%s.ctx); }",
+                        arg_name, arg_name, arg_name, arg_name);
                 }
                 else
                 {
@@ -391,13 +393,15 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                     // If it's self, it's already a pointer in C
                     if (strcmp(arg_name, "self") == 0)
                     {
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(%s);",
-                                 arg_name, drop_type_name, arg_name);
+                        snprintf(stmt_str, stmt_sz,
+                                 "if (__z_drop_flag_%s != 0) { %s__Drop__glue(%s); }", arg_name,
+                                 drop_type_name, arg_name);
                     }
                     else
                     {
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
-                                 arg_name, drop_type_name, arg_name);
+                        snprintf(stmt_str, stmt_sz,
+                                 "if (__z_drop_flag_%s != 0) { %s__Drop__glue(&%s); }", arg_name,
+                                 drop_type_name, arg_name);
                     }
                 }
                 defer_node->raw_stmt.content = stmt_str;
@@ -589,7 +593,12 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
     }
     if (node->var_decl.is_thread_local)
     {
-        EMIT(ctx, "_Thread_local ");
+        // MISRA output targets C99 (MISRA C:2012), which has no _Thread_local.
+        // The strict profile is single-threaded, so plain static storage is used.
+        if (!ctx->config->misra_mode)
+        {
+            EMIT(ctx, "_Thread_local ");
+        }
     }
     if (node->var_decl.is_static)
     {
@@ -626,7 +635,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 defer_node->token = node->token;
                 size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
                 char *stmt_str = xmalloc(stmt_sz);
-                snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
+                snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s != 0) { %s__Drop__glue(&%s); }",
                          node->var_decl.name, clean_type, node->var_decl.name);
                 defer_node->raw_stmt.content = stmt_str;
                 defer_node->line = node->line;
@@ -725,7 +734,8 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                         size_t stmt_sz = 256 + strlen(node->var_decl.name) * 4;
                         stmt_str = xmalloc(stmt_sz);
                         snprintf(stmt_str, stmt_sz,
-                                 "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);",
+                                 "if ((__z_drop_flag_%s != 0) && (%s.drop != NULL)) { "
+                                 "%s.drop(%s.ctx); }",
                                  node->var_decl.name, node->var_decl.name, node->var_decl.name,
                                  node->var_decl.name);
                     }
@@ -733,7 +743,8 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     {
                         size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
                         stmt_str = xmalloc(stmt_sz);
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
+                        snprintf(stmt_str, stmt_sz,
+                                 "if (__z_drop_flag_%s != 0) { %s__Drop__glue(&%s); }",
                                  node->var_decl.name, clean_type, node->var_decl.name);
                     }
                     defer_node->raw_stmt.content = stmt_str;

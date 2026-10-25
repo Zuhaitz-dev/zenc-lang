@@ -3,6 +3,7 @@
 
 #include "../ast/ast.h"
 #include "../constants.h"
+#include "../platform/misra.h"
 #include "../zprep.h"
 #include "codegen.h"
 #include "codegen_internal.h"
@@ -498,7 +499,12 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 
 static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
 {
-    (void)ctx;
+    // Only f-string interpolation calls _z_drop; emitting the dispatcher
+    // otherwise leaves an unused macro (Rule 2.5).
+    if (!ctx->uses_fstrings)
+    {
+        return;
+    }
     // The dispatch is only useful when a type actually implements Drop; emitting
     // it unconditionally leaves an unused macro in every translation unit.
     int any_drop = 0;
@@ -659,6 +665,11 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         }
 
         emit_includes_and_aliases(ctx, kids, &visited);
+        if (ctx->config->misra_mode)
+        {
+            // Types that must follow every #include (Rule 20.1).
+            emit_misra_preamble_decls(ctx);
+        }
         if (ctx->config->use_cpp && !ctx->config->use_cuda && !ctx->config->use_objc)
         {
             EMIT(ctx, "\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n");

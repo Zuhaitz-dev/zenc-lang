@@ -40,7 +40,6 @@ impl Option<T> {
     fn unwrap(self) -> T {
         if (!self.is_some) {
             !"Panic: unwrap called on None";
-            exit(1);
         }
         let v = self.val;
         // Moved value
@@ -51,7 +50,6 @@ impl Option<T> {
     fn unwrap_ref(self) -> T* {
         if (!self.is_some) {
             !"Panic: unwrap_ref called on None";
-            exit(1);
         }
         return &self.val;
     }
@@ -72,9 +70,9 @@ impl Option<T> {
 
     /// Returns the contained value, or panics with `msg` when `None`.
     fn expect(self, msg: char*) -> T {
+        (void)msg; // unused when panic messages are compiled out (MISRA)
         if (!self.is_some) {
             !"Panic: {msg}";
-            exit(1);
         }
         return self.val;
     }

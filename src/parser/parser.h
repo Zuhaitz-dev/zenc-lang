@@ -392,6 +392,7 @@ struct ParserContext
     int lambda_counter;        ///< Counter for generating unique lambda IDs.
     int fstring_counter;       ///< Counter for generating unique f-string IDs.
     int uses_fstrings;         ///< 1 if any f-string/interpolation was parsed.
+    int uses_closure_types;    ///< 1 if `fn(...)` types or lambdas were parsed.
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024

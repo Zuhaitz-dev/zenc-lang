@@ -23,6 +23,7 @@ ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, char *param_nam
     lambda->lambda.param_types[0] = NULL;
 
     // Create Type Info: unknown -> unknown
+    ctx->uses_closure_types = 1;
     Type *t = type_new(TYPE_FUNCTION);
     t->inner = type_new(TYPE_INT);
     t->args = xmalloc(sizeof(Type *));
@@ -115,6 +116,7 @@ ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, char **param_nam
     lambda->lambda.default_capture_mode = default_capture_mode;
 
     // Type Info construction
+    ctx->uses_closure_types = 1;
     Type *t = type_new(TYPE_FUNCTION);
     t->inner = type_new(TYPE_INT);
     t->args = xmalloc(sizeof(Type *) * (size_t)(count));

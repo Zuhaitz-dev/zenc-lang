@@ -61,7 +61,8 @@ static void emit_freestanding_preamble(ParserContext *ctx)
          "#define _z_safe_bool(x) _Generic((x), _Bool: (x), default: (_Bool)0)\n#define _z_arg(x) "
          "_Generic((x), _Bool: _z_bool_str(_z_safe_bool(x)) _z_128_arg_map(x), default: (x))\n");
     EMIT(ctx, "%s",
-         "typedef struct { void *func; void *ctx; void (*drop)(void*); } z_closure_T;\n");
+         "typedef void (*z_closure_fn)(void);\ntypedef struct { z_closure_fn func; void *ctx; void "
+         "(*drop)(void*); } z_closure_T;\n");
     EMIT(ctx, "%s", "static void *_z_closure_ctx_stash[256];\n");
 
     // In true freestanding, explicit definitions of z_malloc/etc are removed.
@@ -73,7 +74,7 @@ void emit_preamble(ParserContext *ctx)
 {
     if (ctx->config->misra_mode)
     {
-        emit_misra_preamble(ctx->cg.emitter.file);
+        emit_misra_preamble(ctx);
         return;
     }
     if (ctx->config->is_freestanding)
@@ -161,7 +162,8 @@ void emit_preamble(ParserContext *ctx)
              "#ifdef ZC_STATIC_PLUGIN\n#define ZC_FUNC static\n#define ZC_GLOBAL "
              "static\n#else\n#define ZC_FUNC\n#define ZC_GLOBAL\n#endif\n");
         EMIT(ctx, "%s",
-             "typedef struct { void *func; void *ctx; void (*drop)(void*); } z_closure_T;\n");
+             "typedef void (*z_closure_fn)(void);\ntypedef struct { z_closure_fn func; void *ctx; "
+             "void (*drop)(void*); } z_closure_T;\n");
         EMIT(ctx, "%s", "static __attribute__((unused)) void *_z_closure_ctx_stash[256];\n");
         EMIT(ctx, "%s",
              "typedef void U0;\ntypedef int8_t I8;\ntypedef uint8_t U8;\ntypedef int16_t "

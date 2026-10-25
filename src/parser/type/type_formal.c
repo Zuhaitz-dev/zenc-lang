@@ -69,6 +69,10 @@ Type *parse_type_formal(ParserContext *ctx, Lexer *l)
 
         Type *fn_type = type_new(TYPE_FUNCTION);
         fn_type->is_raw = (star_count > 0);
+        if (!fn_type->is_raw)
+        {
+            ctx->uses_closure_types = 1;
+        }
         if (fn_type->is_raw)
         {
             fn_type->traits.has_drop = 0;

@@ -457,6 +457,12 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
             EMIT(ctx, "typedef struct %s_VTable {\n", node->trait.name);
             emitter_indent(&ctx->cg.emitter);
             ASTNode *m = node->trait.methods;
+            if (!m)
+            {
+                // ISO C (and MISRA) forbids empty structs. Marker traits such
+                // as `Copy` have no slots, so give the vtable a placeholder.
+                EMIT(ctx, "void* _zc_unused;\n");
+            }
             while (m)
             {
                 char *ret_safe = substitute_proto_self(m->func.ret_type, "void*");
@@ -560,8 +566,9 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 const char *orig = parse_original_method_name(m->func.name);
                 int is_const_self = (m->func.count > 0 && m->func.arg_types &&
                                      m->func.arg_types[0] && m->func.arg_types[0]->is_const);
-                EMIT(ctx, "%s %s__%s(%s%s* self", ret_sub, node->trait.name, orig,
-                     is_const_self ? "const " : "", node->trait.name);
+                EMIT(ctx, "%s%s %s__%s(%s%s* self", ctx->config->misra_output ? "static " : "",
+                     ret_sub, node->trait.name, orig, is_const_self ? "const " : "",
+                     node->trait.name);
 
                 if (m->func.args && strlen(m->func.args) > 0)
                 {
@@ -584,7 +591,14 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 emitter_indent(&ctx->cg.emitter);
 
                 int ret_is_self = (m->func.ret_type && strcasecmp(m->func.ret_type, "Self") == 0);
-                if (ret_is_self)
+                int ret_void = (ret_sub && strcmp(ret_sub, "void") == 0);
+                if (ret_void)
+                {
+                    // ISO C forbids `return expr;` in a void function; call the
+                    // vtable slot as a statement and use an explicit return.
+                    EMIT(ctx, "self->vtable->%s(self->self", orig);
+                }
+                else if (ret_is_self)
                 {
                     EMIT(ctx, "void* res = self->vtable->%s(self->self", orig);
                 }
@@ -622,6 +636,10 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 {
                     EMIT(ctx, "return (%s){.self = res, .vtable = self->vtable};\n",
                          node->trait.name);
+                }
+                else if (ret_void)
+                {
+                    EMIT(ctx, "return;\n");
                 }
                 emitter_dedent(&ctx->cg.emitter);
                 EMIT(ctx, "}\n\n");

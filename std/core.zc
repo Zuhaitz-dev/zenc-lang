@@ -5,14 +5,36 @@ include <stdio.h>
 include <stdbool.h>
 include <stdarg.h>
 
+@cfg(not(misra))
 @unused fn __zenc_panic_impl(file: const char*, line: int, func: const char*, msg: const char*) {
     fprintf(stderr, "panic: %s\n  at %s:%d in %s()\n", msg, file, line, func);
     exit(1);
 }
 
+@cfg(not(misra))
 @unused fn __zenc_todo_impl(file: const char*, line: int, func: const char*, msg: const char*) {
     fprintf(stderr, "todo: %s\n  at %s:%d in %s()\n", msg, file, line, func);
     exit(1);
+}
+
+// MISRA output has no stdio and no exit() (Rules 21.6 and 21.8). A fail-safe
+// trap is the compliant behaviour for both panic and todo.
+@cfg(misra)
+@unused fn __zenc_panic_impl(_file: const char*, _line: int, _func: const char*, _msg: const char*) {
+    (void)_file;
+    (void)_line;
+    (void)_func;
+    (void)_msg;
+    loop { }
+}
+
+@cfg(misra)
+@unused fn __zenc_todo_impl(_file: const char*, _line: int, _func: const char*, _msg: const char*) {
+    (void)_file;
+    (void)_line;
+    (void)_func;
+    (void)_msg;
+    loop { }
 }
 
 // Rune to string (UTF-8); used by string interpolation of rune values.

@@ -66,13 +66,35 @@ static void emit_includes_and_aliases_internal(ParserContext *ctx, ASTNode *node
         {
             if (node->include.path)
             {
-                if (node->include.is_system)
+                // The strict MISRA profile forbids hosted APIs: stdio and
+                // stdarg are Rules 21.6/17.1, exit() is Rule 21.8. The standard
+                // library sources still request these headers, so drop them
+                // here; the remaining <string.h> functions (memcpy/memset) stay
+                // available.
+                static const char *misra_blocked[] = {"stdio.h", "stdlib.h", "stdarg.h", "unistd.h",
+                                                      "fcntl.h"};
+                int blocked = 0;
+                if (ctx->config->misra_mode)
                 {
-                    EMIT(ctx, "#include <%s>\n", node->include.path);
+                    for (size_t i = 0; i < sizeof(misra_blocked) / sizeof(misra_blocked[0]); i++)
+                    {
+                        if (strcmp(node->include.path, misra_blocked[i]) == 0)
+                        {
+                            blocked = 1;
+                            break;
+                        }
+                    }
                 }
-                else
+                if (!blocked)
                 {
-                    EMIT(ctx, "#include \"%s\"\n", node->include.path);
+                    if (node->include.is_system)
+                    {
+                        EMIT(ctx, "#include <%s>\n", node->include.path);
+                    }
+                    else
+                    {
+                        EMIT(ctx, "#include \"%s\"\n", node->include.path);
+                    }
                 }
             }
         }
@@ -515,7 +537,7 @@ void emit_lambda_defs(ParserContext *ctx)
                     ASTNode *fdef = find_struct_def(ctx, clean);
                     if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                     {
-                        EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n",
+                        EMIT(ctx, "if (ctx->__z_drop_flag_%s != 0) { %s__Drop__glue(&ctx->%s); }\n",
                              node->lambda.captured_vars[i], clean, node->lambda.captured_vars[i]);
                     }
                 }

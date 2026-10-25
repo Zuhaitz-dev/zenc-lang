@@ -2,6 +2,9 @@
 #include "typecheck_internal.h"
 #include "../utils/utils.h"
 
+// Defined with check_type_compatibility below; used by the MISRA binary-op checks.
+static Token tc_fallback_token(TypeChecker *tc, Token t);
+
 void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
 {
     if (!rvalue || !rvalue->type_info)
@@ -614,7 +617,8 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             {
                 // Rule 10.4: Balancing
                 misra_check_binary_op_essential_types(tc->pctx, node->binary.left,
-                                                      node->binary.right, node->token);
+                                                      node->binary.right,
+                                                      tc_fallback_token(tc, node->token));
 
                 // MISRA Rule 12.4: Evaluation of constant expressions shall not lead to unsigned
                 // wrap Use the contextually pushed down type (stored in node->type_info before this
@@ -681,7 +685,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
         {
             // Rule 10.4: Balancing
             misra_check_binary_op_essential_types(tc->pctx, node->binary.left, node->binary.right,
-                                                  node->token);
+                                                  tc_fallback_token(tc, node->token));
 
             // Rule 18.3: Relational operators on pointers (>, <, >=, <=)
             if (tc->pctx->config->misra_mode && (strcmp(op, "<") == 0 || strcmp(op, ">") == 0 ||
@@ -799,7 +803,8 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     if (strcmp(op, "&") == 0 || strcmp(op, "|") == 0 || strcmp(op, "^") == 0)
                     {
                         misra_check_binary_op_essential_types(tc->pctx, node->binary.left,
-                                                              node->binary.right, node->token);
+                                                              node->binary.right,
+                                                              tc_fallback_token(tc, node->token));
                     }
                 }
                 node->type_info = left_type;
@@ -901,6 +906,18 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
     }
 }
 
+// Generic instantiations can synthesize nodes without tokens. Use the enclosing
+// function token so diagnostics point at a real source file and std-internal
+// code stays attributable to the std library.
+static Token tc_fallback_token(TypeChecker *tc, Token t)
+{
+    if (!t.file && tc->current_func && tc->current_func->token.file)
+    {
+        return tc->current_func->token;
+    }
+    return t;
+}
+
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
                              ASTNode *value_node, int is_call_arg)
 {
@@ -908,6 +925,8 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     {
         return 1; // Can't check incomplete types
     }
+
+    t = tc_fallback_token(tc, t);
 
     Type *resolved_target = resolve_alias(target);
     Type *resolved_value = resolve_alias(value);

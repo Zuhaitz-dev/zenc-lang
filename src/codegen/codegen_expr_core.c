@@ -444,13 +444,16 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
         }
         if (ctx->config->use_cpp)
         {
-            EMIT(ctx, "z_closure_T _cl = {(void*)_lambda_%d, _z_ctx_%d, _lambda_%d_drop}; _cl; })",
-                 lid, lid, lid);
+            EMIT(
+                ctx,
+                "z_closure_T _cl = {(z_closure_fn)_lambda_%d, _z_ctx_%d, _lambda_%d_drop}; _cl; })",
+                lid, lid, lid);
         }
         else
         {
             EMIT(ctx,
-                 "(z_closure_T){.func = _lambda_%d, .ctx = _z_ctx_%d, .drop = _lambda_%d_drop}; })",
+                 "(z_closure_T){.func = (z_closure_fn)_lambda_%d, .ctx = _z_ctx_%d, .drop = "
+                 "_lambda_%d_drop}; })",
                  lid, lid, lid);
         }
     }
@@ -458,11 +461,13 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
     {
         if (ctx->config->use_cpp)
         {
-            EMIT(ctx, "(z_closure_T){ (void*)_lambda_%d, NULL, NULL }", node->lambda.lambda_id);
+            EMIT(ctx, "(z_closure_T){ (z_closure_fn)_lambda_%d, NULL, NULL }",
+                 node->lambda.lambda_id);
         }
         else
         {
-            EMIT(ctx, "((z_closure_T){.func = (void*)_lambda_%d, .ctx = NULL, .drop = NULL})",
+            EMIT(ctx,
+                 "((z_closure_T){.func = (z_closure_fn)_lambda_%d, .ctx = NULL, .drop = NULL})",
                  node->lambda.lambda_id);
         }
     }

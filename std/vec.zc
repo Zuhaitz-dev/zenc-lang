@@ -28,7 +28,6 @@ impl VecIterResult<T> {
     fn unwrap(self) -> T* {
         if (self.ptr == NULL) {
             !"Panic: unwrap called on null VecIterResult";
-            exit(1);
         }
         return self.ptr;
     }
@@ -259,7 +258,6 @@ impl Vec<T> {
     fn insert(self, idx: usize, item: T) {
         if (idx > self.len) {
             !"Panic: Insert index out of bounds";
-            exit(1);
         }
         if (self.len >= self.cap) {
             self.grow();
@@ -276,7 +274,6 @@ impl Vec<T> {
     fn pop(self) -> T {
         if (self.len == 0) {
             !"Panic: pop called on empty Vec";
-            exit(1);
         }
         self.len = self.len - 1;
         return self.data[self.len];
@@ -295,7 +292,6 @@ impl Vec<T> {
     fn remove(self, idx: usize) -> T {
         if (idx >= self.len) {
              !"Panic: Remove index out of bounds";
-             exit(1);
         }
         let item = self.data[idx];
         // Shift elements left
@@ -321,7 +317,6 @@ impl Vec<T> {
     fn get(self, idx: usize) -> T {
         if (idx >= self.len) {
             !"Panic: Index out of bounds";
-            exit(1);
         }
         return self.data[idx];
     }
@@ -334,7 +329,6 @@ impl Vec<T> {
     fn get_ref(self, idx: usize) -> T* {
         if (idx >= self.len) {
             !"Panic: Index out of bounds";
-            exit(1);
         }
         return &self.data[idx];
     }
@@ -342,7 +336,6 @@ impl Vec<T> {
     fn last(self) -> T {
         if (self.len == 0) {
             !"Panic: last called on empty Vec";
-            exit(1);
         }
         return self.data[self.len - 1];
     }
@@ -385,7 +378,6 @@ impl Vec<T> {
     fn first(self) -> T {
         if (self.len == 0) {
             !"Panic: first called on empty Vec";
-            exit(1);
         }
         return self.data[0];
     }
@@ -394,7 +386,6 @@ impl Vec<T> {
     fn set(self, idx: usize, item: T) {
         if (idx >= self.len) {
             !"Panic: set index out of bounds";
-            exit(1);
         }
         self.data[idx] = item;
     }
