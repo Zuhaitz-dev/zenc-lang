@@ -1,0 +1,8 @@
+fn deref(p: const int*) -> int {
+    return *p;
+}
+
+fn main() -> int {
+    let x = 4;
+    return (deref(&x) == 4) ? 0 : 1;
+}

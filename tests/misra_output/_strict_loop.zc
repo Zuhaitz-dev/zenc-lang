@@ -1,0 +1,11 @@
+fn sum_to(n: int) -> int {
+    let total = 0;
+    for i in 0..n {
+        total = total + i;
+    }
+    return total;
+}
+
+fn main() -> int {
+    return (sum_to(5) == 10) ? 0 : 1;
+}
