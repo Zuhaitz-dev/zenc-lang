@@ -815,6 +815,19 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
                        const char *old_struct, const char *new_struct);
 char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out,
                                     char **allocated_out);
+/**
+ * @brief Expands an interpolated string literal into a C expression.
+ *
+ * With `is_expr` == 0 it prints each piece to `target` (println/print and a string
+ * literal used as a statement). With `is_expr` != 0 it builds the text as a value.
+ *
+ * Limitations of the value form:
+ * - The text goes into one `static char[8192]` per call site, not per evaluation, so
+ *   two results of the same f-string share their contents (#339).
+ * - Most branches format each piece with `sprintf` into a `char[2048]` and append it
+ *   with `strcat` without checking sizes: a piece longer than 2047 characters, or a
+ *   result longer than 8191, overflows the buffer.
+ */
 char *process_printf_sugar(ParserContext *ctx, Token srctoken, const char *content, int newline,
                            const char *target, char ***used_syms, int *count, int check_symbols,
                            int is_raw, int is_expr);
