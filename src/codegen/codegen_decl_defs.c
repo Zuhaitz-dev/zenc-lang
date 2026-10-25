@@ -268,7 +268,7 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
                     }
                     else
                     {
-                        EMIT(ctx, "%s %s__%s();\n", final_name, final_name, v->variant.name);
+                        EMIT(ctx, "%s %s__%s(void);\n", final_name, final_name, v->variant.name);
                     }
                     v = v->next;
                 }

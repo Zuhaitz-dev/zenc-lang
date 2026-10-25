@@ -89,13 +89,76 @@ void handle_node_comptime(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// Whether control cannot reach the end of `stmt`. Unlike block_always_returns
+// (which also counts an implicit expression return for function bodies), this
+// only recognizes explicit returns and exhaustive branches, so it is safe for
+// deciding whether trailing cleanup is unreachable.
+static int stmt_cannot_fall_through(ASTNode *stmt);
+
+static int block_cannot_fall_through(ASTNode *block)
+{
+    if (!block || block->kind != NODE_BLOCK)
+    {
+        return 0;
+    }
+    for (ASTNode *s = block->block.statements; s; s = s->next)
+    {
+        if (stmt_cannot_fall_through(s))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int stmt_cannot_fall_through(ASTNode *stmt)
+{
+    if (!stmt)
+    {
+        return 0;
+    }
+    switch (stmt->kind)
+    {
+    case NODE_RETURN:
+        return 1;
+    case NODE_BLOCK:
+        return block_cannot_fall_through(stmt);
+    case NODE_IF:
+        return stmt_cannot_fall_through(stmt->if_stmt.then_body) &&
+               stmt_cannot_fall_through(stmt->if_stmt.else_body);
+    case NODE_MATCH:
+    {
+        int has_default = 0;
+        for (ASTNode *c = stmt->match_stmt.cases; c; c = c->next)
+        {
+            if (c->kind != NODE_MATCH_CASE || !stmt_cannot_fall_through(c->match_case.body))
+            {
+                return 0;
+            }
+            if (c->match_case.is_default)
+            {
+                has_default = 1;
+            }
+        }
+        return has_default;
+    }
+    default:
+        return 0;
+    }
+}
+
 void handle_node_block(ParserContext *ctx, ASTNode *node)
 {
     int saved = ctx->cg.defer_count;
     EMIT(ctx, "{\n");
     emitter_indent(&ctx->cg.emitter);
     codegen_walker(ctx, node->block.statements);
-    emit_defers_down_to(ctx, saved);
+    // A block that cannot fall through already ran the defers on its return
+    // paths; emitting them here would duplicate cleanup after the return.
+    if (!block_cannot_fall_through(node))
+    {
+        emit_defers_down_to(ctx, saved);
+    }
     ctx->cg.defer_count = saved;
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
@@ -348,7 +411,12 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     }
 
     codegen_walker(ctx, node->func.body);
-    emit_defers_down_to(ctx, 0);
+    // Cleanup after the last statement is unreachable when the body cannot fall
+    // through; emitting it duplicates the defers already run by each return.
+    if (!block_cannot_fall_through(node->func.body))
+    {
+        emit_defers_down_to(ctx, 0);
+    }
     ctx->cg.current_func_ret_type = prev_ret;
     ctx->cg.current_func_ret_type_info = prev_ret_info;
     ctx->self_is_pointer = prev_self_is_ptr;

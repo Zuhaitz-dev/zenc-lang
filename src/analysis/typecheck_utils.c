@@ -447,9 +447,16 @@ void mark_type_as_used(TypeChecker *tc, Type *t)
     {
         if (curr->name)
         {
-            ZenSymbol *sym =
-                symbol_lookup_kind(tc->pctx->global_scope, curr->name,
-                                   (curr->kind == TYPE_STRUCT) ? SYM_STRUCT : SYM_ENUM);
+            SymbolKind kind = (curr->kind == TYPE_STRUCT) ? SYM_STRUCT : SYM_ENUM;
+            ZenSymbol *sym = symbol_lookup_kind(tc->pctx->global_scope, curr->name, kind);
+            if (!sym)
+            {
+                // Some enum types are registered under the struct kind (or vice
+                // versa); a missed lookup makes the MISRA 2.4 audit report the
+                // type as unused.
+                sym = symbol_lookup_kind(tc->pctx->global_scope, curr->name,
+                                         kind == SYM_STRUCT ? SYM_ENUM : SYM_STRUCT);
+            }
             if (sym)
             {
                 sym->is_used = 1;

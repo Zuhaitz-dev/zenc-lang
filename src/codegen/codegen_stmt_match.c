@@ -112,22 +112,23 @@ static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int 
                 {
                     if (is_ptr)
                     {
-                        EMIT(ctx, "*_m_%d == %d", id, reg->tag_id);
+                        EMIT(ctx, "*_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
                     }
                     else
                     {
-                        EMIT(ctx, "_m_%d == %d", id, reg->tag_id);
+                        EMIT(ctx, "_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
                     }
                 }
                 else
                 {
                     if (is_ptr)
                     {
-                        EMIT(ctx, "_m_%d->tag == %d", id, reg->tag_id);
+                        EMIT(ctx, "_m_%d->tag == %s__%s_Tag", id, reg->enum_name,
+                             reg->variant_name);
                     }
                     else
                     {
-                        EMIT(ctx, "_m_%d.tag == %d", id, reg->tag_id);
+                        EMIT(ctx, "_m_%d.tag == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
                     }
                 }
             }
@@ -152,22 +153,22 @@ static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int 
             {
                 if (is_ptr)
                 {
-                    EMIT(ctx, "*_m_%d == %d", id, reg->tag_id);
+                    EMIT(ctx, "*_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
                 }
                 else
                 {
-                    EMIT(ctx, "_m_%d == %d", id, reg->tag_id);
+                    EMIT(ctx, "_m_%d == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
                 }
             }
             else
             {
                 if (is_ptr)
                 {
-                    EMIT(ctx, "_m_%d->tag == %d", id, reg->tag_id);
+                    EMIT(ctx, "_m_%d->tag == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
                 }
                 else
                 {
-                    EMIT(ctx, "_m_%d.tag == %d", id, reg->tag_id);
+                    EMIT(ctx, "_m_%d.tag == %s__%s_Tag", id, reg->enum_name, reg->variant_name);
                 }
             }
         }

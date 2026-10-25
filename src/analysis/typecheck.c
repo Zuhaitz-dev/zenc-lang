@@ -368,15 +368,10 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
                     check_node(tc, mcase->match_case.body, depth + 1);
                     tc_exit_scope(tc);
 
-                    // MISRA Rule 16.3: An unconditional break or return shall terminate every
-                    // switch-clause
-                    if (tc->pctx->config->misra_mode && !tc->is_unreachable &&
-                        mcase->match_case.body && mcase->match_case.body->kind == NODE_BLOCK &&
-                        mcase->match_case.body->block.statements)
-                    {
-                        tc_error(tc, mcase->token,
-                                 "MISRA Rule 16.3: match case must end in break or return");
-                    }
+                    // Rule 16.3 is satisfied by codegen: every lowered match case
+                    // ends with a break. Requiring an explicit break in the Zen C
+                    // body was a false positive (and Zen C has no break syntax for
+                    // match arms).
 
                     if (!tc->is_unreachable)
                     {

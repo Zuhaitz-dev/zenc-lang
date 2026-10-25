@@ -683,8 +683,20 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
         {
             if (has_defers && node->ret.value)
             {
-                EMIT(ctx, "{ ");
-                emitter_indent(&ctx->cg.emitter);
+                // MISRA output keeps the return in the enclosing block so the
+                // function has a single exit at its end. A unique temporary
+                // avoids a scope around the return.
+                int inline_ret = ctx->config->misra_output;
+                char ret_name[32] = "_z_ret";
+                if (inline_ret)
+                {
+                    snprintf(ret_name, sizeof(ret_name), "_z_ret_%d", ctx->cg.tmp_counter++);
+                }
+                else
+                {
+                    EMIT(ctx, "{ ");
+                    emitter_indent(&ctx->cg.emitter);
+                }
                 if (ctx->cg.current_func_ret_type_info)
                 {
                     char *tstr = type_to_c_string(ctx->cg.current_func_ret_type_info,
@@ -702,7 +714,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 {
                     emit_auto_type(ctx, node->ret.value, node->token);
                 }
-                EMIT(ctx, " _z_ret = ");
+                EMIT(ctx, " %s = ", ret_name);
                 if (node->ret.value->kind == NODE_EXPR_VAR && ctx->self_is_pointer &&
                     strcmp(node->ret.value->var_ref.name, "self") == 0)
                 {
@@ -711,8 +723,15 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
                 codegen_expression(ctx, node->ret.value);
                 EMIT(ctx, "; ");
                 emit_defers_down_to(ctx, ctx->cg.func_defer_boundary);
-                emitter_dedent(&ctx->cg.emitter);
-                EMIT(ctx, "return _z_ret; }\n");
+                if (!inline_ret)
+                {
+                    emitter_dedent(&ctx->cg.emitter);
+                    EMIT(ctx, "return %s; }\n", ret_name);
+                }
+                else
+                {
+                    EMIT(ctx, "return %s;\n", ret_name);
+                }
             }
             else if (has_defers)
             {

@@ -47,7 +47,7 @@ void emit_simple_enum(ParserContext *ctx, ASTNode *node)
     v = node->enm.variants;
     while (v)
     {
-        EMIT(ctx, "static inline %s %s__%s() { return %s__%s_Tag; }\n", final_name, final_name,
+        EMIT(ctx, "static inline %s %s__%s(void) { return %s__%s_Tag; }\n", final_name, final_name,
              v->variant.name, final_name, v->variant.name);
         v = v->next;
     }
@@ -364,14 +364,15 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 {
                     if (ctx->config->use_cpp)
                     {
-                        EMIT(ctx,
-                             "%s %s__%s() { %s _res = {}; _res.tag=%s__%s_Tag; return _res; }\n",
-                             final_name, final_name, v->variant.name, final_name, final_name,
-                             v->variant.name);
+                        EMIT(
+                            ctx,
+                            "%s %s__%s(void) { %s _res = {}; _res.tag=%s__%s_Tag; return _res; }\n",
+                            final_name, final_name, v->variant.name, final_name, final_name,
+                            v->variant.name);
                     }
                     else
                     {
-                        EMIT(ctx, "%s %s__%s() { return (%s){.tag=%s__%s_Tag}; }\n", final_name,
+                        EMIT(ctx, "%s %s__%s(void) { return (%s){.tag=%s__%s_Tag}; }\n", final_name,
                              final_name, v->variant.name, final_name, final_name, v->variant.name);
                     }
                 }
