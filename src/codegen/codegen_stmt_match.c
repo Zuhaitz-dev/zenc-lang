@@ -50,8 +50,7 @@ static char *match_enum_type_name(const char *t)
     return s;
 }
 
-static void emit_single_pattern_cond(ParserContext *ctx, const char *pat, int id, int is_ptr,
-                                     const char *enum_type)
+static void emit_single_pattern_cond(ParserContext *ctx, const char *pat, int id, int is_ptr)
 {
     // Check for range pattern: "start..end" or "start..=end"
     char *range_incl = (char *)strstr(pat, "..=");
@@ -175,7 +174,7 @@ static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int 
             }
             else
             {
-                emit_single_pattern_cond(ctx, part, id, is_ptr, enum_type);
+                emit_single_pattern_cond(ctx, part, id, is_ptr);
             }
             first = 0;
             part = strtok_r(NULL, "|", &saveptr);
@@ -219,7 +218,7 @@ static void emit_pattern_condition(ParserContext *ctx, const char *pattern, int 
         }
         else
         {
-            emit_single_pattern_cond(ctx, pattern, id, is_ptr, enum_type);
+            emit_single_pattern_cond(ctx, pattern, id, is_ptr);
         }
     }
 }
