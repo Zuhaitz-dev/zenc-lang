@@ -1648,6 +1648,23 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
         return left_type ? left_type : right_type;
     }
 
+    if (node->kind == NODE_IF)
+    {
+        ASTNode *branch = node->if_stmt.then_body;
+        if (branch && branch->kind == NODE_BLOCK)
+        {
+            branch = branch->block.statements;
+            while (branch && branch->next)
+            {
+                branch = branch->next;
+            }
+        }
+        if (branch)
+        {
+            return infer_type(ctx, branch);
+        }
+    }
+
     if (node->kind == NODE_MATCH)
     {
         ASTNode *case_node = node->match_stmt.cases;

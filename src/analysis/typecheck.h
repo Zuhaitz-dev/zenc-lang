@@ -41,6 +41,7 @@ typedef struct TypeChecker
     // Tracking
     int is_assign_lhs;      ///< If true, currently evaluating LHS of assignment.
     int is_stmt_context;    ///< If true, expression is a top-level statement.
+    int in_value_context;   ///< If true, the last statement of a block is a value.
     int is_forget_receiver; ///< If true, receiver of a .forget() call (use-after-move is expected).
     int loop_break_count;   ///< Count of breaks for Rule 15.4
     int func_return_count;  ///< Count of returns for Rule 15.5

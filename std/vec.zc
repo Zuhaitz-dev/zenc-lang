@@ -4,6 +4,15 @@ import "./mem.zc"
 import "./iter.zc"
 import "./sort.zc"
 
+// Copies an element out of a buffer. The move checker forbids moving out of an
+// index expression, and iterators yield element copies; memcpy expresses the
+// copy without a move.
+fn _z_copy_at<T>(data: T*, idx: usize) -> T {
+    let item: T;
+    memcpy(&item, &data[idx], sizeof(T));
+    return item;
+}
+
 struct Vec<T> {
     data: T*;
     len: usize;
@@ -44,7 +53,7 @@ impl VecIter<T> {
     fn next(self) -> Option<T> {
         let result = Option<T>::None();
         if (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
             result = Option<T>::Some(item);
         }
@@ -65,7 +74,7 @@ impl VecIter<T> {
             out.grow_to_fit(remaining);
         }
         while (self.idx < self.count) {
-            out.push(self.data[self.idx]);
+            out.push(_z_copy_at<T>(self.data, self.idx));
             self.idx = self.idx + 1;
         }
         return out;
@@ -81,7 +90,7 @@ impl VecIter<T> {
     /// Calls `f` for each remaining item.
     fn forEach(self, f: fn(T)) {
         while (self.idx < self.count) {
-            f(self.data[self.idx]);
+            f(_z_copy_at<T>(self.data, self.idx));
             self.idx = self.idx + 1;
         }
     }
@@ -91,9 +100,10 @@ impl VecIter<T> {
     fn find(self, pred: fn(T) -> bool) -> Option<T> {
         let result = Option<T>::None();
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
+            let probe = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
-            if (pred(item)) {
+            if (pred(probe)) {
                 result = Option<T>::Some(item);
                 break;
             }
@@ -106,7 +116,7 @@ impl VecIter<T> {
     fn any(self, pred: fn(T) -> bool) -> bool {
         let result = false;
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
             if (pred(item)) {
                 result = true;
@@ -121,7 +131,7 @@ impl VecIter<T> {
     fn all(self, pred: fn(T) -> bool) -> bool {
         let result = true;
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
             if (!pred(item)) {
                 result = false;
@@ -136,9 +146,10 @@ impl VecIter<T> {
     fn filter(self, pred: fn(T) -> bool) -> Vec<T> {
         let out = Vec<T>::new();
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
+            let probe = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
-            if (pred(item)) {
+            if (pred(probe)) {
                 out.push(item);
             }
         }
@@ -150,7 +161,7 @@ impl VecIter<T> {
     fn fold(self, init: T, f: fn(T, T) -> T) -> T {
         let acc = init;
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
             acc = f(acc, item);
         }
@@ -286,7 +297,10 @@ impl Vec<T> {
             !"Panic: pop called on empty Vec";
         }
         self.len = self.len - 1;
-        return self.data[self.len];
+        let item: T;
+        memcpy(&item, &self.data[self.len], sizeof(T));
+        memset(&self.data[self.len], 0, sizeof(T));
+        return item;
     }
 
     /// Removes and returns the last item, or `None` when empty.
@@ -294,7 +308,10 @@ impl Vec<T> {
         let result = Option<T>::None();
         if (self.len > 0) {
             self.len = self.len - 1;
-            result = Option<T>::Some(self.data[self.len]);
+            let item: T;
+            memcpy(&item, &self.data[self.len], sizeof(T));
+            memset(&self.data[self.len], 0, sizeof(T));
+            result = Option<T>::Some(item);
         }
         return result;
     }
@@ -304,13 +321,15 @@ impl Vec<T> {
         if (idx >= self.len) {
              !"Panic: Remove index out of bounds";
         }
-        let item = self.data[idx];
+        let item: T;
+        memcpy(&item, &self.data[idx], sizeof(T));
         // Shift elements left
         if (idx < self.len - 1) {
             let base = self.data;
             memmove(&base[idx], &base[idx + 1], (self.len - idx - 1) * sizeof(T));
         }
         self.len = self.len - 1;
+        memset(&self.data[self.len], 0, sizeof(T));
         return item;
     }
 
@@ -412,9 +431,10 @@ impl Vec<T> {
         let i: usize = 0;
         let j = self.len - 1;
         while i < j {
-            let tmp = self.data[i];
-            self.data[i] = self.data[j];
-            self.data[j] = tmp;
+            let tmp: T;
+            memcpy(&tmp, &self.data[i], sizeof(T));
+            memcpy(&self.data[i], &self.data[j], sizeof(T));
+            memcpy(&self.data[j], &tmp, sizeof(T));
             i++;
             j--;
         }
@@ -516,7 +536,7 @@ impl Vec<T> {
             let new_data = alloc_n<T>(self.len);
             let i: usize = 0;
             while i < self.len {
-                new_data[i] = self.data[i];
+                memcpy(&new_data[i], &self.data[i], sizeof(T));
                 i = i + 1;
             }
             result = Vec<T> {

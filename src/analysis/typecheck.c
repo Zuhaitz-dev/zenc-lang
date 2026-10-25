@@ -266,6 +266,8 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         {
             tc->pctx->move_state = move_state_clone(initial_state);
         }
+        int prev_value_ctx = tc->in_value_context;
+        tc->in_value_context = !tc->is_stmt_context;
         check_node(tc, node->if_stmt.then_body, depth + 1);
         MoveState *after_then = tc->pctx->move_state;
         int then_unreachable = tc->is_unreachable;
@@ -280,10 +282,12 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
             {
                 tc->pctx->move_state = move_state_clone(initial_state);
             }
+            tc->in_value_context = !tc->is_stmt_context;
             check_node(tc, node->if_stmt.else_body, depth + 1);
             after_else = tc->pctx->move_state;
             else_unreachable = tc->is_unreachable;
         }
+        tc->in_value_context = prev_value_ctx;
 
         tc->pctx->move_state = initial_state;
 
@@ -307,6 +311,25 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         }
 
         tc->is_unreachable = then_unreachable && else_unreachable;
+
+        // An if-expression takes the type of its branches; without this the
+        // enclosing `let` has no type to register (and the variable is lost).
+        if (!old_stmt_ctx)
+        {
+            ASTNode *branch = node->if_stmt.then_body;
+            if (branch && branch->kind == NODE_BLOCK)
+            {
+                branch = branch->block.statements;
+                while (branch && branch->next)
+                {
+                    branch = branch->next;
+                }
+            }
+            if (branch && branch->type_info)
+            {
+                node->type_info = branch->type_info;
+            }
+        }
         break;
     }
     case NODE_MATCH:

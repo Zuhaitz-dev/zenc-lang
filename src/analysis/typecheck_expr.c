@@ -17,6 +17,13 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
         return;
     }
 
+    // A generic element type is not known yet; the instantiated body is checked
+    // with the concrete type, where the Copy decision can be made.
+    if (rvalue->type_info->kind == TYPE_GENERIC || rvalue->type_info->kind == TYPE_UNKNOWN)
+    {
+        return;
+    }
+
     if (rvalue->kind == NODE_EXPR_VAR)
     {
         ZenSymbol *sym = tc_lookup(tc, rvalue->var_ref.name);

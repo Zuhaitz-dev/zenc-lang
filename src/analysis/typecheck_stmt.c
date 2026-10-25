@@ -7,6 +7,9 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
     ASTNode *stmt = block->block.statements;
     int seen_terminator = 0;
     Token terminator_token = {0};
+    // The last statement of an if-expression branch is its value, not dead code.
+    int value_ctx = tc->in_value_context;
+    tc->in_value_context = 0;
 
     while (stmt)
     {
@@ -26,7 +29,7 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
             // Rule 2.2: There shall be no dead code (expressions with no effect)
             // We ignore call expressions here as they are handled by Rule 17.7
             if (stmt->kind >= NODE_EXPR_BINARY && stmt->kind <= NODE_EXPR_SLICE &&
-                stmt->kind != NODE_EXPR_CALL)
+                stmt->kind != NODE_EXPR_CALL && !(value_ctx && stmt->next == NULL))
             {
                 if (!tc_expr_has_side_effects(stmt))
                 {
@@ -51,6 +54,7 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
         stmt = stmt->next;
     }
     (void)terminator_token; // May be used for enhanced diagnostics later
+    tc->in_value_context = value_ctx;
     tc_exit_scope(tc);
 }
 

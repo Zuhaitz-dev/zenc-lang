@@ -39,6 +39,43 @@ static void emit_literal_cast_for_comparison(ParserContext *ctx, ASTNode *operan
     }
 }
 
+// Whether `n` is a variable whose generated declaration has a drop flag, i.e.
+// assigning from it must perform a move (Rule 11/ownership) without a GNU
+// statement expression in MISRA output.
+static int var_needs_move_flag(ParserContext *ctx, ASTNode *n)
+{
+    if (!n || n->kind != NODE_EXPR_VAR)
+    {
+        return 0;
+    }
+    char *t = infer_type(ctx, n);
+    if (!t || strchr(t, '*'))
+    {
+        return 0;
+    }
+    const char *base = t;
+    if (strncmp(base, "struct ", 7) == 0)
+    {
+        base += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, base);
+    return def && def->type_info && def->type_info->traits.has_drop;
+}
+
+// Emit an assignment RHS. `plain` means the move flag was already cleared as a
+// separate statement (no statement expression needed).
+static void emit_assign_rhs(ParserContext *ctx, ASTNode *n, int plain)
+{
+    if (plain)
+    {
+        codegen_expression(ctx, n);
+    }
+    else
+    {
+        codegen_expression_with_move(ctx, n);
+    }
+}
+
 void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
 {
     const char *struct_name = node->struct_init.struct_name;
@@ -273,7 +310,10 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
 
 void handle_expr_binary(ParserContext *ctx, ASTNode *node)
 {
-    if (ctx->config->misra_mode)
+    int stmt_mode = ctx->config->misra_mode && ctx->cg.in_expr_stmt;
+    int prev_stmt = ctx->cg.in_expr_stmt;
+    ctx->cg.in_expr_stmt = 0;
+    if (ctx->config->misra_mode && !stmt_mode)
     {
         EMIT(ctx, "(");
     }
@@ -565,38 +605,90 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
 
         if (is_drop_assignment)
         {
-            EMIT(ctx, "({ ");
-            EMIT(ctx, "ZC_AUTO _z_tmp = (");
-            codegen_expression_with_move(ctx, node->binary.right);
-            EMIT(ctx, "); ");
-
-            EMIT(ctx, "__typeof__((");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "))* _z_dest = &(");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "); ");
-
-            if (node->binary.left->kind == NODE_EXPR_VAR)
+            if (ctx->config->misra_mode && stmt_mode)
             {
-                EMIT(ctx, "if (__z_drop_flag_%s != 0) { %s__Drop__glue(_z_dest); } ",
-                     node->binary.left->var_ref.name, clean_type);
+                // MISRA output cannot use statement expressions or __typeof__.
+                // In statement position, lower the move-assignment to a block
+                // with explicit types and an explicit drop of the old value.
+                EMIT(ctx, "{ %s _z_tmp = (", clean_type);
+                int rhs_var = node->binary.right->kind == NODE_EXPR_VAR;
+                if (rhs_var)
+                {
+                    codegen_expression(ctx, node->binary.right);
+                }
+                else
+                {
+                    codegen_expression_with_move(ctx, node->binary.right);
+                }
+                EMIT(ctx, "); ");
+                if (rhs_var)
+                {
+                    EMIT(ctx, "__z_drop_flag_%s = 0; ", node->binary.right->var_ref.name);
+                }
+
+                EMIT(ctx, "%s* _z_dest = &(", clean_type);
+                codegen_expression(ctx, node->binary.left);
+                EMIT(ctx, "); ");
+
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "if (__z_drop_flag_%s != 0) { %s__Drop__glue(_z_dest); } ",
+                         node->binary.left->var_ref.name, clean_type);
+                }
+                else
+                {
+                    EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
+                }
+
+                EMIT(ctx, "*_z_dest = _z_tmp; ");
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
+                }
+                EMIT(ctx, "}");
             }
             else
             {
-                EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
+                EMIT(ctx, "({ ");
+                EMIT(ctx, "ZC_AUTO _z_tmp = (");
+                codegen_expression_with_move(ctx, node->binary.right);
+                EMIT(ctx, "); ");
+
+                EMIT(ctx, "__typeof__((");
+                codegen_expression(ctx, node->binary.left);
+                EMIT(ctx, "))* _z_dest = &(");
+                codegen_expression(ctx, node->binary.left);
+                EMIT(ctx, "); ");
+
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "if (__z_drop_flag_%s != 0) { %s__Drop__glue(_z_dest); } ",
+                         node->binary.left->var_ref.name, clean_type);
+                }
+                else
+                {
+                    EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
+                }
+
+                EMIT(ctx, "*_z_dest = _z_tmp; ");
+
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
+                }
+
+                EMIT(ctx, "*_z_dest; })");
             }
-
-            EMIT(ctx, "*_z_dest = _z_tmp; ");
-
-            if (node->binary.left->kind == NODE_EXPR_VAR)
-            {
-                EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
-            }
-
-            EMIT(ctx, "*_z_dest; })");
         }
         else
         {
+            int clear_rhs_flag = 0;
+            if (ctx->config->misra_mode && stmt_mode && is_assignment &&
+                strcmp(node->binary.op, "=") == 0 && var_needs_move_flag(ctx, node->binary.right))
+            {
+                clear_rhs_flag = 1;
+                EMIT(ctx, "__z_drop_flag_%s = 0; ", node->binary.right->var_ref.name);
+            }
             EMIT(ctx, "(");
             if (is_assignment)
             {
@@ -691,7 +783,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                         strcmp(c_type, "void") != 0)
                     {
                         EMIT(ctx, "(%s)(", c_type);
-                        codegen_expression_with_move(ctx, node->binary.right);
+                        emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
                         EMIT(ctx, ")");
                         zfree(c_type);
                     }
@@ -708,17 +800,17 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                         {
                             EMIT(ctx, "(size_t)");
                         }
-                        codegen_expression_with_move(ctx, node->binary.right);
+                        emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
                     }
                 }
                 else
                 {
-                    codegen_expression_with_move(ctx, node->binary.right);
+                    emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
                 }
             }
             else
             {
-                codegen_expression_with_move(ctx, node->binary.right);
+                emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
             }
             EMIT(ctx, ")");
         }
@@ -728,10 +820,11 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             zfree(clean_type);
         }
     }
-    if (ctx->config->misra_mode)
+    if (ctx->config->misra_mode && !stmt_mode)
     {
         EMIT(ctx, ")");
     }
+    ctx->cg.in_expr_stmt = prev_stmt;
 }
 
 // Struct with Drop held by an argument that references a temporary the call owns.

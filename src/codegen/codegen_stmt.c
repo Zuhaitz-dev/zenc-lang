@@ -932,6 +932,8 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
     default:
     {
         char *discard_type = discarded_drop_type(ctx, node);
+        int prev_expr_stmt = ctx->cg.in_expr_stmt;
+        ctx->cg.in_expr_stmt = 1;
         if (discard_type)
         {
             // The result is never bound to a name: drop it right away.
@@ -976,6 +978,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node)
             }
         }
         emit_pending_closure_frees(ctx);
+        ctx->cg.in_expr_stmt = prev_expr_stmt;
     }
     }
 }

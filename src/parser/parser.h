@@ -479,6 +479,7 @@ struct ParserContext
         int skip_preamble;  ///< If 1, codegen won't emit standard preamble (includes etc).
         int is_repl;        ///< 1 if running in REPL mode.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
+        int in_expr_stmt;   ///< 1 if the current expression is a top-level statement.
 
         ASTNode *global_user_structs; ///< List of user defined structs.
         char *current_impl_type;      ///< Type currently being implemented (in impl block).

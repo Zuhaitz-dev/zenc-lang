@@ -443,6 +443,26 @@ void codegen_expression_with_move(ParserContext *ctx, ASTNode *node)
 
         if (has_drop)
         {
+            if (ctx->config->misra_output && t && t->kind == TYPE_STRUCT && type_name)
+            {
+                const char *mt = type_name;
+                if (strncmp(mt, "struct ", 7) == 0)
+                {
+                    mt += 7;
+                }
+                if (node->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "%s__Move__take(&%s, &__z_drop_flag_%s)", mt, node->var_ref.name,
+                         node->var_ref.name);
+                }
+                else
+                {
+                    EMIT(ctx, "%s__Move__take(&(", mt);
+                    codegen_expression(ctx, node);
+                    EMIT(ctx, "), NULL)");
+                }
+                return;
+            }
             if (node->kind == NODE_EXPR_VAR)
             {
                 EMIT(ctx, "({ ");

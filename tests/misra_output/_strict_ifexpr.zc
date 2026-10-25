@@ -1,0 +1,10 @@
+// Strict if-expressions lower to C conditional expressions (no statement
+// expressions or __typeof__), and the result type is inferred for the local.
+fn pick(x: int) -> int {
+    let v = if (x > 0) { 1 } else { 2 };
+    return v;
+}
+
+fn main() -> int {
+    return (pick(1) == 1) ? 0 : 1;
+}

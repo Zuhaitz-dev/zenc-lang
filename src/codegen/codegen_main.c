@@ -488,6 +488,18 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                 field = field->next;
             }
             EMIT(ctx, "}\n\n");
+            if (ctx->config->misra_output)
+            {
+                // Move helper: copies the value, zeroes the source place and
+                // clears the source drop flag. This replaces GNU statement
+                // expressions when values are moved (Rule 1.2).
+                EMIT(ctx, "static %s %s__Move__take(%s *src, int *flag) {\n", sname, sname, sname);
+                EMIT(ctx, "    %s value = *src;\n", sname);
+                EMIT(ctx, "    (void)memset(src, 0, sizeof(value));\n");
+                EMIT(ctx, "    if (flag != NULL) { *flag = 0; }\n");
+                EMIT(ctx, "    return value;\n");
+                EMIT(ctx, "}\n\n");
+            }
             if (s->cfg_condition)
             {
                 EMIT(ctx, "#endif\n");

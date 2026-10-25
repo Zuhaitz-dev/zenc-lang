@@ -87,7 +87,10 @@ impl Option<T> {
     fn or_else(self, other: Option<T>) -> Option<T> {
         let result = other;
         if (self.is_some) {
-            result = (*self);
+            let moved: Option<T>;
+            memcpy(&moved, self, sizeof(Option<T>));
+            memset(self, 0, sizeof(Option<T>));
+            result = moved;
         }
         return result;
     }
@@ -106,7 +109,10 @@ impl Option<T> {
     fn filter(self, f: fn(T) -> bool) -> Option<T> {
         let result = Option<T>::None();
         if (self.is_some && f(self.val)) {
-            result = (*self);
+            let moved: Option<T>;
+            memcpy(&moved, self, sizeof(Option<T>));
+            memset(self, 0, sizeof(Option<T>));
+            result = moved;
         }
         return result;
     }
