@@ -126,7 +126,9 @@ for f in "${FILES[@]}"; do
 
     base="$(basename "$f" .zc)"
     out="$TMP/${base}.c"
-    if ! "$ZC" transpile "$f" --backend c -o "$out" >"$TMP/stdout" 2>"$TMP/stderr"; then
+    # --no-debug suppresses #line source mapping, which a MISRA profile does
+    # not emit (it is the largest single source of Rule 20.13 findings).
+    if ! "$ZC" transpile "$f" --backend c --no-debug -o "$out" >"$TMP/stdout" 2>"$TMP/stderr"; then
         echo "FAIL (transpile): $f"
         sed -n '1,5p' "$TMP/stderr" | sed 's/^/    /'
         failed_files=$((failed_files + 1))
