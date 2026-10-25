@@ -89,6 +89,7 @@ static ZEN_FORMAT_PRINTF(3, 4) void append_to_gen_fmt(char **gen, size_t *cap, c
 
 void take_fstring_exprs(ParserContext *ctx, ASTNode *node)
 {
+    ctx->uses_fstrings = 1;
     node->raw_stmt.interp_exprs = ctx->last_fstring_exprs;
     node->raw_stmt.interp_expr_count = ctx->last_fstring_expr_count;
     ctx->last_fstring_exprs = NULL;

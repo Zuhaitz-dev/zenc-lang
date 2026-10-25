@@ -998,7 +998,7 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
     case TYPE_BOOL:
         return xstrdup("bool");
     case TYPE_STRING:
-        return xstrdup("string");
+        return xstrdup(misra_mode ? "char*" : "string");
     case TYPE_CHAR:
         return xstrdup("char");
     case TYPE_I8:

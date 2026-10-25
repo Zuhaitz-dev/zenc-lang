@@ -514,8 +514,11 @@ static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
     if (!any_drop)
     {
         // F-string interpolation drops its temporary through _z_drop even for
-        // non-owning values; emit the no-op form so those TUs still compile.
-        EMIT(ctx, "#define _z_drop(x) ((void)(x))\n");
+        // non-owning values. Emit the no-op form only when a TU has f-strings.
+        if (ctx->uses_fstrings)
+        {
+            EMIT(ctx, "#define _z_drop(x) ((void)(x))\n");
+        }
         return;
     }
     if (ctx->config->use_cpp && !ctx->config->use_cuda)

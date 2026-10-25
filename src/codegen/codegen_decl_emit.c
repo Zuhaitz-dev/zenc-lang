@@ -33,7 +33,20 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
         }
         if (node->kind == NODE_VAR_DECL || node->kind == NODE_CONST)
         {
-            EMIT(ctx, "ZC_GLOBAL ");
+            if (ctx->config->misra_mode)
+            {
+                // Internal objects must not have external linkage (Rule 8.7);
+                // exported objects keep it. The ZC_GLOBAL macro is not part of
+                // the minimal MISRA preamble.
+                if (!node->var_decl.is_export)
+                {
+                    EMIT(ctx, "static ");
+                }
+            }
+            else
+            {
+                EMIT(ctx, "ZC_GLOBAL ");
+            }
             if (node->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);

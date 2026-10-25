@@ -391,6 +391,7 @@ struct ParserContext
     LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
     int lambda_counter;        ///< Counter for generating unique lambda IDs.
     int fstring_counter;       ///< Counter for generating unique f-string IDs.
+    int uses_fstrings;         ///< 1 if any f-string/interpolation was parsed.
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
