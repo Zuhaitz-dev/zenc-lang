@@ -443,6 +443,11 @@ void mark_type_as_used(TypeChecker *tc, Type *t)
         return;
     }
 
+    if (curr->kind == TYPE_FUNCTION && !curr->is_raw)
+    {
+        register_closure_type(tc->pctx, curr);
+    }
+
     if (curr->kind == TYPE_STRUCT || curr->kind == TYPE_ENUM)
     {
         if (curr->name)

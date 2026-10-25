@@ -666,11 +666,6 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         }
 
         emit_includes_and_aliases(ctx, kids, &visited);
-        if (ctx->config->misra_mode)
-        {
-            // Types that must follow every #include (Rule 20.1).
-            emit_misra_preamble_decls(ctx);
-        }
         if (ctx->config->use_cpp && !ctx->config->use_cuda && !ctx->config->use_objc)
         {
             EMIT(ctx, "\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n");
@@ -838,6 +833,12 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         ASTNode *sorted = topo_sort_structs(ctx, merged);
 
         print_type_defs(ctx, sorted);
+        if (ctx->config->misra_mode)
+        {
+            // Per-signature closure structs, after the struct forward
+            // declarations and before struct definitions/prototypes.
+            emit_closure_typedefs(ctx);
+        }
         emit_global_aliases(ctx);
 
         visited = NULL;

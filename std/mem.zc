@@ -16,20 +16,21 @@ impl StaticArena {
     fn init(self) {
         // 64KB static buffer for MISRA modes (block scope: Rule 8.9).
         static let buffer: [byte; 65536];
-        self.data = (byte*) &buffer;
+        self.data = &buffer[0];
         self.capacity = 65536;
         self.used = 0;
     }
 
     fn alloc_bytes(self, size: usize) -> void* {
         // Simple 8-byte alignment
+        let base = self.data;
         let aligned = (self.used + 7) & ~(usize)7;
         if (aligned + size > self.capacity) {
             // In MISRA mode, we panic on exhaustion rather than returning NULL
             // to ensure deterministic failure.
             !"Panic: MISRA Static Arena exhausted!";
         }
-        let ptr: void* = (byte*)self.data + aligned;
+        let ptr: void* = &base[aligned];
         self.used = aligned + size;
         return ptr;
     }
@@ -56,8 +57,10 @@ impl StaticArena {
         let old_size = old_count * sizeof(T);
 
         // If it's the most recent allocation, we can just grow it in place!
+        let base = self.data;
+        let old_bytes: byte* = (byte*)old_ptr;
         let aligned_old = (self.used - old_size + 7) & ~(usize)7;
-        if ((byte*)self.data + aligned_old == (byte*)old_ptr) {
+        if (&base[aligned_old] == old_bytes) {
             let new_aligned = (aligned_old + new_size + 7) & ~(usize)7;
             if (new_aligned <= self.capacity) {
                 self.used = aligned_old + new_size;

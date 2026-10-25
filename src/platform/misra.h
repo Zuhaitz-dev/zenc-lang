@@ -19,7 +19,6 @@ typedef struct ParserContext ParserContext;
  *        memory and I/O headers, ensuring 100% MISRA Compliance of the Core artifact.
  */
 void emit_misra_preamble(ParserContext *ctx);
-void emit_misra_preamble_decls(ParserContext *ctx);
 
 // --- MISRA C:2012 Compliance Modules ---
 

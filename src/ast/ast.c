@@ -947,6 +947,80 @@ static char *type_to_string_impl(Type *t)
 // Does NOT mangle pointers to 'Ptr'.
 static char *type_to_c_string_impl(Type *t, int misra_mode);
 
+// Sanitize one component of a closure signature into identifier characters.
+// `*` becomes `_ptr`, spaces/underscores are kept as separators, everything
+// else is dropped.
+static char *closure_mangle_part(const char *s)
+{
+    size_t cap = strlen(s) * 5 + 8;
+    char *out = xmalloc(cap);
+    size_t n = 0;
+    for (const char *p = s; *p; p++)
+    {
+        unsigned char c = (unsigned char)*p;
+        if (c == '*')
+        {
+            memcpy(out + n, "_ptr", 4);
+            n += 4;
+        }
+        else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                 c == '_')
+        {
+            out[n++] = (char)c;
+        }
+        else if (c == ' ')
+        {
+            out[n++] = '_';
+        }
+    }
+    out[n] = '\0';
+    return out;
+}
+
+// Deterministic struct name for a closure signature, e.g.
+// fn(int32_t) -> bool  ->  z_closure_bool_int32_t.
+char *closure_type_c_name(Type *t)
+{
+    if (!t || t->kind != TYPE_FUNCTION)
+    {
+        return xstrdup("z_closure_T");
+    }
+
+    char **parts = NULL;
+    if (t->count > 0)
+    {
+        parts = xmalloc(sizeof(char *) * (size_t)t->count);
+    }
+    size_t total = 32;
+    char *ret = type_to_c_string(t->inner, 1);
+    char *ret_part = closure_mangle_part(ret);
+    total += strlen(ret_part);
+    zfree(ret);
+
+    for (int i = 0; i < t->count; i++)
+    {
+        char *arg = type_to_c_string(t->args[i], 1);
+        parts[i] = closure_mangle_part(arg);
+        total += strlen(parts[i]) + 1;
+        zfree(arg);
+    }
+
+    char *res = xmalloc(total);
+    size_t n = (size_t)snprintf(res, total, "z_closure_%s", ret_part);
+    for (int i = 0; i < t->count; i++)
+    {
+        n += (size_t)snprintf(res + n, total - n, "_%s", parts[i]);
+        zfree(parts[i]);
+    }
+    if (t->is_varargs)
+    {
+        snprintf(res + n, total - n, "_va");
+    }
+    zfree(parts);
+    zfree(ret_part);
+    return res;
+}
+
 char *type_to_c_string(Type *t, int misra_mode)
 {
     if (!t)
@@ -1218,6 +1292,10 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
             res = tmp;
             zfree(ret);
             return res;
+        }
+        if (!t->is_raw && misra_mode)
+        {
+            return closure_type_c_name(t);
         }
         if (t->inner)
         {

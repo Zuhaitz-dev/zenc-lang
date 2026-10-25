@@ -264,7 +264,8 @@ impl Vec<T> {
         }
         // Shift elements right
         if (idx < self.len) {
-             memmove(self.data + idx + 1, self.data + idx, (self.len - idx) * sizeof(T));
+             let base = self.data;
+             memmove(&base[idx + 1], &base[idx], (self.len - idx) * sizeof(T));
         }
         self.data[idx] = item;
         self.len = self.len + 1;
@@ -296,7 +297,8 @@ impl Vec<T> {
         let item = self.data[idx];
         // Shift elements left
         if (idx < self.len - 1) {
-            memmove(self.data + idx, self.data + idx + 1, (self.len - idx - 1) * sizeof(T));
+            let base = self.data;
+            memmove(&base[idx], &base[idx + 1], (self.len - idx - 1) * sizeof(T));
         }
         self.len = self.len - 1;
         return item;
@@ -308,7 +310,8 @@ impl Vec<T> {
         let new_len = self.len + other.len;
         self.grow_to_fit(new_len);
 
-        memcpy(self.data + self.len, other.data, other.len * sizeof(T));
+        let base = self.data;
+        memcpy(&base[self.len], other.data, other.len * sizeof(T));
         self.len = new_len;
         other.forget();
     }
@@ -483,7 +486,8 @@ impl Vec<T> {
         self.grow_to_fit(self.len * count);
         let c: usize = 1;
         while c < count {
-            memcpy(self.data + (original_len * c), self.data, original_len * sizeof(T));
+            let base = self.data;
+            memcpy(&base[original_len * c], self.data, original_len * sizeof(T));
             self.len += original_len;
             c += 1;
         }

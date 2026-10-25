@@ -255,6 +255,20 @@ typedef struct EnumVariantReg
 } EnumVariantReg;
 
 /**
+ * @brief A `fn(...)` closure type used by the translation unit.
+ *
+ * MISRA output gives every closure signature its own struct so that the `func`
+ * field already has the exact function pointer type (Rule 11.1). The typedef is
+ * emitted once, before the struct definitions that may contain it.
+ */
+typedef struct ClosureTypeReg
+{
+    char *c_name; ///< Struct typedef name.
+    Type *type;   ///< The TYPE_FUNCTION type.
+    struct ClosureTypeReg *next;
+} ClosureTypeReg;
+
+/**
  * @brief Functions marked as deprecated.
  */
 typedef struct DeprecatedFunc
@@ -388,11 +402,12 @@ struct ParserContext
                             ///< global_scope).
 
     // Lambdas
-    LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
-    int lambda_counter;        ///< Counter for generating unique lambda IDs.
-    int fstring_counter;       ///< Counter for generating unique f-string IDs.
-    int uses_fstrings;         ///< 1 if any f-string/interpolation was parsed.
-    int uses_closure_types;    ///< 1 if `fn(...)` types or lambdas were parsed.
+    LambdaRef *global_lambdas;     ///< All lambdas generated during parsing, in creation order.
+    int lambda_counter;            ///< Counter for generating unique lambda IDs.
+    int fstring_counter;           ///< Counter for generating unique f-string IDs.
+    int uses_fstrings;             ///< 1 if any f-string/interpolation was parsed.
+    int uses_closure_types;        ///< 1 if `fn(...)` types or lambdas were parsed.
+    ClosureTypeReg *closure_types; ///< Distinct closure signatures (MISRA output).
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
@@ -915,6 +930,7 @@ void register_slice(ParserContext *ctx, const char *type);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);
+void register_closure_type(ParserContext *ctx, Type *t);
 void register_plugin(ParserContext *ctx, const char *name, const char *alias);
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
                                const char *source_module);

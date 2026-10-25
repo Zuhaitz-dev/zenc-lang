@@ -555,6 +555,10 @@ void emit_lambda_defs(ParserContext *ctx)
             ret_type_str = type_to_c_string(node->type_info->inner, ctx->config->misra_mode);
         }
 
+        if (ctx->config->misra_mode && !node->lambda.is_bare)
+        {
+            EMIT(ctx, "static ");
+        }
         if (strcmp(ret_type_str, "unknown") == 0)
         {
             EMIT(ctx, "void* _lambda_%d(", node->lambda.lambda_id);
@@ -606,6 +610,13 @@ void emit_lambda_defs(ParserContext *ctx)
         }
         EMIT(ctx, ") {\n");
         emitter_indent(&ctx->cg.emitter);
+
+        if (ctx->config->misra_mode && node->lambda.capture_count == 0 && !node->lambda.is_bare)
+        {
+            // The context parameter is part of the closure ABI but unused for
+            // non-capturing closures (Rule 2.7).
+            EMIT(ctx, "(void)_ctx;\n");
+        }
 
         if (node->lambda.capture_count > 0)
         {

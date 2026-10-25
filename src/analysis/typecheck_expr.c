@@ -931,6 +931,20 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
     Type *resolved_target = resolve_alias(target);
     Type *resolved_value = resolve_alias(value);
 
+    // MISRA output has no per-instance thunks yet; a named function does not
+    // have the closure struct type and cannot be coerced implicitly.
+    if (tc->pctx->config->misra_mode && resolved_target->kind == TYPE_FUNCTION &&
+        !resolved_target->is_raw && value_node && value_node->kind == NODE_EXPR_VAR)
+    {
+        ZenSymbol *sym = tc_lookup(tc, value_node->var_ref.name);
+        if (sym && sym->kind == SYM_FUNCTION)
+        {
+            tc_error(tc, t,
+                     "MISRA profile: a named function cannot be used as a closure; "
+                     "wrap it in a non-capturing lambda");
+        }
+    }
+
     // MISRA Pointer & Constant Checks (Rules 11.5, 11.9, etc.)
     if (tc->pctx->config->misra_mode && resolved_target->kind == TYPE_POINTER)
     {
@@ -1396,6 +1410,19 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
 
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 {
+    if (tc->pctx->config->misra_mode && node->lambda.capture_count > 0)
+    {
+        // A captured closure needs a type-erased void* context, which forces a
+        // void* -> object pointer conversion (Rule 11.5). Strict output keeps
+        // closures non-capturing; state is passed explicitly instead.
+        const char *hints[] = {"Pass the captured state as an explicit pointer argument",
+                               "Non-capturing lambdas and function references remain "
+                               "supported",
+                               NULL};
+        tc_error_with_hints(tc, node->token, "MISRA profile: captured closures are not supported",
+                            hints);
+    }
+
     Type *expected = get_inner_type(node->type_info);
     if (expected && expected->kind == TYPE_FUNCTION && expected->is_raw)
     {
@@ -1485,6 +1512,11 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
     int prev_unreachable = tc->is_unreachable;
     tc->is_unreachable = 0;
 
+    // A lambda is its own function: its returns must not count towards the
+    // enclosing function's Rule 15.5 tally.
+    int prev_return_count = tc->func_return_count;
+    tc->func_return_count = 0;
+
     if (node->lambda.body)
     {
         if (node->lambda.body->kind == NODE_BLOCK)
@@ -1496,6 +1528,15 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
             check_node(tc, node->lambda.body, depth + 1);
         }
     }
+
+    if (tc->pctx->config->misra_mode && tc->func_return_count > 1)
+    {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "MISRA Rule 15.5: lambda has %d return points (must have 1)",
+                 tc->func_return_count);
+        tc_error(tc, node->token, msg);
+    }
+    tc->func_return_count = prev_return_count;
 
     move_state_free(tc->pctx->move_state);
     tc->pctx->move_state = prev_move_state;

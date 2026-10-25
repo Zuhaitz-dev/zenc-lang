@@ -1197,6 +1197,28 @@ skip_method_mangling:
     Type *callee_ti = get_inner_type(node->call.callee->type_info);
     if (callee_ti && callee_ti->kind == TYPE_FUNCTION && !callee_ti->is_raw)
     {
+        // MISRA output: the per-signature closure struct has a func field with
+        // the exact prototype, so no cast is needed (Rule 11.1). Source policy
+        // restricts the callee to a variable/member expression.
+        if (ctx->config->misra_mode && (node->call.callee->kind == NODE_EXPR_VAR ||
+                                        node->call.callee->kind == NODE_EXPR_MEMBER))
+        {
+            EMIT(ctx, "((");
+            codegen_expression(ctx, node->call.callee);
+            EMIT(ctx, ").func)((");
+            codegen_expression(ctx, node->call.callee);
+            EMIT(ctx, ").ctx");
+            ASTNode *arg = node->call.args;
+            while (arg)
+            {
+                EMIT(ctx, ", ");
+                codegen_expression_with_move(ctx, arg);
+                arg = arg->next;
+            }
+            EMIT(ctx, ")");
+            return;
+        }
+
         // MISRA output cannot use GNU statement expressions (Rule 1.2). When
         // the closure is a variable or member access, evaluating it twice is
         // side-effect free, so call through it directly.

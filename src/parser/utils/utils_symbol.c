@@ -314,6 +314,28 @@ void add_instantiated_func(ParserContext *ctx, ASTNode *fn)
     ctx->instantiated_funcs = fn;
 }
 
+void register_closure_type(ParserContext *ctx, Type *t)
+{
+    if (!ctx || !ctx->config->misra_mode || !t || t->kind != TYPE_FUNCTION || t->is_raw)
+    {
+        return;
+    }
+    char *name = closure_type_c_name(t);
+    for (ClosureTypeReg *r = ctx->closure_types; r; r = r->next)
+    {
+        if (strcmp(r->c_name, name) == 0)
+        {
+            zfree(name);
+            return;
+        }
+    }
+    ClosureTypeReg *reg = xmalloc(sizeof(*reg));
+    reg->c_name = name;
+    reg->type = t;
+    reg->next = ctx->closure_types;
+    ctx->closure_types = reg;
+}
+
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag)
 {
     if (ctx->config->mode_lsp)

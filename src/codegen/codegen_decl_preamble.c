@@ -283,3 +283,49 @@ void emit_preamble(ParserContext *ctx)
         EMIT(ctx, "%s", "}\n");
     }
 }
+
+// Emit one closure struct per distinct `fn(...)` signature. Tags are declared
+// first so signatures may reference another closure type; C permits function
+// parameters of incomplete struct type in a function pointer typedef.
+void emit_closure_typedefs(ParserContext *ctx)
+{
+    if (!ctx->config->misra_mode || !ctx->closure_types)
+    {
+        return;
+    }
+
+    for (ClosureTypeReg *r = ctx->closure_types; r; r = r->next)
+    {
+        EMIT(ctx, "typedef struct %s %s;\n", r->c_name, r->c_name);
+    }
+
+    for (ClosureTypeReg *r = ctx->closure_types; r; r = r->next)
+    {
+        Type *fn = r->type;
+        char *ret = type_to_c_string(fn->inner, 1);
+        if (strcmp(ret, "unknown") == 0)
+        {
+            zfree(ret);
+            ret = xstrdup("void*");
+        }
+        EMIT(ctx, "struct %s { %s (*func)(void*", r->c_name, ret);
+        for (int i = 0; i < fn->count; i++)
+        {
+            char *arg = type_to_c_string(fn->args[i], 1);
+            if (strcmp(arg, "unknown") == 0)
+            {
+                zfree(arg);
+                arg = xstrdup("void*");
+            }
+            EMIT(ctx, ", %s", arg);
+            zfree(arg);
+        }
+        if (fn->is_varargs)
+        {
+            EMIT(ctx, ", ...");
+        }
+        EMIT(ctx, "); void *ctx; void (*drop)(void*); };\n");
+        zfree(ret);
+    }
+    EMIT(ctx, "\n");
+}
