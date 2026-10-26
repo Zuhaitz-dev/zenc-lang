@@ -57,7 +57,7 @@ static int in_generic_impl(ParserContext *ctx)
 }
 
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
-                        int is_export)
+                        int is_export, const char *cfg_condition)
 {
     lexer_next(l);
     Token name_tok = lexer_next(l);
@@ -308,6 +308,12 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         node->func.generic_params = xstrdup(gen_param);
         if (!ctx->current_impl_struct)
         {
+            // Generic templates never reach add_node, so attach the @cfg
+            // condition now: duplicate template names are selected by it.
+            if (cfg_condition)
+            {
+                node->cfg_condition = xstrdup(cfg_condition);
+            }
             register_func_template(ctx, name, gen_param, node);
             return NULL;
         }

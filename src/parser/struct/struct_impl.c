@@ -194,7 +194,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
             if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
             {
-                ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
+                ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0, attrs.cfg_condition);
                 if (!f)
                 {
                     continue;
@@ -363,7 +363,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
                 if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
                 {
-                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
+                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0, attrs.cfg_condition);
                     if (!f)
                     {
                         continue;
@@ -467,7 +467,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
 
                 if (lexer_peek(l).kind == TOK_IDENT && strncmp(lexer_peek(l).start, "fn", 2) == 0)
                 {
-                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0);
+                    ASTNode *f = parse_function(ctx, l, 0, attrs.link_name, 0, attrs.cfg_condition);
                     if (!f)
                     {
                         return NULL;

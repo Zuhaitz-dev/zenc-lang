@@ -7,6 +7,9 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
     ASTNode *stmt = block->block.statements;
     int seen_terminator = 0;
     Token terminator_token = {0};
+    // The last statement of an if-expression branch is its value, not dead code.
+    int value_ctx = tc->in_value_context;
+    tc->in_value_context = 0;
 
     while (stmt)
     {
@@ -26,7 +29,7 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
             // Rule 2.2: There shall be no dead code (expressions with no effect)
             // We ignore call expressions here as they are handled by Rule 17.7
             if (stmt->kind >= NODE_EXPR_BINARY && stmt->kind <= NODE_EXPR_SLICE &&
-                stmt->kind != NODE_EXPR_CALL)
+                stmt->kind != NODE_EXPR_CALL && !(value_ctx && stmt->next == NULL))
             {
                 if (!tc_expr_has_side_effects(stmt))
                 {
@@ -51,6 +54,7 @@ void check_block(TypeChecker *tc, ASTNode *block, int depth)
         stmt = stmt->next;
     }
     (void)terminator_token; // May be used for enhanced diagnostics later
+    tc->in_value_context = value_ctx;
     tc_exit_scope(tc);
 }
 
@@ -64,10 +68,12 @@ void check_var_decl(TypeChecker *tc, ASTNode *node, int depth)
     // MISRA: Mark type as used
     mark_type_as_used(tc, node->var_decl.type_info);
 
-    // Initialize lifetime depth for escape analysis if this is a local variable
+    // Initialize lifetime depth for escape analysis if this is a local variable.
+    // Static locals have static storage duration, so a pointer to them escapes
+    // safely (depth 0).
     if (node->var_decl.type_info && tc->current_func)
     {
-        node->var_decl.type_info->lifetime_depth = tc->current_depth;
+        node->var_decl.type_info->lifetime_depth = node->var_decl.is_static ? 0 : tc->current_depth;
     }
 
     if (node->var_decl.init_expr)
@@ -683,7 +689,16 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
         loop_start = tc->pctx->move_state ? move_state_clone(tc->pctx->move_state) : NULL;
         tc->loop_start_state = loop_start;
 
+        // The range variable is only visible in the body (like C's for-init).
+        tc_enter_scope(tc);
+        Type *range_type = node->for_range.start ? node->for_range.start->type_info : NULL;
+        if (!range_type)
+        {
+            range_type = type_new(TYPE_INT);
+        }
+        add_symbol(tc->pctx, node->for_range.var_name, NULL, range_type, 0);
         check_node(tc, node->for_range.body, depth + 1);
+        tc_exit_scope(tc);
         break;
 
     case NODE_LOOP:
@@ -736,7 +751,17 @@ void check_loop_passes(TypeChecker *tc, ASTNode *node, int depth)
             check_node(tc, node->for_stmt.step, depth + 1);
             break;
         case NODE_FOR_RANGE:
+            tc_enter_scope(tc);
+            {
+                Type *range_type = node->for_range.start ? node->for_range.start->type_info : NULL;
+                if (!range_type)
+                {
+                    range_type = type_new(TYPE_INT);
+                }
+                add_symbol(tc->pctx, node->for_range.var_name, NULL, range_type, 0);
+            }
             check_node(tc, node->for_range.body, depth + 1);
+            tc_exit_scope(tc);
             break;
         case NODE_LOOP:
             check_node(tc, node->loop_stmt.body, depth + 1);

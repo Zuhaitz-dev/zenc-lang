@@ -3,6 +3,7 @@
 
 #include "../ast/ast.h"
 #include "../constants.h"
+#include "../platform/misra.h"
 #include "../zprep.h"
 #include "codegen.h"
 #include "codegen_internal.h"
@@ -462,7 +463,8 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 
             char *sname = s->strct.name;
             EMIT(ctx, "// Auto-Generated RAII Glue for %s\n", sname);
-            EMIT(ctx, "void %s__Drop__glue(%s *self) {\n", sname, sname);
+            EMIT(ctx, "%svoid %s__Drop__glue(%s *self) {\n",
+                 ctx->config->misra_output ? "static " : "", sname, sname);
 
             char glue_mangled[MAX_MANGLED_NAME_LEN];
             snprintf(glue_mangled, sizeof(glue_mangled), "%s__Drop__drop", sname);
@@ -486,6 +488,18 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
                 field = field->next;
             }
             EMIT(ctx, "}\n\n");
+            if (ctx->config->misra_output)
+            {
+                // Move helper: copies the value, zeroes the source place and
+                // clears the source drop flag. This replaces GNU statement
+                // expressions when values are moved (Rule 1.2).
+                EMIT(ctx, "static %s %s__Move__take(%s *src, int *flag) {\n", sname, sname, sname);
+                EMIT(ctx, "    %s value = *src;\n", sname);
+                EMIT(ctx, "    (void)memset(src, 0, sizeof(value));\n");
+                EMIT(ctx, "    if (flag != NULL) { *flag = 0; }\n");
+                EMIT(ctx, "    return value;\n");
+                EMIT(ctx, "}\n\n");
+            }
             if (s->cfg_condition)
             {
                 EMIT(ctx, "#endif\n");
@@ -498,7 +512,34 @@ static void emit_auto_drop_glues(ParserContext *ctx, ASTNode *structs)
 
 static void emit_generic_drop_macro(ParserContext *ctx, ASTNode *structs)
 {
-    (void)ctx;
+    // Only f-string interpolation calls _z_drop; emitting the dispatcher
+    // otherwise leaves an unused macro (Rule 2.5).
+    if (!ctx->uses_fstrings)
+    {
+        return;
+    }
+    // The dispatch is only useful when a type actually implements Drop; emitting
+    // it unconditionally leaves an unused macro in every translation unit.
+    int any_drop = 0;
+    for (ASTNode *s = structs; s; s = s->next)
+    {
+        if (s->kind == NODE_STRUCT && s->type_info && s->type_info->traits.has_drop &&
+            !s->strct.is_template)
+        {
+            any_drop = 1;
+            break;
+        }
+    }
+    if (!any_drop)
+    {
+        // F-string interpolation drops its temporary through _z_drop even for
+        // non-owning values. Emit the no-op form only when a TU has f-strings.
+        if (ctx->uses_fstrings)
+        {
+            EMIT(ctx, "#define _z_drop(x) ((void)(x))\n");
+        }
+        return;
+    }
     if (ctx->config->use_cpp && !ctx->config->use_cuda)
     {
         EMIT(ctx, "// Global Generic Drop Dispatch (C++ Overloads)\n");
@@ -804,6 +845,12 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
         ASTNode *sorted = topo_sort_structs(ctx, merged);
 
         print_type_defs(ctx, sorted);
+        if (ctx->config->misra_mode)
+        {
+            // Per-signature closure structs, after the struct forward
+            // declarations and before struct definitions/prototypes.
+            emit_closure_typedefs(ctx);
+        }
         emit_global_aliases(ctx);
 
         visited = NULL;

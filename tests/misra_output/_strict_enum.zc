@@ -1,0 +1,18 @@
+enum Kind {
+    A,
+    B,
+}
+
+fn pick(k: Kind) -> int {
+    let r = 0;
+    if (k == Kind::A) {
+        r = 1;
+    } else {
+        r = 2;
+    }
+    return r;
+}
+
+fn main() -> int {
+    return (pick(Kind::A) == 1) ? 0 : 1;
+}

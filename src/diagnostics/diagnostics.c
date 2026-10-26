@@ -6,6 +6,7 @@
 #include "utils/cJSON.h"
 #include <stdio.h>
 #include <stddef.h>
+#include <string.h>
 
 // Local diagnostic context — replaces g_parser_ctx dependency.
 // Set via diag_set_parser_ctx() at the start of each compilation.
@@ -45,6 +46,50 @@ static const char *diag_filename(Token t)
         return t.file;
     }
     return d_ctx.parser_ctx ? d_ctx.parser_ctx->current_filename : "unknown";
+}
+
+static void diag_normalize_separators(const char *in, char *out, size_t size)
+{
+    size_t i = 0;
+    for (; in[i] && i + 1 < size; i++)
+    {
+        out[i] = (in[i] == '\\') ? '/' : in[i];
+    }
+    out[i] = '\0';
+}
+
+// Whether `file` lives under the compiler's bundled std library. Those sources
+// are a system library: the MISRA source policy applies to user code, while the
+// std library's generated C is still checked as output.
+static int diag_is_std_source(const char *file)
+{
+    const char *root = diag_cfg()->root_path;
+    if (!file || !root || !root[0])
+    {
+        return 0;
+    }
+
+    char f[MAX_PATH_LEN];
+    char r[MAX_PATH_LEN];
+    diag_normalize_separators(file, f, sizeof(f));
+    diag_normalize_separators(root, r, sizeof(r));
+
+    size_t root_len = strlen(r);
+    while (root_len > 0 && r[root_len - 1] == '/')
+    {
+        root_len--;
+    }
+    if (root_len == 0 || strncmp(f, r, root_len) != 0)
+    {
+        return 0;
+    }
+
+    const char *rel = f + root_len;
+    while (*rel == '/')
+    {
+        rel++;
+    }
+    return strncmp(rel, "std/", 4) == 0;
 }
 
 static void diag_print_location(FILE *f, Token t)
@@ -150,6 +195,19 @@ static void diag_emit(int is_error, int fatal, int diag_id, Token t, const char 
     }
     if (!is_error && diag_cfg()->quiet)
     {
+        return;
+    }
+
+    // The MISRA source policy is a lint for user code. The bundled std library
+    // is treated like a system header: its generated C is still checked, but
+    // its hosted source idioms do not fail the user's build.
+    if (is_error && diag_cfg()->misra_mode && msg && strstr(msg, "MISRA ") &&
+        diag_is_std_source(diag_filename(t)))
+    {
+        if (fatal && pctx && pctx->is_fault_tolerant)
+        {
+            pctx->had_error = 1;
+        }
         return;
     }
 

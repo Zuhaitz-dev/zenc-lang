@@ -33,7 +33,20 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
         }
         if (node->kind == NODE_VAR_DECL || node->kind == NODE_CONST)
         {
-            EMIT(ctx, "ZC_GLOBAL ");
+            if (ctx->config->misra_mode)
+            {
+                // Internal objects must not have external linkage (Rule 8.7);
+                // exported objects keep it. The ZC_GLOBAL macro is not part of
+                // the minimal MISRA preamble.
+                if (!node->var_decl.is_export)
+                {
+                    EMIT(ctx, "static ");
+                }
+            }
+            else
+            {
+                EMIT(ctx, "ZC_GLOBAL ");
+            }
             if (node->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);
@@ -760,8 +773,10 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
     }
     else
     {
+        // MISRA profiles cannot use __builtin_trap (GNU extension, and cppcheck
+        // treats it as an implicitly declared function). Fail safe instead.
         EMIT(ctx, "static inline long _z_check_bounds(long index, long limit) { if((index < 0) || "
-                  "(index >= limit)) { __builtin_trap(); } return index; }\n");
+                  "(index >= limit)) { for (;;) { } } return index; }\n");
     }
 
     ASTNode *local = nodes;
@@ -776,6 +791,11 @@ void print_type_defs(ParserContext *ctx, ASTNode *nodes)
             }
             else if (local->strct.name && !local->strct.crepr_c_type)
             {
+                if (local->cfg_condition && !cfg_condition_matches(ctx, local->cfg_condition))
+                {
+                    local = local->next;
+                    continue;
+                }
                 const char *final_name = local->link_name ? local->link_name : local->strct.name;
                 const char *keyword = local->strct.is_union ? "union" : "struct";
                 EMIT(ctx, "typedef %s %s %s;\n", keyword, final_name, final_name);

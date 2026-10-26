@@ -83,7 +83,22 @@ void z_compiler_setup(ZenCompiler *compiler)
 
     char self_path[MAX_PATH_SIZE];
     z_get_executable_path(self_path, sizeof(self_path));
-    if (self_path[0])
+
+    // ZC_ROOT is the documented way to point at a compiler tree. It wins over
+    // executable-path discovery so tests and relocated binaries resolve the
+    // same std library.
+    const char *env_root = getenv("ZC_ROOT");
+    if (env_root && env_root[0])
+    {
+        char check_path[MAX_PATH_SIZE + 32];
+        snprintf(check_path, sizeof(check_path), "%s/std.zc", env_root);
+        if (access(check_path, F_OK) == 0)
+        {
+            cfg->root_path = xstrdup(env_root);
+        }
+    }
+
+    if (!cfg->root_path && self_path[0])
     {
         cfg->root_path = xstrdup(self_path);
 
@@ -113,19 +128,20 @@ void z_compiler_setup(ZenCompiler *compiler)
                 break;
             }
 
-            // Try parent
-            char *last_slash = (char *)strrchr(current_root, '/');
-            if (last_slash && last_slash != current_root)
+            // Try parent. Windows executable paths use backslashes, so accept
+            // either separator here.
+            char *last_sep = z_path_last_sep(current_root);
+            if (last_sep && last_sep != current_root)
             {
-                *last_slash = '\0';
+                *last_sep = '\0';
             }
             else
             {
-                break; // Reached root or no more slashes
+                break; // Reached root or no more separators
             }
         }
     }
-    else
+    else if (!cfg->root_path)
     {
         // Fallback to std_root in config if self path fails
         if (cfg->std_root[0])

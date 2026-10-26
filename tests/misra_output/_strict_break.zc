@@ -1,0 +1,14 @@
+fn first_ge(n: int) -> int {
+    let i = 0;
+    loop {
+        if (i >= n) {
+            break;
+        }
+        i = i + 1;
+    }
+    return i;
+}
+
+fn main() -> int {
+    return (first_ge(3) == 3) ? 0 : 1;
+}

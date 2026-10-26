@@ -1,0 +1,15 @@
+// Strict output with the standard library: typed per-type pools, no void* casts.
+import "std/vec.zc"
+
+fn build() -> int {
+    let v = Vec<int>::new();
+    v.push(1);
+    v.push(2);
+    let n = (int)v.len;
+    v.free();
+    return n;
+}
+
+fn main() -> int {
+    return (build() == 2) ? 0 : 1;
+}

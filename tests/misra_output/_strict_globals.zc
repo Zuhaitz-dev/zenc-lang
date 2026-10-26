@@ -1,0 +1,9 @@
+let g = 1;
+
+fn get() -> int {
+    return g;
+}
+
+fn main() -> int {
+    return (get() + g == 2) ? 0 : 1;
+}

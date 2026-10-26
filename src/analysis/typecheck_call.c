@@ -368,6 +368,19 @@ void check_expr_call(TypeChecker *tc, ASTNode *node, int depth)
     if (tc->pctx->config->misra_mode)
     {
         misra_check_evaluation_order(tc->pctx, node);
+
+        // The MISRA closure lowering calls through a variable/member so it can
+        // evaluate the closure once without a GNU statement expression.
+        if (node->call.callee && node->call.callee->kind != NODE_EXPR_VAR &&
+            node->call.callee->kind != NODE_EXPR_MEMBER && node->call.callee->type_info)
+        {
+            Type *callee_t = get_inner_type(node->call.callee->type_info);
+            if (callee_t && callee_t->kind == TYPE_FUNCTION && !callee_t->is_raw)
+            {
+                tc_error(tc, node->token,
+                         "MISRA profile: closure calls require a variable or member expression");
+            }
+        }
     }
 }
 

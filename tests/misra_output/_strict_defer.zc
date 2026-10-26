@@ -1,0 +1,9 @@
+fn run() -> int {
+    let x = 1;
+    defer x = 2;
+    return x;
+}
+
+fn main() -> int {
+    return (run() == 1) ? 0 : 1;
+}

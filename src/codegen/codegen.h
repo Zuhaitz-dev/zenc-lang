@@ -100,6 +100,7 @@ void emit_impl_vtables(ParserContext *ctx);
  */
 int emit_tests_and_runner(ParserContext *ctx, ASTNode *node);
 void print_type_defs(ParserContext *ctx, ASTNode *nodes);
+void emit_closure_typedefs(ParserContext *ctx);
 int enum_has_payload(ASTNode *node);
 void emit_simple_enum(ParserContext *ctx, ASTNode *node);
 

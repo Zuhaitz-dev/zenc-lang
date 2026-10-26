@@ -89,13 +89,76 @@ void handle_node_comptime(ParserContext *ctx, ASTNode *node)
     }
 }
 
+// Whether control cannot reach the end of `stmt`. Unlike block_always_returns
+// (which also counts an implicit expression return for function bodies), this
+// only recognizes explicit returns and exhaustive branches, so it is safe for
+// deciding whether trailing cleanup is unreachable.
+static int stmt_cannot_fall_through(ASTNode *stmt);
+
+static int block_cannot_fall_through(ASTNode *block)
+{
+    if (!block || block->kind != NODE_BLOCK)
+    {
+        return 0;
+    }
+    for (ASTNode *s = block->block.statements; s; s = s->next)
+    {
+        if (stmt_cannot_fall_through(s))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int stmt_cannot_fall_through(ASTNode *stmt)
+{
+    if (!stmt)
+    {
+        return 0;
+    }
+    switch (stmt->kind)
+    {
+    case NODE_RETURN:
+        return 1;
+    case NODE_BLOCK:
+        return block_cannot_fall_through(stmt);
+    case NODE_IF:
+        return stmt_cannot_fall_through(stmt->if_stmt.then_body) &&
+               stmt_cannot_fall_through(stmt->if_stmt.else_body);
+    case NODE_MATCH:
+    {
+        int has_default = 0;
+        for (ASTNode *c = stmt->match_stmt.cases; c; c = c->next)
+        {
+            if (c->kind != NODE_MATCH_CASE || !stmt_cannot_fall_through(c->match_case.body))
+            {
+                return 0;
+            }
+            if (c->match_case.is_default)
+            {
+                has_default = 1;
+            }
+        }
+        return has_default;
+    }
+    default:
+        return 0;
+    }
+}
+
 void handle_node_block(ParserContext *ctx, ASTNode *node)
 {
     int saved = ctx->cg.defer_count;
     EMIT(ctx, "{\n");
     emitter_indent(&ctx->cg.emitter);
     codegen_walker(ctx, node->block.statements);
-    emit_defers_down_to(ctx, saved);
+    // A block that cannot fall through already ran the defers on its return
+    // paths; emitting them here would duplicate cleanup after the return.
+    if (!block_cannot_fall_through(node))
+    {
+        emit_defers_down_to(ctx, saved);
+    }
     ctx->cg.defer_count = saved;
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
@@ -258,12 +321,6 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
     emit_func_signature(ctx, node, NULL);
     EMIT(ctx, "\n{\n");
     emitter_indent(&ctx->cg.emitter);
-    if (ctx->config->misra_mode && node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
-    {
-        char *safe_ret_type = type_to_c_string(node->func.ret_type_info, ctx->config->misra_mode);
-        EMIT(ctx, "%s _misra_ret = 0;\n", safe_ret_type);
-        zfree(safe_ret_type);
-    }
     char *prev_ret = ctx->cg.current_func_ret_type;
     Type *prev_ret_info = ctx->cg.current_func_ret_type_info;
     ctx->cg.current_func_ret_type = node->func.ret_type;
@@ -324,8 +381,10 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                 {
                     size_t stmt_sz = 256 + strlen(arg_name) * 4;
                     stmt_str = xmalloc(stmt_sz);
-                    snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);",
-                             arg_name, arg_name, arg_name, arg_name);
+                    snprintf(
+                        stmt_str, stmt_sz,
+                        "if ((__z_drop_flag_%s != 0) && (%s.drop != NULL)) { %s.drop(%s.ctx); }",
+                        arg_name, arg_name, arg_name, arg_name);
                 }
                 else
                 {
@@ -334,13 +393,15 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
                     // If it's self, it's already a pointer in C
                     if (strcmp(arg_name, "self") == 0)
                     {
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(%s);",
-                                 arg_name, drop_type_name, arg_name);
+                        snprintf(stmt_str, stmt_sz,
+                                 "if (__z_drop_flag_%s != 0) { %s__Drop__glue(%s); }", arg_name,
+                                 drop_type_name, arg_name);
                     }
                     else
                     {
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
-                                 arg_name, drop_type_name, arg_name);
+                        snprintf(stmt_str, stmt_sz,
+                                 "if (__z_drop_flag_%s != 0) { %s__Drop__glue(&%s); }", arg_name,
+                                 drop_type_name, arg_name);
                     }
                 }
                 defer_node->raw_stmt.content = stmt_str;
@@ -353,25 +414,27 @@ void handle_node_function(ParserContext *ctx, ASTNode *node)
         }
     }
 
-    codegen_walker(ctx, node->func.body);
-    emit_defers_down_to(ctx, 0);
+    // MISRA output emits the body statements directly in the function block.
+    // A redundant nested block around them makes cppcheck's 15.5 checker treat
+    // an `if` before the final return as a second exit point.
+    if (ctx->config->misra_mode && node->func.body->kind == NODE_BLOCK)
+    {
+        codegen_walker(ctx, node->func.body->block.statements);
+    }
+    else
+    {
+        codegen_walker(ctx, node->func.body);
+    }
+    // Cleanup after the last statement is unreachable when the body cannot fall
+    // through; emitting it duplicates the defers already run by each return.
+    if (!block_cannot_fall_through(node->func.body))
+    {
+        emit_defers_down_to(ctx, 0);
+    }
     ctx->cg.current_func_ret_type = prev_ret;
     ctx->cg.current_func_ret_type_info = prev_ret_info;
     ctx->self_is_pointer = prev_self_is_ptr;
 
-    if (ctx->config->misra_mode)
-    {
-        EMIT(ctx, "goto _misra_end_of_func;\n");
-        EMIT(ctx, "_misra_end_of_func:\n");
-        if (node->func.ret_type && strcmp(node->func.ret_type, "void") != 0)
-        {
-            EMIT(ctx, "return _misra_ret;\n");
-        }
-        else
-        {
-            EMIT(ctx, "return;\n");
-        }
-    }
     emitter_dedent(&ctx->cg.emitter);
     EMIT(ctx, "}\n");
     if (node->cfg_condition)
@@ -540,7 +603,12 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
     }
     if (node->var_decl.is_thread_local)
     {
-        EMIT(ctx, "_Thread_local ");
+        // MISRA output targets C99 (MISRA C:2012), which has no _Thread_local.
+        // The strict profile is single-threaded, so plain static storage is used.
+        if (!ctx->config->misra_mode)
+        {
+            EMIT(ctx, "_Thread_local ");
+        }
     }
     if (node->var_decl.is_static)
     {
@@ -577,7 +645,7 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                 defer_node->token = node->token;
                 size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
                 char *stmt_str = xmalloc(stmt_sz);
-                snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
+                snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s != 0) { %s__Drop__glue(&%s); }",
                          node->var_decl.name, clean_type, node->var_decl.name);
                 defer_node->raw_stmt.content = stmt_str;
                 defer_node->line = node->line;
@@ -676,7 +744,8 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                         size_t stmt_sz = 256 + strlen(node->var_decl.name) * 4;
                         stmt_str = xmalloc(stmt_sz);
                         snprintf(stmt_str, stmt_sz,
-                                 "if (__z_drop_flag_%s && %s.drop) %s.drop(%s.ctx);",
+                                 "if ((__z_drop_flag_%s != 0) && (%s.drop != NULL)) { "
+                                 "%s.drop(%s.ctx); }",
                                  node->var_decl.name, node->var_decl.name, node->var_decl.name,
                                  node->var_decl.name);
                     }
@@ -684,7 +753,8 @@ void handle_node_var_decl(ParserContext *ctx, ASTNode *node)
                     {
                         size_t stmt_sz = 256 + strlen(node->var_decl.name) * 2 + strlen(clean_type);
                         stmt_str = xmalloc(stmt_sz);
-                        snprintf(stmt_str, stmt_sz, "if (__z_drop_flag_%s) %s__Drop__glue(&%s);",
+                        snprintf(stmt_str, stmt_sz,
+                                 "if (__z_drop_flag_%s != 0) { %s__Drop__glue(&%s); }",
                                  node->var_decl.name, clean_type, node->var_decl.name);
                     }
                     defer_node->raw_stmt.content = stmt_str;

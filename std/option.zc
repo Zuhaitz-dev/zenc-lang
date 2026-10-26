@@ -40,7 +40,6 @@ impl Option<T> {
     fn unwrap(self) -> T {
         if (!self.is_some) {
             !"Panic: unwrap called on None";
-            exit(1);
         }
         let v = self.val;
         // Moved value
@@ -51,38 +50,49 @@ impl Option<T> {
     fn unwrap_ref(self) -> T* {
         if (!self.is_some) {
             !"Panic: unwrap_ref called on None";
-            exit(1);
         }
         return &self.val;
     }
 
     /// Returns the contained value, or `def_val` when `None`.
     fn unwrap_or(self, def_val: T) -> T {
+        let result = def_val;
         if (self.is_some) {
-            return self.val;
+            result = self.val;
         }
-        return def_val;
+        return result;
     }
 
     /// Returns the contained value, or the result of `f` when `None`.
     fn unwrap_or_else(self, f: fn() -> T) -> T {
-        if (self.is_some) { return self.val; }
-        return f();
+        let result: T;
+        if (self.is_some) {
+            result = self.val;
+        } else {
+            result = f();
+        }
+        return result;
     }
 
     /// Returns the contained value, or panics with `msg` when `None`.
     fn expect(self, msg: char*) -> T {
+        (void)msg; // unused when panic messages are compiled out (MISRA)
         if (!self.is_some) {
             !"Panic: {msg}";
-            exit(1);
         }
         return self.val;
     }
 
     /// Returns the option when `Some`, otherwise returns `other`.
     fn or_else(self, other: Option<T>) -> Option<T> {
-        if (self.is_some) { return self; }
-        return other;
+        let result = other;
+        if (self.is_some) {
+            let moved: Option<T>;
+            memcpy(&moved, self, sizeof(Option<T>));
+            memset(self, 0, sizeof(Option<T>));
+            result = moved;
+        }
+        return result;
     }
 
     /// Returns `true` when `Some` and `f` accepts the contained value.
@@ -97,7 +107,13 @@ impl Option<T> {
 
     /// Keeps the value when `Some` and `f` accepts it, otherwise `None`.
     fn filter(self, f: fn(T) -> bool) -> Option<T> {
-        if (self.is_some && f(self.val)) { return self; }
-        return Option<T>::None();
+        let result = Option<T>::None();
+        if (self.is_some && f(self.val)) {
+            let moved: Option<T>;
+            memcpy(&moved, self, sizeof(Option<T>));
+            memset(self, 0, sizeof(Option<T>));
+            result = moved;
+        }
+        return result;
     }
 }

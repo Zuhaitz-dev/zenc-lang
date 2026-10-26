@@ -24,8 +24,75 @@ void handle_block(ParserContext *ctx, ASTNode *node)
     EMIT(ctx, " })");
 }
 
+// Single expression of an if-expression branch, or NULL when the branch has
+// statements that cannot be represented by a C conditional expression.
+static ASTNode *single_expr_branch(ASTNode *body)
+{
+    if (!body)
+    {
+        return NULL;
+    }
+    if (body->kind == NODE_BLOCK)
+    {
+        if (!body->block.statements || body->block.statements->next)
+        {
+            return NULL;
+        }
+        ASTNode *only = body->block.statements;
+        switch (only->kind)
+        {
+        case NODE_EXPR_BINARY:
+        case NODE_EXPR_UNARY:
+        case NODE_EXPR_LITERAL:
+        case NODE_EXPR_VAR:
+        case NODE_EXPR_CALL:
+        case NODE_EXPR_MEMBER:
+        case NODE_EXPR_INDEX:
+        case NODE_EXPR_CAST:
+        case NODE_EXPR_SIZEOF:
+        case NODE_EXPR_STRUCT_INIT:
+        case NODE_EXPR_ARRAY_LITERAL:
+        case NODE_EXPR_TUPLE_LITERAL:
+        case NODE_EXPR_SLICE:
+        case NODE_TERNARY:
+        case NODE_LAMBDA:
+            return only;
+        default:
+            return NULL;
+        }
+    }
+    return body;
+}
+
 void handle_if_expr(ParserContext *ctx, ASTNode *node)
 {
+    if (ctx->config->misra_mode)
+    {
+        ASTNode *then_expr = single_expr_branch(node->if_stmt.then_body);
+        ASTNode *else_expr = single_expr_branch(node->if_stmt.else_body);
+        int then_scalar = then_expr && then_expr->type_info &&
+                          then_expr->type_info->kind != TYPE_STRUCT &&
+                          then_expr->type_info->kind != TYPE_ENUM;
+        int else_scalar = else_expr && else_expr->type_info &&
+                          else_expr->type_info->kind != TYPE_STRUCT &&
+                          else_expr->type_info->kind != TYPE_ENUM;
+        if (then_expr && else_expr && then_scalar && else_scalar)
+        {
+            EMIT(ctx, "((");
+            codegen_expression(ctx, node->if_stmt.condition);
+            EMIT(ctx, ") ? (");
+            codegen_expression(ctx, then_expr);
+            EMIT(ctx, ") : (");
+            codegen_expression(ctx, else_expr);
+            EMIT(ctx, "))");
+            return;
+        }
+        zerror_at(node->token,
+                  "MISRA profile: an if-expression must have scalar, single-expression "
+                  "branches");
+        return;
+    }
+
     EMIT(ctx, "({ ");
 
     ASTNode *then_result = NULL;

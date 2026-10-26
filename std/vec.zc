@@ -4,6 +4,15 @@ import "./mem.zc"
 import "./iter.zc"
 import "./sort.zc"
 
+// Copies an element out of a buffer. The move checker forbids moving out of an
+// index expression, and iterators yield element copies; memcpy expresses the
+// copy without a move.
+fn _z_copy_at<T>(data: T*, idx: usize) -> T {
+    let item: T;
+    memcpy(&item, &data[idx], sizeof(T));
+    return item;
+}
+
 struct Vec<T> {
     data: T*;
     len: usize;
@@ -28,7 +37,6 @@ impl VecIterResult<T> {
     fn unwrap(self) -> T* {
         if (self.ptr == NULL) {
             !"Panic: unwrap called on null VecIterResult";
-            exit(1);
         }
         return self.ptr;
     }
@@ -43,12 +51,13 @@ struct VecIterRef<T> {
 impl VecIter<T> {
     /// Yields the next item, or `None` when exhausted.
     fn next(self) -> Option<T> {
+        let result = Option<T>::None();
         if (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
-            return Option<T>::Some(item);
+            result = Option<T>::Some(item);
         }
-        return Option<T>::None();
+        return result;
     }
     
     /// Returns an iterator yielding copies.
@@ -65,7 +74,7 @@ impl VecIter<T> {
             out.grow_to_fit(remaining);
         }
         while (self.idx < self.count) {
-            out.push(self.data[self.idx]);
+            out.push(_z_copy_at<T>(self.data, self.idx));
             self.idx = self.idx + 1;
         }
         return out;
@@ -81,7 +90,7 @@ impl VecIter<T> {
     /// Calls `f` for each remaining item.
     fn forEach(self, f: fn(T)) {
         while (self.idx < self.count) {
-            f(self.data[self.idx]);
+            f(_z_copy_at<T>(self.data, self.idx));
             self.idx = self.idx + 1;
         }
     }
@@ -89,40 +98,47 @@ impl VecIter<T> {
     // Returns the first item for which `pred` returns true.
     /// Returns the first item accepted by `pred`.
     fn find(self, pred: fn(T) -> bool) -> Option<T> {
+        let result = Option<T>::None();
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
+            let probe = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
-            if (pred(item)) {
-                return Option<T>::Some(item);
+            if (pred(probe)) {
+                result = Option<T>::Some(item);
+                break;
             }
         }
-        return Option<T>::None();
+        return result;
     }
 
     // Returns true when `pred` accepts at least one remaining item.
     /// Returns whether `pred` accepts at least one remaining item.
     fn any(self, pred: fn(T) -> bool) -> bool {
+        let result = false;
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
             if (pred(item)) {
-                return true;
+                result = true;
+                break;
             }
         }
-        return false;
+        return result;
     }
 
     // Returns true when `pred` accepts every remaining item.
     /// Returns whether `pred` accepts every remaining item.
     fn all(self, pred: fn(T) -> bool) -> bool {
+        let result = true;
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
             if (!pred(item)) {
-                return false;
+                result = false;
+                break;
             }
         }
-        return true;
+        return result;
     }
 
     // Collects the remaining items accepted by `pred` into a new Vec.
@@ -130,9 +146,10 @@ impl VecIter<T> {
     fn filter(self, pred: fn(T) -> bool) -> Vec<T> {
         let out = Vec<T>::new();
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
+            let probe = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
-            if (pred(item)) {
+            if (pred(probe)) {
                 out.push(item);
             }
         }
@@ -144,7 +161,7 @@ impl VecIter<T> {
     fn fold(self, init: T, f: fn(T, T) -> T) -> T {
         let acc = init;
         while (self.idx < self.count) {
-            let item = self.data[self.idx];
+            let item = _z_copy_at<T>(self.data, self.idx);
             self.idx = self.idx + 1;
             acc = f(acc, item);
         }
@@ -155,12 +172,13 @@ impl VecIter<T> {
 impl VecIterRef<T> {
     /// Yields the next item, or `None` when exhausted.
     fn next(self) -> VecIterResult<T> {
+        let result = VecIterResult<T> { ptr: NULL };
         if (self.idx < self.count) {
             let item = &self.data[self.idx];
             self.idx = self.idx + 1;
-            return VecIterResult<T> { ptr: item };
+            result = VecIterResult<T> { ptr: item };
         }
-        return VecIterResult<T> { ptr: NULL };
+        return result;
     }
     
     /// Returns an iterator yielding copies.
@@ -177,14 +195,16 @@ impl VecIterRef<T> {
     // Returns the first item for which `pred` returns true.
     /// Returns the first item accepted by `pred`.
     fn find(self, pred: fn(T*) -> bool) -> VecIterResult<T> {
+        let result = VecIterResult<T> { ptr: NULL };
         while (self.idx < self.count) {
             let item = &self.data[self.idx];
             self.idx = self.idx + 1;
             if (pred(item)) {
-                return VecIterResult<T> { ptr: item };
+                result = VecIterResult<T> { ptr: item };
+                break;
             }
         }
-        return VecIterResult<T> { ptr: NULL };
+        return result;
     }
 }
 
@@ -196,14 +216,15 @@ impl Vec<T> {
 
     /// Creates a new Vec with an initial capacity.
     fn with_capacity(cap: usize) -> Vec<T> {
-        if (cap == 0) {
-            return Vec<T> { data: NULL, len: 0, cap: 0 };
+        let result = Vec<T> { data: NULL, len: 0, cap: 0 };
+        if (cap > 0) {
+            result = Vec<T> {
+                data: alloc_n<T>(cap),
+                len: 0,
+                cap: cap
+            };
         }
-        return Vec<T> {
-            data: alloc_n<T>(cap),
-            len: 0,
-            cap: cap
-        };
+        return result;
     }
 
     fn grow(self) {
@@ -215,17 +236,15 @@ impl Vec<T> {
 
     /// Ensures capacity for at least `new_len` items.
     fn grow_to_fit(self, new_len: usize) {
-        if self.cap >= new_len {
-            return;
-        }
+        if (self.cap < new_len) {
+            let old_cap = self.cap;
+            if (self.cap == 0) { self.cap = 8; }
+            while self.cap < new_len {
+                self.cap = self.cap * 2;
+            }
 
-        let old_cap = self.cap;
-        if (self.cap == 0) { self.cap = 8; }
-        while self.cap < new_len {
-            self.cap = self.cap * 2;
+            self.data = realloc_n<T>(self.data, old_cap, self.cap);
         }
-
-        self.data = realloc_n<T>(self.data, old_cap, self.cap);
     }
 
     /// Returns an iterator yielding copies.
@@ -259,14 +278,14 @@ impl Vec<T> {
     fn insert(self, idx: usize, item: T) {
         if (idx > self.len) {
             !"Panic: Insert index out of bounds";
-            exit(1);
         }
         if (self.len >= self.cap) {
             self.grow();
         }
         // Shift elements right
         if (idx < self.len) {
-             memmove(self.data + idx + 1, self.data + idx, (self.len - idx) * sizeof(T));
+             let base = self.data;
+             memmove(&base[idx + 1], &base[idx], (self.len - idx) * sizeof(T));
         }
         self.data[idx] = item;
         self.len = self.len + 1;
@@ -276,33 +295,41 @@ impl Vec<T> {
     fn pop(self) -> T {
         if (self.len == 0) {
             !"Panic: pop called on empty Vec";
-            exit(1);
         }
         self.len = self.len - 1;
-        return self.data[self.len];
+        let item: T;
+        memcpy(&item, &self.data[self.len], sizeof(T));
+        memset(&self.data[self.len], 0, sizeof(T));
+        return item;
     }
 
     /// Removes and returns the last item, or `None` when empty.
     fn pop_opt(self) -> Option<T> {
-        if (self.len == 0) {
-            return Option<T>::None();
+        let result = Option<T>::None();
+        if (self.len > 0) {
+            self.len = self.len - 1;
+            let item: T;
+            memcpy(&item, &self.data[self.len], sizeof(T));
+            memset(&self.data[self.len], 0, sizeof(T));
+            result = Option<T>::Some(item);
         }
-        self.len = self.len - 1;
-        return Option<T>::Some(self.data[self.len]);
+        return result;
     }
 
     /// Removes and returns the item at `idx`.
     fn remove(self, idx: usize) -> T {
         if (idx >= self.len) {
              !"Panic: Remove index out of bounds";
-             exit(1);
         }
-        let item = self.data[idx];
+        let item: T;
+        memcpy(&item, &self.data[idx], sizeof(T));
         // Shift elements left
         if (idx < self.len - 1) {
-            memmove(self.data + idx, self.data + idx + 1, (self.len - idx - 1) * sizeof(T));
+            let base = self.data;
+            memmove(&base[idx], &base[idx + 1], (self.len - idx - 1) * sizeof(T));
         }
         self.len = self.len - 1;
+        memset(&self.data[self.len], 0, sizeof(T));
         return item;
     }
 
@@ -312,7 +339,8 @@ impl Vec<T> {
         let new_len = self.len + other.len;
         self.grow_to_fit(new_len);
 
-        memcpy(self.data + self.len, other.data, other.len * sizeof(T));
+        let base = self.data;
+        memcpy(&base[self.len], other.data, other.len * sizeof(T));
         self.len = new_len;
         other.forget();
     }
@@ -321,7 +349,6 @@ impl Vec<T> {
     fn get(self, idx: usize) -> T {
         if (idx >= self.len) {
             !"Panic: Index out of bounds";
-            exit(1);
         }
         return self.data[idx];
     }
@@ -334,7 +361,6 @@ impl Vec<T> {
     fn get_ref(self, idx: usize) -> T* {
         if (idx >= self.len) {
             !"Panic: Index out of bounds";
-            exit(1);
         }
         return &self.data[idx];
     }
@@ -342,7 +368,6 @@ impl Vec<T> {
     fn last(self) -> T {
         if (self.len == 0) {
             !"Panic: last called on empty Vec";
-            exit(1);
         }
         return self.data[self.len - 1];
     }
@@ -353,13 +378,18 @@ impl Vec<T> {
     }
 
     /// Returns whether an equal item exists.
+    @cfg(not(misra))
     fn contains(self, item: T) -> bool {
+        let result = false;
         let i: usize = 0;
         while i < self.len {
-            if memcmp(&self.data[i], &item, sizeof(T)) == 0 { return true; }
+            if memcmp(&self.data[i], &item, sizeof(T)) == 0 {
+                result = true;
+                break;
+            }
             i++;
         }
-        return false;
+        return result;
     }
 
     /// Returns whether the Vec is empty.
@@ -385,7 +415,6 @@ impl Vec<T> {
     fn first(self) -> T {
         if (self.len == 0) {
             !"Panic: first called on empty Vec";
-            exit(1);
         }
         return self.data[0];
     }
@@ -394,7 +423,6 @@ impl Vec<T> {
     fn set(self, idx: usize, item: T) {
         if (idx >= self.len) {
             !"Panic: set index out of bounds";
-            exit(1);
         }
         self.data[idx] = item;
     }
@@ -404,9 +432,10 @@ impl Vec<T> {
         let i: usize = 0;
         let j = self.len - 1;
         while i < j {
-            let tmp = self.data[i];
-            self.data[i] = self.data[j];
-            self.data[j] = tmp;
+            let tmp: T;
+            memcpy(&tmp, &self.data[i], sizeof(T));
+            memcpy(&self.data[i], &self.data[j], sizeof(T));
+            memcpy(&self.data[j], &tmp, sizeof(T));
             i++;
             j--;
         }
@@ -414,14 +443,20 @@ impl Vec<T> {
     
     // Structural equality check.
     // Returns true if both vectors have the same length and identical elements.
+    @cfg(not(misra))
     fn eq(self, other: Vec<T>*) -> bool {
-        if self.len != (*other).len { return false; }
-        let i: usize = 0;
-        while i < self.len {
-            if memcmp(&self.data[i], &(*other).data[i], sizeof(T)) != 0 { return false; }
-            i = i + 1;
+        let result = (self.len == (*other).len);
+        if (result) {
+            let i: usize = 0;
+            while i < self.len {
+                if memcmp(&self.data[i], &(*other).data[i], sizeof(T)) != 0 {
+                    result = false;
+                    break;
+                }
+                i = i + 1;
+            }
         }
-        return true;
+        return result;
     }
 
     // Prevent Drop from freeing memory (simulates move)
@@ -446,6 +481,7 @@ impl Vec<T> {
         self.append(other.clone());
     }
     // Operator overload for `!=` (Inequality)
+    @cfg(not(misra))
     fn neq(self, other: Vec<T>*) -> bool {
         return !self.eq(other);
     }
@@ -483,37 +519,36 @@ impl Vec<T> {
     fn mul_assign(self, count: usize) {
         if (count == 0) {
             self.clear();
-            return;
-        }
-        if (count == 1) {
-            return;
-        }
-        let original_len = self.len;
-        self.grow_to_fit(self.len * count);
-        let c: usize = 1;
-        while c < count {
-            memcpy(self.data + (original_len * c), self.data, original_len * sizeof(T));
-            self.len += original_len;
-            c += 1;
+        } else if (count > 1) {
+            let original_len = self.len;
+            self.grow_to_fit(self.len * count);
+            let c: usize = 1;
+            while c < count {
+                let base = self.data;
+                memcpy(&base[original_len * c], self.data, original_len * sizeof(T));
+                self.len += original_len;
+                c += 1;
+            }
         }
     }
 
     /// Returns a deep copy.
     fn clone(self) -> Vec<T> {
-        if (self.len == 0) {
-            return Vec<T> { data: NULL, len: 0, cap: 0 };
+        let result = Vec<T> { data: NULL, len: 0, cap: 0 };
+        if (self.len > 0) {
+            let new_data = alloc_n<T>(self.len);
+            let i: usize = 0;
+            while i < self.len {
+                memcpy(&new_data[i], &self.data[i], sizeof(T));
+                i = i + 1;
+            }
+            result = Vec<T> {
+                data: new_data,
+                len: self.len,
+                cap: self.len
+            };
         }
-        let new_data = alloc_n<T>(self.len);
-        let i: usize = 0;
-        while i < self.len {
-            new_data[i] = self.data[i];
-            i = i + 1;
-        }
-        return Vec<T> {
-            data: new_data,
-            len: self.len,
-            cap: self.len
-        };
+        return result;
     }
 }
 

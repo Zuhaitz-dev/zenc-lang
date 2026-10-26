@@ -42,7 +42,6 @@ impl Result<T> {
     fn unwrap(self) -> T {
         if (!self.is_ok) {
             !"Panic: unwrap called on Err: {self.err}";
-            exit(1);
         }
         let v = self.val;
         // Moved value
@@ -53,16 +52,15 @@ impl Result<T> {
     fn unwrap_ref(self) -> T* {
         if (!self.is_ok) {
             !"Panic: unwrap_ref called on Err: {self.err}";
-            exit(1);
         }
         return &self.val;
     }
 
     /// Returns the value, or panics with `msg` and the error when `Err`.
     fn expect(self, msg: char*) -> T {
+        (void)msg; // unused when panic messages are compiled out (MISRA)
         if (!self.is_ok) {
             !"Panic: {msg}: {self.err}";
-            exit(1);
         }
         return self.val;
     }
@@ -110,9 +108,9 @@ impl Result<T> {
     // Panics with `msg` and the value when Ok, otherwise returns the error.
     /// Returns the error message, or panics with `msg` when `Ok`.
     fn expect_err(self, msg: char*) -> char* {
+        (void)msg; // unused when panic messages are compiled out (MISRA)
         if (self.is_ok) {
             !"Panic: {msg}: expected Err, got Ok";
-            exit(1);
         }
         return self.err;
     }

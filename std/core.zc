@@ -5,17 +5,41 @@ include <stdio.h>
 include <stdbool.h>
 include <stdarg.h>
 
+@cfg(not(misra))
 @unused fn __zenc_panic_impl(file: const char*, line: int, func: const char*, msg: const char*) {
     fprintf(stderr, "panic: %s\n  at %s:%d in %s()\n", msg, file, line, func);
     exit(1);
 }
 
+@cfg(not(misra))
 @unused fn __zenc_todo_impl(file: const char*, line: int, func: const char*, msg: const char*) {
     fprintf(stderr, "todo: %s\n  at %s:%d in %s()\n", msg, file, line, func);
     exit(1);
 }
 
+// MISRA output has no stdio and no exit() (Rules 21.6 and 21.8). A fail-safe
+// trap is the compliant behaviour for both panic and todo.
+@cfg(misra)
+@unused fn __zenc_panic_impl(_file: const char*, _line: int, _func: const char*, _msg: const char*) {
+    (void)_file;
+    (void)_line;
+    (void)_func;
+    (void)_msg;
+    loop { }
+}
+
+@cfg(misra)
+@unused fn __zenc_todo_impl(_file: const char*, _line: int, _func: const char*, _msg: const char*) {
+    (void)_file;
+    (void)_line;
+    (void)_func;
+    (void)_msg;
+    loop { }
+}
+
 // Rune to string (UTF-8); used by string interpolation of rune values.
+// Strict output has no f-string/printing path, so the helper is hosted-only.
+@cfg(not(misra))
 @unused fn _z_str_rune(r: rune) -> char* {
     @thread_local static let buffer: char[5];
     let val = (uint32_t)r;
@@ -23,19 +47,19 @@ include <stdarg.h>
         buffer[0] = (char)val;
         buffer[1] = 0;
     } else if (val < 0x800) {
-        buffer[0] = (char)(0xC0 | (val >> 6));
-        buffer[1] = (char)(0x80 | (val & 0x3F));
+        buffer[0] = (char)(uint8_t)(((uint32_t)0xC0) | (val >> 6));
+        buffer[1] = (char)(uint8_t)(((uint32_t)0x80) | (val & ((uint32_t)0x3F)));
         buffer[2] = 0;
     } else if (val < 0x10000) {
-        buffer[0] = (char)(0xE0 | (val >> 12));
-        buffer[1] = (char)(0x80 | ((val >> 6) & 0x3F));
-        buffer[2] = (char)(0x80 | (val & 0x3F));
+        buffer[0] = (char)(uint8_t)(((uint32_t)0xE0) | (val >> 12));
+        buffer[1] = (char)(uint8_t)(((uint32_t)0x80) | ((val >> 6) & ((uint32_t)0x3F)));
+        buffer[2] = (char)(uint8_t)(((uint32_t)0x80) | (val & ((uint32_t)0x3F)));
         buffer[3] = 0;
     } else {
-        buffer[0] = (char)(0xF0 | (val >> 18));
-        buffer[1] = (char)(0x80 | ((val >> 12) & 0x3F));
-        buffer[2] = (char)(0x80 | ((val >> 6) & 0x3F));
-        buffer[3] = (char)(0x80 | (val & 0x3F));
+        buffer[0] = (char)(uint8_t)(((uint32_t)0xF0) | (val >> 18));
+        buffer[1] = (char)(uint8_t)(((uint32_t)0x80) | ((val >> 12) & ((uint32_t)0x3F)));
+        buffer[2] = (char)(uint8_t)(((uint32_t)0x80) | ((val >> 6) & ((uint32_t)0x3F)));
+        buffer[3] = (char)(uint8_t)(((uint32_t)0x80) | (val & ((uint32_t)0x3F)));
         buffer[4] = 0;
     }
     return (char*)buffer;

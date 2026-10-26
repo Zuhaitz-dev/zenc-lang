@@ -55,7 +55,6 @@ impl MapIterResult<V> {
     fn unwrap(self) -> MapEntry<V> {
         if (!self.has_val) {
              !"Panic: Map iterator unwrap on None";
-             exit(1);
         }
         return self.entry;
     }

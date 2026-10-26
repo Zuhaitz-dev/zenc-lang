@@ -44,8 +44,9 @@ static const char *STANDARD_MACRO_NAMES[] = {
     // Common names from other C headers (may appear via FFI)
     "assert", "errno", "EOF", NULL};
 
-void emit_misra_preamble(FILE *out)
+void emit_misra_preamble(ParserContext *ctx)
 {
+    FILE *out = ctx->cg.emitter.file;
     // Minimal standard headers allowed by MISRA C.
     // Explicitly excluding <stdlib.h>, <stdio.h>, and <string.h>.
     fputs("#include <stddef.h>\n", out);
@@ -53,10 +54,9 @@ void emit_misra_preamble(FILE *out)
     fputs("#include <stdbool.h>\n", out);
 
     // What the generated code relies on from the hosted preamble (emit_preamble).
-    fputs("typedef char* string;\n", out);
-    fputs("#ifdef ZC_STATIC_PLUGIN\n#define ZC_FUNC static\n#define ZC_GLOBAL static\n"
-          "#else\n#define ZC_FUNC\n#define ZC_GLOBAL\n#endif\n",
-          out);
+    // MISRA output spells string as char* and uses static/external storage
+    // classes directly, so the string/ZC_GLOBAL definitions are not needed.
+    fputs("#ifdef ZC_STATIC_PLUGIN\n#define ZC_FUNC static\n#else\n#define ZC_FUNC\n#endif\n", out);
 }
 
 // SECTION 10/11/12: Essential Type Model & Conversions

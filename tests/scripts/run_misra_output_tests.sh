@@ -11,6 +11,8 @@
 # Options:
 #   --zc <path>     Compiler to use (default: ./zc, then ./zc.exe)
 #   --max <n>       Exit non-zero when the total finding count exceeds <n>
+#   --strict        Use --profile misra-c2012, the strict corpus, and
+#                   -std=c99 -pedantic-errors compilation
 #   --no-enable-all Only run cppcheck's default checks (faster)
 #
 # Environment:
@@ -24,6 +26,9 @@ set -u
 ZC="${ZC:-}"
 MAX="${MAX_FINDINGS:-}"
 ENABLE_ALL=1
+STRICT=0
+PROFILE=hosted
+CC="${CC:-gcc}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -34,6 +39,11 @@ while [ $# -gt 0 ]; do
         --max)
             MAX="$2"
             shift 2
+            ;;
+        --strict)
+            STRICT=1
+            PROFILE=misra-c2012
+            shift
             ;;
         --no-enable-all)
             ENABLE_ALL=0
@@ -87,13 +97,19 @@ MISRA_ADDON="${MISRA_ADDON:-misra}"
 
 FILES=("$@")
 if [ ${#FILES[@]} -eq 0 ]; then
-    FILES=(
-        tests/language/basic/test_basics.zc
-        tests/language/features/memory/test_drop.zc
-        tests/language/features/fstrings/test_fstring.zc
-        tests/language/control-flow/test_loops.zc
-        tests/stdlib/collections/test_vec.zc
-    )
+    if [ "$STRICT" -eq 1 ]; then
+        shopt -s nullglob
+        FILES=(tests/misra_output/*.zc)
+        shopt -u nullglob
+    else
+        FILES=(
+            tests/language/basic/test_basics.zc
+            tests/language/features/memory/test_drop.zc
+            tests/language/features/fstrings/test_fstring.zc
+            tests/language/control-flow/test_loops.zc
+            tests/stdlib/collections/test_vec.zc
+        )
+    fi
 fi
 
 TMP="$(mktemp -d)"
@@ -115,6 +131,7 @@ fi
 
 : > "$TMP/rules.txt"
 total=0
+deviations=0
 failed_files=0
 checked=0
 
@@ -126,9 +143,9 @@ for f in "${FILES[@]}"; do
 
     base="$(basename "$f" .zc)"
     out="$TMP/${base}.c"
-    # The hosted profile requests MISRA-shaped output without the strict
-    # source policy, and suppresses #line source mapping (Rule 20.13).
-    if ! "$ZC" transpile "$f" --backend c --profile hosted -o "$out" >"$TMP/stdout" 2>"$TMP/stderr"; then
+    # Both profiles suppress #line source mapping (Rule 20.13). The strict
+    # profile also runs the MISRA source policy.
+    if ! "$ZC" transpile "$f" --backend c --profile "$PROFILE" -o "$out" >"$TMP/stdout" 2>"$TMP/stderr"; then
         echo "FAIL (transpile): $f"
         sed -n '1,5p' "$TMP/stderr" | sed 's/^/    /'
         failed_files=$((failed_files + 1))
@@ -145,10 +162,30 @@ for f in "${FILES[@]}"; do
         exit 1
     fi
 
-    grep -oE 'misra-c2012-[0-9]+\.[0-9]+' "$report" >> "$TMP/rules.txt" || true
     n=$(grep -cE 'misra-c2012-[0-9]+\.[0-9]+' "$report" || true)
+    dev=0
+    if [ "$STRICT" -eq 1 ]; then
+        # Rule 8.7 on main is the one documented exception: the C entry point
+        # must have external linkage. Internal helpers and globals are static.
+        dev=$(grep -cE 'misra-c2012-8\.7' "$report" || true)
+        deviations=$((deviations + dev))
+        n=$((n - dev))
+        grep -oE 'misra-c2012-[0-9]+\.[0-9]+' "$report" | grep -vE '8\.7' \
+            >> "$TMP/rules.txt" || true
+        if ! "$CC" -std=c99 -pedantic-errors -c "$out" -o "$out.o" >"$TMP/cc" 2>&1; then
+            echo "FAIL (C99 compile): $f"
+            sed -n '1,5p' "$TMP/cc" | sed 's/^/    /'
+            failed_files=$((failed_files + 1))
+        fi
+    else
+        grep -oE 'misra-c2012-[0-9]+\.[0-9]+' "$report" >> "$TMP/rules.txt" || true
+    fi
     total=$((total + n))
-    printf '%-60s %4d MISRA finding(s)\n' "$f" "$n"
+    printf '%-60s %4d MISRA finding(s)' "$f" "$n"
+    if [ "$dev" -gt 0 ]; then
+        printf ' (+%d documented 8.7/main)' "$dev"
+    fi
+    printf '\n'
 
     # Non-MISRA findings are usually parse/setup problems; surface them.
     if grep -qE '\[(syntaxError|internalError|unknownMacro|preprocessorError)\]' "$report"; then
@@ -159,8 +196,11 @@ for f in "${FILES[@]}"; do
 done
 
 echo ""
-echo "Checked $checked file(s), $failed_files transpile failure(s)."
+echo "Checked $checked file(s), $failed_files transpile/compile failure(s)."
 echo "Total MISRA findings: $total"
+if [ "$STRICT" -eq 1 ]; then
+    echo "Documented deviations: $deviations (Rule 8.7 on main)"
+fi
 if [ -s "$TMP/rules.txt" ]; then
     echo ""
     echo "Findings by rule:"

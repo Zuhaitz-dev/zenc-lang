@@ -101,6 +101,9 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y cppcheck libtcc-dev gcc-14
     - name: Build Compiler
       run: make CC=gcc-14 ZC_HAS_JIT=1
+    - name: Strict MISRA Output
+      run: ./tests/scripts/run_misra_output_tests.sh --strict --max 0
+    # Non-blocking until the hosted preamble and std-misra split land.
     - name: Validate stdlib C Emission
       run: |
         mkdir -p .misra_bin

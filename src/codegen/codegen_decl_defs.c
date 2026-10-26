@@ -66,13 +66,35 @@ static void emit_includes_and_aliases_internal(ParserContext *ctx, ASTNode *node
         {
             if (node->include.path)
             {
-                if (node->include.is_system)
+                // The strict MISRA profile forbids hosted APIs: stdio and
+                // stdarg are Rules 21.6/17.1, exit() is Rule 21.8. The standard
+                // library sources still request these headers, so drop them
+                // here; the remaining <string.h> functions (memcpy/memset) stay
+                // available.
+                static const char *misra_blocked[] = {"stdio.h", "stdlib.h", "stdarg.h", "unistd.h",
+                                                      "fcntl.h"};
+                int blocked = 0;
+                if (ctx->config->misra_mode)
                 {
-                    EMIT(ctx, "#include <%s>\n", node->include.path);
+                    for (size_t i = 0; i < sizeof(misra_blocked) / sizeof(misra_blocked[0]); i++)
+                    {
+                        if (strcmp(node->include.path, misra_blocked[i]) == 0)
+                        {
+                            blocked = 1;
+                            break;
+                        }
+                    }
                 }
-                else
+                if (!blocked)
                 {
-                    EMIT(ctx, "#include \"%s\"\n", node->include.path);
+                    if (node->include.is_system)
+                    {
+                        EMIT(ctx, "#include <%s>\n", node->include.path);
+                    }
+                    else
+                    {
+                        EMIT(ctx, "#include \"%s\"\n", node->include.path);
+                    }
                 }
             }
         }
@@ -268,7 +290,7 @@ void emit_enum_protos(ParserContext *ctx, ASTNode *node)
                     }
                     else
                     {
-                        EMIT(ctx, "%s %s__%s();\n", final_name, final_name, v->variant.name);
+                        EMIT(ctx, "%s %s__%s(void);\n", final_name, final_name, v->variant.name);
                     }
                     v = v->next;
                 }
@@ -515,7 +537,7 @@ void emit_lambda_defs(ParserContext *ctx)
                     ASTNode *fdef = find_struct_def(ctx, clean);
                     if (fdef && fdef->type_info && fdef->type_info->traits.has_drop)
                     {
-                        EMIT(ctx, "if (ctx->__z_drop_flag_%s) %s__Drop__glue(&ctx->%s);\n",
+                        EMIT(ctx, "if (ctx->__z_drop_flag_%s != 0) { %s__Drop__glue(&ctx->%s); }\n",
                              node->lambda.captured_vars[i], clean, node->lambda.captured_vars[i]);
                     }
                 }
@@ -533,6 +555,10 @@ void emit_lambda_defs(ParserContext *ctx)
             ret_type_str = type_to_c_string(node->type_info->inner, ctx->config->misra_mode);
         }
 
+        if (ctx->config->misra_mode && !node->lambda.is_bare)
+        {
+            EMIT(ctx, "static ");
+        }
         if (strcmp(ret_type_str, "unknown") == 0)
         {
             EMIT(ctx, "void* _lambda_%d(", node->lambda.lambda_id);
@@ -584,6 +610,13 @@ void emit_lambda_defs(ParserContext *ctx)
         }
         EMIT(ctx, ") {\n");
         emitter_indent(&ctx->cg.emitter);
+
+        if (ctx->config->misra_mode && node->lambda.capture_count == 0 && !node->lambda.is_bare)
+        {
+            // The context parameter is part of the closure ABI but unused for
+            // non-capturing closures (Rule 2.7).
+            EMIT(ctx, "(void)_ctx;\n");
+        }
 
         if (node->lambda.capture_count > 0)
         {

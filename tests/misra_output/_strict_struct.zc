@@ -1,0 +1,13 @@
+struct Point {
+    x: int;
+    y: int;
+}
+
+fn sum(p: Point) -> int {
+    return p.x + p.y;
+}
+
+fn main() -> int {
+    let p = Point { x: 1, y: 2 };
+    return (sum(p) == 3) ? 0 : 1;
+}

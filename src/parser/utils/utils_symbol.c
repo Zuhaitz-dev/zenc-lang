@@ -226,6 +226,51 @@ GenericFuncTemplate *find_func_template(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+// Generic templates may be declared more than once with different @cfg
+// conditions (e.g. alloc_n<T> has a MISRA pool variant and a hosted malloc
+// variant). Template lookup must pick the variant that matches the active
+// profile, otherwise the last parsed definition always wins.
+int cfg_condition_matches(ParserContext *ctx, const char *cond)
+{
+    if (!cond)
+    {
+        return 1;
+    }
+    if (!strstr(cond, "ZC_CFG_misra"))
+    {
+        return 1; // Unknown/other conditions: preserve previous behaviour.
+    }
+    int misra = ctx->config->misra_mode;
+    if (strstr(cond, "!defined(ZC_CFG_misra)"))
+    {
+        return !misra;
+    }
+    if (strstr(cond, "defined(ZC_CFG_misra)"))
+    {
+        return misra;
+    }
+    return 1;
+}
+
+static int template_cfg_matches(ParserContext *ctx, ASTNode *node)
+{
+    return cfg_condition_matches(ctx, node ? node->cfg_condition : NULL);
+}
+
+GenericFuncTemplate *find_func_template_for_config(ParserContext *ctx, const char *name)
+{
+    GenericFuncTemplate *t = ctx->func_templates;
+    while (t)
+    {
+        if (strcmp(t->name, name) == 0 && template_cfg_matches(ctx, t->func_node))
+        {
+            return t;
+        }
+        t = t->next;
+    }
+    return NULL;
+}
+
 void register_generic(ParserContext *ctx, char *name)
 {
     for (int i = 0; i < ctx->known_generics_count; i++)
@@ -312,6 +357,28 @@ void add_instantiated_func(ParserContext *ctx, ASTNode *fn)
 {
     fn->next = ctx->instantiated_funcs;
     ctx->instantiated_funcs = fn;
+}
+
+void register_closure_type(ParserContext *ctx, Type *t)
+{
+    if (!ctx || !ctx->config->misra_mode || !t || t->kind != TYPE_FUNCTION || t->is_raw)
+    {
+        return;
+    }
+    char *name = closure_type_c_name(t);
+    for (ClosureTypeReg *r = ctx->closure_types; r; r = r->next)
+    {
+        if (strcmp(r->c_name, name) == 0)
+        {
+            zfree(name);
+            return;
+        }
+    }
+    ClosureTypeReg *reg = xmalloc(sizeof(*reg));
+    reg->c_name = name;
+    reg->type = t;
+    reg->next = ctx->closure_types;
+    ctx->closure_types = reg;
 }
 
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag)

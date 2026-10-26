@@ -315,6 +315,14 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
         return;
     }
 
+    // MISRA output gives each closure signature its own struct, so the func
+    // field already has the matching pointer type (Rule 11.1) and no cast is
+    // needed. Hosted output keeps the generic z_closure_T.
+    char *closure_type =
+        ctx->config->use_cpp ? NULL : type_to_c_string(node->type_info, ctx->config->misra_mode);
+    const char *cl = closure_type ? closure_type : "z_closure_T";
+    int generic = (strcmp(cl, "z_closure_T") == 0);
+
     if (node->lambda.capture_count > 0)
     {
         int lid = node->lambda.lambda_id;
@@ -444,27 +452,33 @@ static void codegen_lambda_expr(ParserContext *ctx, ASTNode *node)
         }
         if (ctx->config->use_cpp)
         {
-            EMIT(ctx, "z_closure_T _cl = {(void*)_lambda_%d, _z_ctx_%d, _lambda_%d_drop}; _cl; })",
-                 lid, lid, lid);
+            EMIT(
+                ctx,
+                "z_closure_T _cl = {(z_closure_fn)_lambda_%d, _z_ctx_%d, _lambda_%d_drop}; _cl; })",
+                lid, lid, lid);
         }
         else
         {
-            EMIT(ctx,
-                 "(z_closure_T){.func = _lambda_%d, .ctx = _z_ctx_%d, .drop = _lambda_%d_drop}; })",
-                 lid, lid, lid);
+            EMIT(ctx, "(%s){.func = %s_lambda_%d, .ctx = _z_ctx_%d, .drop = _lambda_%d_drop}; })",
+                 cl, generic ? "(z_closure_fn)" : "", lid, lid, lid);
         }
     }
     else
     {
         if (ctx->config->use_cpp)
         {
-            EMIT(ctx, "(z_closure_T){ (void*)_lambda_%d, NULL, NULL }", node->lambda.lambda_id);
+            EMIT(ctx, "(z_closure_T){ (z_closure_fn)_lambda_%d, NULL, NULL }",
+                 node->lambda.lambda_id);
         }
         else
         {
-            EMIT(ctx, "((z_closure_T){.func = (void*)_lambda_%d, .ctx = NULL, .drop = NULL})",
-                 node->lambda.lambda_id);
+            EMIT(ctx, "((%s){.func = %s_lambda_%d, .ctx = NULL, .drop = NULL})", cl,
+                 generic ? "(z_closure_fn)" : "", node->lambda.lambda_id);
         }
+    }
+    if (closure_type)
+    {
+        zfree(closure_type);
     }
 }
 

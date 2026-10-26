@@ -14,6 +14,68 @@
 #include "zprep_plugin.h"
 #include "codegen_internal.h"
 
+// Rule 10.4: when an integer literal is compared with a wider or unsigned
+// value, cast the literal to the other operand's essential type.
+static void emit_literal_cast_for_comparison(ParserContext *ctx, ASTNode *operand, ASTNode *other)
+{
+    if (!ctx->config->misra_output || !operand || !other)
+    {
+        return;
+    }
+    if (operand->kind != NODE_EXPR_LITERAL || operand->literal.kind != LITERAL_INT)
+    {
+        return;
+    }
+    char *ts = other->type_info ? type_to_c_string(other->type_info, 1) : infer_type(ctx, other);
+    if (!ts)
+    {
+        return;
+    }
+    int is_unsigned = strstr(ts, "unsigned") || strstr(ts, "uint") || strcmp(ts, "size_t") == 0 ||
+                      strcmp(ts, "usize") == 0 || strcmp(ts, "byte") == 0;
+    if (is_unsigned)
+    {
+        EMIT(ctx, "(%s)", ts);
+    }
+}
+
+// Whether `n` is a variable whose generated declaration has a drop flag, i.e.
+// assigning from it must perform a move (Rule 11/ownership) without a GNU
+// statement expression in MISRA output.
+static int var_needs_move_flag(ParserContext *ctx, ASTNode *n)
+{
+    if (!n || n->kind != NODE_EXPR_VAR)
+    {
+        return 0;
+    }
+    char *t = infer_type(ctx, n);
+    if (!t || strchr(t, '*'))
+    {
+        return 0;
+    }
+    const char *base = t;
+    if (strncmp(base, "struct ", 7) == 0)
+    {
+        base += 7;
+    }
+    ASTNode *def = find_struct_def(ctx, base);
+    return def && def->type_info && def->type_info->traits.has_drop;
+}
+
+// Emit an assignment RHS. `plain` means the move flag was already cleared as a
+// separate statement (no statement expression needed).
+static void emit_assign_rhs(ParserContext *ctx, ASTNode *n, int plain)
+{
+    if (plain)
+    {
+        codegen_expression(ctx, n);
+    }
+    else
+    {
+        codegen_expression_with_move(ctx, n);
+    }
+}
+
 void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
 {
     const char *struct_name = node->struct_init.struct_name;
@@ -248,7 +310,10 @@ void handle_expr_struct_init(ParserContext *ctx, ASTNode *node)
 
 void handle_expr_binary(ParserContext *ctx, ASTNode *node)
 {
-    if (ctx->config->misra_mode)
+    int stmt_mode = ctx->config->misra_mode && ctx->cg.in_expr_stmt;
+    int prev_stmt = ctx->cg.in_expr_stmt;
+    ctx->cg.in_expr_stmt = 0;
+    if (ctx->config->misra_mode && !stmt_mode)
     {
         EMIT(ctx, "(");
     }
@@ -461,8 +526,10 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             else
             {
                 EMIT(ctx, "(");
+                emit_literal_cast_for_comparison(ctx, node->binary.left, node->binary.right);
                 codegen_expression(ctx, node->binary.left);
                 EMIT(ctx, " %s ", node->binary.op);
+                emit_literal_cast_for_comparison(ctx, node->binary.right, node->binary.left);
                 codegen_expression(ctx, node->binary.right);
                 EMIT(ctx, ")");
             }
@@ -470,8 +537,10 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
         else
         {
             EMIT(ctx, "(");
+            emit_literal_cast_for_comparison(ctx, node->binary.left, node->binary.right);
             codegen_expression(ctx, node->binary.left);
             EMIT(ctx, " %s ", node->binary.op);
+            emit_literal_cast_for_comparison(ctx, node->binary.right, node->binary.left);
             codegen_expression(ctx, node->binary.right);
             EMIT(ctx, ")");
         }
@@ -536,38 +605,90 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
 
         if (is_drop_assignment)
         {
-            EMIT(ctx, "({ ");
-            EMIT(ctx, "ZC_AUTO _z_tmp = (");
-            codegen_expression_with_move(ctx, node->binary.right);
-            EMIT(ctx, "); ");
-
-            EMIT(ctx, "__typeof__((");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "))* _z_dest = &(");
-            codegen_expression(ctx, node->binary.left);
-            EMIT(ctx, "); ");
-
-            if (node->binary.left->kind == NODE_EXPR_VAR)
+            if (ctx->config->misra_mode && stmt_mode)
             {
-                EMIT(ctx, "if (__z_drop_flag_%s) %s__Drop__glue(_z_dest); ",
-                     node->binary.left->var_ref.name, clean_type);
+                // MISRA output cannot use statement expressions or __typeof__.
+                // In statement position, lower the move-assignment to a block
+                // with explicit types and an explicit drop of the old value.
+                EMIT(ctx, "{ %s _z_tmp = (", clean_type);
+                int rhs_var = node->binary.right->kind == NODE_EXPR_VAR;
+                if (rhs_var)
+                {
+                    codegen_expression(ctx, node->binary.right);
+                }
+                else
+                {
+                    codegen_expression_with_move(ctx, node->binary.right);
+                }
+                EMIT(ctx, "); ");
+                if (rhs_var)
+                {
+                    EMIT(ctx, "__z_drop_flag_%s = 0; ", node->binary.right->var_ref.name);
+                }
+
+                EMIT(ctx, "%s* _z_dest = &(", clean_type);
+                codegen_expression(ctx, node->binary.left);
+                EMIT(ctx, "); ");
+
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "if (__z_drop_flag_%s != 0) { %s__Drop__glue(_z_dest); } ",
+                         node->binary.left->var_ref.name, clean_type);
+                }
+                else
+                {
+                    EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
+                }
+
+                EMIT(ctx, "*_z_dest = _z_tmp; ");
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
+                }
+                EMIT(ctx, "}");
             }
             else
             {
-                EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
+                EMIT(ctx, "({ ");
+                EMIT(ctx, "ZC_AUTO _z_tmp = (");
+                codegen_expression_with_move(ctx, node->binary.right);
+                EMIT(ctx, "); ");
+
+                EMIT(ctx, "__typeof__((");
+                codegen_expression(ctx, node->binary.left);
+                EMIT(ctx, "))* _z_dest = &(");
+                codegen_expression(ctx, node->binary.left);
+                EMIT(ctx, "); ");
+
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "if (__z_drop_flag_%s != 0) { %s__Drop__glue(_z_dest); } ",
+                         node->binary.left->var_ref.name, clean_type);
+                }
+                else
+                {
+                    EMIT(ctx, "%s__Drop__glue(_z_dest); ", clean_type);
+                }
+
+                EMIT(ctx, "*_z_dest = _z_tmp; ");
+
+                if (node->binary.left->kind == NODE_EXPR_VAR)
+                {
+                    EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
+                }
+
+                EMIT(ctx, "*_z_dest; })");
             }
-
-            EMIT(ctx, "*_z_dest = _z_tmp; ");
-
-            if (node->binary.left->kind == NODE_EXPR_VAR)
-            {
-                EMIT(ctx, "__z_drop_flag_%s = 1; ", node->binary.left->var_ref.name);
-            }
-
-            EMIT(ctx, "*_z_dest; })");
         }
         else
         {
+            int clear_rhs_flag = 0;
+            if (ctx->config->misra_mode && stmt_mode && is_assignment &&
+                strcmp(node->binary.op, "=") == 0 && var_needs_move_flag(ctx, node->binary.right))
+            {
+                clear_rhs_flag = 1;
+                EMIT(ctx, "__z_drop_flag_%s = 0; ", node->binary.right->var_ref.name);
+            }
             EMIT(ctx, "(");
             if (is_assignment)
             {
@@ -583,6 +704,7 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                 (ctx->config->use_cpp && is_assignment && strcmp(node->binary.op, "=") == 0))
             {
                 int should_cast = ctx->config->misra_mode;
+                int ptr_left = 0;
                 if (!should_cast && node->binary.left->type_info)
                 {
                     TypeKind k = node->binary.left->type_info->kind;
@@ -601,10 +723,67 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                         c_type =
                             type_to_c_string(node->binary.left->type_info, ctx->config->misra_mode);
                     }
-                    if (c_type && strcmp(c_type, "unknown") != 0 && strcmp(c_type, "void") != 0)
+                    if ((!c_type || strcmp(c_type, "unknown") == 0 ||
+                         strcmp(c_type, "void") == 0) &&
+                        node->binary.left)
+                    {
+                        // Variable expressions may only carry resolved_type; use
+                        // the inferred C type so literals on the other side can
+                        // be balanced (Rule 10.4).
+                        if (c_type)
+                        {
+                            zfree(c_type);
+                            c_type = NULL;
+                        }
+                        char *inferred = infer_type(ctx, node->binary.left);
+                        if (inferred && strcmp(inferred, "unknown") != 0)
+                        {
+                            c_type = xstrdup(inferred);
+                        }
+                    }
+                    // Pointer arithmetic must not cast the integer offset to
+                    // the pointer type (`p + (T*)i` is invalid C), nor cast a
+                    // pointer operand to the integer type (`i + (int)p`).
+                    if (c_type && strchr(c_type, '*'))
+                    {
+                        should_cast = 0;
+                        ptr_left = 1;
+                    }
+                    if (should_cast && node->binary.right->type_info)
+                    {
+                        char *rt = type_to_c_string(node->binary.right->type_info,
+                                                    ctx->config->misra_mode);
+                        if (rt && strchr(rt, '*'))
+                        {
+                            should_cast = 0;
+                        }
+                        zfree(rt);
+                    }
+                    // Casting a struct/union (including a tagged enum) to its
+                    // own type is not valid C.
+                    if (should_cast && node->binary.left->type_info)
+                    {
+                        TypeKind lk = node->binary.left->type_info->kind;
+                        int non_scalar = (lk == TYPE_STRUCT);
+                        if (lk == TYPE_ENUM && node->binary.left->type_info->name)
+                        {
+                            ASTNode *edef =
+                                find_struct_def(ctx, node->binary.left->type_info->name);
+                            if (edef && enum_has_payload(edef))
+                            {
+                                non_scalar = 1;
+                            }
+                        }
+                        if (non_scalar)
+                        {
+                            should_cast = 0;
+                        }
+                    }
+                    if (should_cast && c_type && strcmp(c_type, "unknown") != 0 &&
+                        strcmp(c_type, "void") != 0)
                     {
                         EMIT(ctx, "(%s)(", c_type);
-                        codegen_expression_with_move(ctx, node->binary.right);
+                        emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
                         EMIT(ctx, ")");
                         zfree(c_type);
                     }
@@ -614,17 +793,24 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
                         {
                             zfree(c_type);
                         }
-                        codegen_expression_with_move(ctx, node->binary.right);
+                        // Rule 10.4: an integer literal offset beside a pointer
+                        // should have the unsigned index type.
+                        if (ptr_left && node->binary.right->kind == NODE_EXPR_LITERAL &&
+                            node->binary.right->literal.kind == LITERAL_INT)
+                        {
+                            EMIT(ctx, "(size_t)");
+                        }
+                        emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
                     }
                 }
                 else
                 {
-                    codegen_expression_with_move(ctx, node->binary.right);
+                    emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
                 }
             }
             else
             {
-                codegen_expression_with_move(ctx, node->binary.right);
+                emit_assign_rhs(ctx, node->binary.right, clear_rhs_flag);
             }
             EMIT(ctx, ")");
         }
@@ -634,10 +820,11 @@ void handle_expr_binary(ParserContext *ctx, ASTNode *node)
             zfree(clean_type);
         }
     }
-    if (ctx->config->misra_mode)
+    if (ctx->config->misra_mode && !stmt_mode)
     {
         EMIT(ctx, ")");
     }
+    ctx->cg.in_expr_stmt = prev_stmt;
 }
 
 // Struct with Drop held by an argument that references a temporary the call owns.
@@ -1142,9 +1329,43 @@ skip_method_mangling:
     Type *callee_ti = get_inner_type(node->call.callee->type_info);
     if (callee_ti && callee_ti->kind == TYPE_FUNCTION && !callee_ti->is_raw)
     {
-        EMIT(ctx, "({ z_closure_T _c = ");
-        codegen_expression(ctx, node->call.callee);
-        EMIT(ctx, "; ");
+        // MISRA output: the per-signature closure struct has a func field with
+        // the exact prototype, so no cast is needed (Rule 11.1). Source policy
+        // restricts the callee to a variable/member expression.
+        if (ctx->config->misra_mode && (node->call.callee->kind == NODE_EXPR_VAR ||
+                                        node->call.callee->kind == NODE_EXPR_MEMBER))
+        {
+            EMIT(ctx, "((");
+            codegen_expression(ctx, node->call.callee);
+            EMIT(ctx, ").func)((");
+            codegen_expression(ctx, node->call.callee);
+            EMIT(ctx, ").ctx");
+            ASTNode *arg = node->call.args;
+            while (arg)
+            {
+                EMIT(ctx, ", ");
+                codegen_expression_with_move(ctx, arg);
+                arg = arg->next;
+            }
+            EMIT(ctx, ")");
+            return;
+        }
+
+        // MISRA output cannot use GNU statement expressions (Rule 1.2). When
+        // the closure is a variable or member access, evaluating it twice is
+        // side-effect free, so call through it directly.
+        int direct = ctx->config->misra_output && (node->call.callee->kind == NODE_EXPR_VAR ||
+                                                   node->call.callee->kind == NODE_EXPR_MEMBER);
+        if (direct)
+        {
+            EMIT(ctx, "(");
+        }
+        else
+        {
+            EMIT(ctx, "({ z_closure_T _c = ");
+            codegen_expression(ctx, node->call.callee);
+            EMIT(ctx, "; ");
+        }
 
         Type *ft = callee_ti;
         char *ret = type_to_c_string(ft->inner, ctx->config->misra_mode);
@@ -1175,7 +1396,18 @@ skip_method_mangling:
         {
             EMIT(ctx, ", ...");
         }
-        EMIT(ctx, "))_c.func)(_c.ctx");
+        if (direct)
+        {
+            EMIT(ctx, "))(");
+            codegen_expression(ctx, node->call.callee);
+            EMIT(ctx, ").func)((");
+            codegen_expression(ctx, node->call.callee);
+            EMIT(ctx, ").ctx");
+        }
+        else
+        {
+            EMIT(ctx, "))_c.func)(_c.ctx");
+        }
 
         ASTNode *arg = node->call.args;
         while (arg)
@@ -1184,7 +1416,14 @@ skip_method_mangling:
             codegen_expression_with_move(ctx, arg);
             arg = arg->next;
         }
-        EMIT(ctx, "); })");
+        if (direct)
+        {
+            EMIT(ctx, "))");
+        }
+        else
+        {
+            EMIT(ctx, "); })");
+        }
         zfree(ret);
         return;
     }

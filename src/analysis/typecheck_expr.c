@@ -2,6 +2,9 @@
 #include "typecheck_internal.h"
 #include "../utils/utils.h"
 
+// Defined with check_type_compatibility below; used by the MISRA binary-op checks.
+static Token tc_fallback_token(TypeChecker *tc, Token t);
+
 void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
 {
     if (!rvalue || !rvalue->type_info)
@@ -10,6 +13,13 @@ void check_move_for_rvalue(TypeChecker *tc, ASTNode *rvalue)
     }
 
     if (is_type_copy(tc->pctx, rvalue->type_info))
+    {
+        return;
+    }
+
+    // A generic element type is not known yet; the instantiated body is checked
+    // with the concrete type, where the Copy decision can be made.
+    if (rvalue->type_info->kind == TYPE_GENERIC || rvalue->type_info->kind == TYPE_UNKNOWN)
     {
         return;
     }
@@ -270,7 +280,9 @@ void check_expr_unary(TypeChecker *tc, ASTNode *node, int depth)
             ZenSymbol *sym = tc_lookup(tc, node->unary.operand->var_ref.name);
             if (sym)
             {
-                node->type_info->lifetime_depth = sym->scope_depth;
+                // Static locals have static storage duration; their address
+                // escapes safely.
+                node->type_info->lifetime_depth = sym->is_static ? 0 : sym->scope_depth;
             }
         }
         else if (strcmp(op, "&_rval") == 0)
@@ -614,7 +626,8 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
             {
                 // Rule 10.4: Balancing
                 misra_check_binary_op_essential_types(tc->pctx, node->binary.left,
-                                                      node->binary.right, node->token);
+                                                      node->binary.right,
+                                                      tc_fallback_token(tc, node->token));
 
                 // MISRA Rule 12.4: Evaluation of constant expressions shall not lead to unsigned
                 // wrap Use the contextually pushed down type (stored in node->type_info before this
@@ -681,7 +694,7 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
         {
             // Rule 10.4: Balancing
             misra_check_binary_op_essential_types(tc->pctx, node->binary.left, node->binary.right,
-                                                  node->token);
+                                                  tc_fallback_token(tc, node->token));
 
             // Rule 18.3: Relational operators on pointers (>, <, >=, <=)
             if (tc->pctx->config->misra_mode && (strcmp(op, "<") == 0 || strcmp(op, ">") == 0 ||
@@ -799,7 +812,8 @@ void check_expr_binary(TypeChecker *tc, ASTNode *node, int depth)
                     if (strcmp(op, "&") == 0 || strcmp(op, "|") == 0 || strcmp(op, "^") == 0)
                     {
                         misra_check_binary_op_essential_types(tc->pctx, node->binary.left,
-                                                              node->binary.right, node->token);
+                                                              node->binary.right,
+                                                              tc_fallback_token(tc, node->token));
                     }
                 }
                 node->type_info = left_type;
@@ -901,6 +915,18 @@ void apply_implicit_struct_pointer_conversions(TypeChecker *tc, ASTNode **expr_p
     }
 }
 
+// Generic instantiations can synthesize nodes without tokens. Use the enclosing
+// function token so diagnostics point at a real source file and std-internal
+// code stays attributable to the std library.
+static Token tc_fallback_token(TypeChecker *tc, Token t)
+{
+    if (!t.file && tc->current_func && tc->current_func->token.file)
+    {
+        return tc->current_func->token;
+    }
+    return t;
+}
+
 int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t,
                              ASTNode *value_node, int is_call_arg)
 {
@@ -909,8 +935,24 @@ int check_type_compatibility(TypeChecker *tc, Type *target, Type *value, Token t
         return 1; // Can't check incomplete types
     }
 
+    t = tc_fallback_token(tc, t);
+
     Type *resolved_target = resolve_alias(target);
     Type *resolved_value = resolve_alias(value);
+
+    // MISRA output has no per-instance thunks yet; a named function does not
+    // have the closure struct type and cannot be coerced implicitly.
+    if (tc->pctx->config->misra_mode && resolved_target->kind == TYPE_FUNCTION &&
+        !resolved_target->is_raw && value_node && value_node->kind == NODE_EXPR_VAR)
+    {
+        ZenSymbol *sym = tc_lookup(tc, value_node->var_ref.name);
+        if (sym && sym->kind == SYM_FUNCTION)
+        {
+            tc_error(tc, t,
+                     "MISRA profile: a named function cannot be used as a closure; "
+                     "wrap it in a non-capturing lambda");
+        }
+    }
 
     // MISRA Pointer & Constant Checks (Rules 11.5, 11.9, etc.)
     if (tc->pctx->config->misra_mode && resolved_target->kind == TYPE_POINTER)
@@ -1377,6 +1419,19 @@ void check_struct_init(TypeChecker *tc, ASTNode *node, int depth)
 
 void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
 {
+    if (tc->pctx->config->misra_mode && node->lambda.capture_count > 0)
+    {
+        // A captured closure needs a type-erased void* context, which forces a
+        // void* -> object pointer conversion (Rule 11.5). Strict output keeps
+        // closures non-capturing; state is passed explicitly instead.
+        const char *hints[] = {"Pass the captured state as an explicit pointer argument",
+                               "Non-capturing lambdas and function references remain "
+                               "supported",
+                               NULL};
+        tc_error_with_hints(tc, node->token, "MISRA profile: captured closures are not supported",
+                            hints);
+    }
+
     Type *expected = get_inner_type(node->type_info);
     if (expected && expected->kind == TYPE_FUNCTION && expected->is_raw)
     {
@@ -1466,6 +1521,11 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
     int prev_unreachable = tc->is_unreachable;
     tc->is_unreachable = 0;
 
+    // A lambda is its own function: its returns must not count towards the
+    // enclosing function's Rule 15.5 tally.
+    int prev_return_count = tc->func_return_count;
+    tc->func_return_count = 0;
+
     if (node->lambda.body)
     {
         if (node->lambda.body->kind == NODE_BLOCK)
@@ -1477,6 +1537,15 @@ void check_expr_lambda(TypeChecker *tc, ASTNode *node, int depth)
             check_node(tc, node->lambda.body, depth + 1);
         }
     }
+
+    if (tc->pctx->config->misra_mode && tc->func_return_count > 1)
+    {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "MISRA Rule 15.5: lambda has %d return points (must have 1)",
+                 tc->func_return_count);
+        tc_error(tc, node->token, msg);
+    }
+    tc->func_return_count = prev_return_count;
 
     move_state_free(tc->pctx->move_state);
     tc->pctx->move_state = prev_move_state;

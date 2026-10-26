@@ -19,6 +19,20 @@ void handle_expr_cast(ParserContext *ctx, ASTNode *node)
     const char *t = node->cast.target_type;
     const char *mapped = map_to_c_type(t);
 
+    // Rule 10.8: do not cast a composite expression to a wider type. For a
+    // unary operator the cast can be applied to the operand instead:
+    // (T)(~x) -> (~((T)x)).
+    if (ctx->config->misra_output && node->cast.expr && node->cast.expr->kind == NODE_EXPR_UNARY &&
+        node->cast.expr->unary.op && node->cast.expr->unary.op[1] == '\0' &&
+        strchr("~-+", node->cast.expr->unary.op[0]) && node->cast.expr->unary.operand &&
+        node->cast.expr->unary.operand->kind == NODE_EXPR_LITERAL)
+    {
+        EMIT(ctx, "((%s)%s(", mapped, node->cast.expr->unary.op);
+        codegen_expression(ctx, node->cast.expr->unary.operand);
+        EMIT(ctx, "))");
+        return;
+    }
+
     EMIT(ctx, "((%s)(", mapped);
     Type *src_type = node->cast.expr->type_info;
     int cast_tag = 0;

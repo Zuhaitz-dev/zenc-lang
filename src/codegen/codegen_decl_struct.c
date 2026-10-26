@@ -47,7 +47,7 @@ void emit_simple_enum(ParserContext *ctx, ASTNode *node)
     v = node->enm.variants;
     while (v)
     {
-        EMIT(ctx, "static inline %s %s__%s() { return %s__%s_Tag; }\n", final_name, final_name,
+        EMIT(ctx, "static inline %s %s__%s(void) { return %s__%s_Tag; }\n", final_name, final_name,
              v->variant.name, final_name, v->variant.name);
         v = v->next;
     }
@@ -364,14 +364,15 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 {
                     if (ctx->config->use_cpp)
                     {
-                        EMIT(ctx,
-                             "%s %s__%s() { %s _res = {}; _res.tag=%s__%s_Tag; return _res; }\n",
-                             final_name, final_name, v->variant.name, final_name, final_name,
-                             v->variant.name);
+                        EMIT(
+                            ctx,
+                            "%s %s__%s(void) { %s _res = {}; _res.tag=%s__%s_Tag; return _res; }\n",
+                            final_name, final_name, v->variant.name, final_name, final_name,
+                            v->variant.name);
                     }
                     else
                     {
-                        EMIT(ctx, "%s %s__%s() { return (%s){.tag=%s__%s_Tag}; }\n", final_name,
+                        EMIT(ctx, "%s %s__%s(void) { return (%s){.tag=%s__%s_Tag}; }\n", final_name,
                              final_name, v->variant.name, final_name, final_name, v->variant.name);
                     }
                 }
@@ -452,6 +453,17 @@ static void emit_trait_defs_internal(ParserContext *ctx, ASTNode *node, VisitedM
             if (node->cfg_condition)
             {
                 EMIT(ctx, "#if %s\n", node->cfg_condition);
+            }
+            if (ctx->config->misra_output && node->trait.methods == NULL)
+            {
+                // Marker traits have no runtime representation; emitting an
+                // empty vtable would break ISO C and leave unused types (2.3/2.4).
+                if (node->cfg_condition)
+                {
+                    EMIT(ctx, "#endif\n");
+                }
+                node = node->next;
+                continue;
             }
             EMIT(ctx, "typedef struct %s_VTable {\n", node->trait.name);
             emitter_indent(&ctx->cg.emitter);
@@ -559,8 +571,9 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 const char *orig = parse_original_method_name(m->func.name);
                 int is_const_self = (m->func.count > 0 && m->func.arg_types &&
                                      m->func.arg_types[0] && m->func.arg_types[0]->is_const);
-                EMIT(ctx, "%s %s__%s(%s%s* self", ret_sub, node->trait.name, orig,
-                     is_const_self ? "const " : "", node->trait.name);
+                EMIT(ctx, "%s%s %s__%s(%s%s* self", ctx->config->misra_output ? "static " : "",
+                     ret_sub, node->trait.name, orig, is_const_self ? "const " : "",
+                     node->trait.name);
 
                 if (m->func.args && strlen(m->func.args) > 0)
                 {
@@ -583,7 +596,14 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 emitter_indent(&ctx->cg.emitter);
 
                 int ret_is_self = (m->func.ret_type && strcasecmp(m->func.ret_type, "Self") == 0);
-                if (ret_is_self)
+                int ret_void = (ret_sub && strcmp(ret_sub, "void") == 0);
+                if (ret_void)
+                {
+                    // ISO C forbids `return expr;` in a void function; call the
+                    // vtable slot as a statement and use an explicit return.
+                    EMIT(ctx, "self->vtable->%s(self->self", orig);
+                }
+                else if (ret_is_self)
                 {
                     EMIT(ctx, "void* res = self->vtable->%s(self->self", orig);
                 }
@@ -621,6 +641,10 @@ static void emit_trait_wrappers_internal(ParserContext *ctx, ASTNode *node,
                 {
                     EMIT(ctx, "return (%s){.self = res, .vtable = self->vtable};\n",
                          node->trait.name);
+                }
+                else if (ret_void)
+                {
+                    EMIT(ctx, "return;\n");
                 }
                 emitter_dedent(&ctx->cg.emitter);
                 EMIT(ctx, "}\n\n");

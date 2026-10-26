@@ -565,6 +565,18 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
                 newline = 0;
             }
 
+            // A panic string terminates the program. Hosted builds print to
+            // stderr and exit; strict MISRA output has neither stdio (21.6) nor
+            // exit() (21.8), so it fails safe with a trap.
+            if (ctx->config->misra_mode || ctx->config->is_freestanding)
+            {
+                zfree(inner);
+                ASTNode *n = ast_create(NODE_RAW_STMT);
+                n->token = t_str;
+                n->raw_stmt.content = xstrdup("for (;;) { }");
+                return n;
+            }
+
             char *code = process_printf_sugar(ctx, t_str, inner, newline, "stderr", NULL, NULL, 1,
                                               is_raw, 0);
             zfree(inner);
@@ -575,8 +587,9 @@ static ASTNode *parse_expr_prec_impl(ParserContext *ctx, Lexer *l, Precedence mi
 
             ASTNode *n = ast_create(NODE_RAW_STMT);
             n->token = t_str;
-            char *stmt_code = xmalloc(strlen(code) + 2);
-            sprintf(stmt_code, "%s;", code); /* safe */
+            char *stmt_code = xmalloc(strlen(code) + 12);
+            // Hosted panics terminate the process after printing.
+            sprintf(stmt_code, "%s; exit(1);", code); /* safe */ // whitelisted
             zfree(code);
             n->raw_stmt.content = stmt_code;
             take_fstring_exprs(ctx, n);

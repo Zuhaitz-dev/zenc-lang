@@ -255,6 +255,20 @@ typedef struct EnumVariantReg
 } EnumVariantReg;
 
 /**
+ * @brief A `fn(...)` closure type used by the translation unit.
+ *
+ * MISRA output gives every closure signature its own struct so that the `func`
+ * field already has the exact function pointer type (Rule 11.1). The typedef is
+ * emitted once, before the struct definitions that may contain it.
+ */
+typedef struct ClosureTypeReg
+{
+    char *c_name; ///< Struct typedef name.
+    Type *type;   ///< The TYPE_FUNCTION type.
+    struct ClosureTypeReg *next;
+} ClosureTypeReg;
+
+/**
  * @brief Functions marked as deprecated.
  */
 typedef struct DeprecatedFunc
@@ -388,9 +402,12 @@ struct ParserContext
                             ///< global_scope).
 
     // Lambdas
-    LambdaRef *global_lambdas; ///< All lambdas generated during parsing, in creation order.
-    int lambda_counter;        ///< Counter for generating unique lambda IDs.
-    int fstring_counter;       ///< Counter for generating unique f-string IDs.
+    LambdaRef *global_lambdas;     ///< All lambdas generated during parsing, in creation order.
+    int lambda_counter;            ///< Counter for generating unique lambda IDs.
+    int fstring_counter;           ///< Counter for generating unique f-string IDs.
+    int uses_fstrings;             ///< 1 if any f-string/interpolation was parsed.
+    int uses_closure_types;        ///< 1 if `fn(...)` types or lambdas were parsed.
+    ClosureTypeReg *closure_types; ///< Distinct closure signatures (MISRA output).
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
@@ -462,6 +479,7 @@ struct ParserContext
         int skip_preamble;  ///< If 1, codegen won't emit standard preamble (includes etc).
         int is_repl;        ///< 1 if running in REPL mode.
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
+        int in_expr_stmt;   ///< 1 if the current expression is a top-level statement.
 
         ASTNode *global_user_structs; ///< List of user defined structs.
         char *current_impl_type;      ///< Type currently being implemented (in impl block).
@@ -731,6 +749,8 @@ void register_func_template(ParserContext *ctx, const char *name, const char *pa
  * @brief Finds a function template.
  */
 GenericFuncTemplate *find_func_template(ParserContext *ctx, const char *name);
+GenericFuncTemplate *find_func_template_for_config(ParserContext *ctx, const char *name);
+int cfg_condition_matches(ParserContext *ctx, const char *cond);
 
 // Generic/template helpers
 /**
@@ -858,7 +878,7 @@ ASTNode *parse_plugin(ParserContext *ctx, Lexer *l, Token tk);
 char *token_get_string_content(Token t);
 ASTNode *find_struct_def(ParserContext *ctx, const char *name);
 ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char *link_name,
-                        int is_export);
+                        int is_export, const char *cfg_condition);
 void push_pending_body(ParserContext *ctx, PendingBody *pending);
 void parse_pending_bodies(ParserContext *ctx);
 ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_packed, int align,
@@ -913,6 +933,7 @@ void register_slice(ParserContext *ctx, const char *type);
 void register_lambda(ParserContext *ctx, ASTNode *node);
 void register_template(ParserContext *ctx, const char *name, ASTNode *node);
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag);
+void register_closure_type(ParserContext *ctx, Type *t);
 void register_plugin(ParserContext *ctx, const char *name, const char *alias);
 void register_selective_import(ParserContext *ctx, const char *symbol, const char *alias,
                                const char *source_module);

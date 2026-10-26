@@ -61,7 +61,8 @@ static void emit_freestanding_preamble(ParserContext *ctx)
          "#define _z_safe_bool(x) _Generic((x), _Bool: (x), default: (_Bool)0)\n#define _z_arg(x) "
          "_Generic((x), _Bool: _z_bool_str(_z_safe_bool(x)) _z_128_arg_map(x), default: (x))\n");
     EMIT(ctx, "%s",
-         "typedef struct { void *func; void *ctx; void (*drop)(void*); } z_closure_T;\n");
+         "typedef void (*z_closure_fn)(void);\ntypedef struct { z_closure_fn func; void *ctx; void "
+         "(*drop)(void*); } z_closure_T;\n");
     EMIT(ctx, "%s", "static void *_z_closure_ctx_stash[256];\n");
 
     // In true freestanding, explicit definitions of z_malloc/etc are removed.
@@ -73,7 +74,7 @@ void emit_preamble(ParserContext *ctx)
 {
     if (ctx->config->misra_mode)
     {
-        emit_misra_preamble(ctx->cg.emitter.file);
+        emit_misra_preamble(ctx);
         return;
     }
     if (ctx->config->is_freestanding)
@@ -161,7 +162,8 @@ void emit_preamble(ParserContext *ctx)
              "#ifdef ZC_STATIC_PLUGIN\n#define ZC_FUNC static\n#define ZC_GLOBAL "
              "static\n#else\n#define ZC_FUNC\n#define ZC_GLOBAL\n#endif\n");
         EMIT(ctx, "%s",
-             "typedef struct { void *func; void *ctx; void (*drop)(void*); } z_closure_T;\n");
+             "typedef void (*z_closure_fn)(void);\ntypedef struct { z_closure_fn func; void *ctx; "
+             "void (*drop)(void*); } z_closure_T;\n");
         EMIT(ctx, "%s", "static __attribute__((unused)) void *_z_closure_ctx_stash[256];\n");
         EMIT(ctx, "%s",
              "typedef void U0;\ntypedef int8_t I8;\ntypedef uint8_t U8;\ntypedef int16_t "
@@ -280,4 +282,61 @@ void emit_preamble(ParserContext *ctx)
         emitter_dedent(&ctx->cg.emitter);
         EMIT(ctx, "%s", "}\n");
     }
+}
+
+// Emit one closure struct per distinct `fn(...)` signature. Tags are declared
+// first so signatures may reference another closure type; C permits function
+// parameters of incomplete struct type in a function pointer typedef.
+void emit_closure_typedefs(ParserContext *ctx)
+{
+    if (!ctx->config->misra_mode)
+    {
+        return;
+    }
+
+    // Panic/todo calls lower to these helpers in strict output. They must
+    // follow every #include (Rule 20.1). There is no stdio or exit(), so they
+    // fail safe with a trap.
+    EMIT(ctx, "static void __zenc_panic(const char* msg) { (void)msg; for (;;) { } }\n");
+    EMIT(ctx, "static void __zenc_todo(const char* msg) { (void)msg; for (;;) { } }\n\n");
+
+    if (!ctx->closure_types)
+    {
+        return;
+    }
+
+    for (ClosureTypeReg *r = ctx->closure_types; r; r = r->next)
+    {
+        EMIT(ctx, "typedef struct %s %s;\n", r->c_name, r->c_name);
+    }
+
+    for (ClosureTypeReg *r = ctx->closure_types; r; r = r->next)
+    {
+        Type *fn = r->type;
+        char *ret = type_to_c_string(fn->inner, 1);
+        if (strcmp(ret, "unknown") == 0)
+        {
+            zfree(ret);
+            ret = xstrdup("void*");
+        }
+        EMIT(ctx, "struct %s { %s (*func)(void*", r->c_name, ret);
+        for (int i = 0; i < fn->count; i++)
+        {
+            char *arg = type_to_c_string(fn->args[i], 1);
+            if (strcmp(arg, "unknown") == 0)
+            {
+                zfree(arg);
+                arg = xstrdup("void*");
+            }
+            EMIT(ctx, ", %s", arg);
+            zfree(arg);
+        }
+        if (fn->is_varargs)
+        {
+            EMIT(ctx, ", ...");
+        }
+        EMIT(ctx, "); void *ctx; void (*drop)(void*); };\n");
+        zfree(ret);
+    }
+    EMIT(ctx, "\n");
 }
