@@ -2,6 +2,7 @@ import "./core.zc"
 import "./vec.zc"
 import "./option.zc"
 
+@cfg(not(misra))
 fn _z_internal_str_case_cmp(s1: char*, s2: char*) -> int {
     let i = 0;
     while (true) {
@@ -28,12 +29,14 @@ struct String {
     vec: Vec<char>;
 }
 
+@cfg(not(misra))
 struct StringCharsIter {
     data: char*;
     len: usize;
     pos: usize;
 }
 
+@cfg(not(misra))
 impl StringCharsIter {
     fn next(self) -> Option<rune> {
         if (self.pos >= self.len) {
@@ -64,6 +67,7 @@ impl StringCharsIter {
     }
 
     /// Returns an iterator over the code points.
+    @cfg(not(misra))
     fn iterator(self) -> StringCharsIter {
         return self;
     }
@@ -71,7 +75,7 @@ impl StringCharsIter {
 
 impl String {
     /// Creates a new String from a C string.
-    fn new(s: char*) -> String {
+    fn new(s: const char*) -> String {
         let len: usize = strlen(s);
         let v = Vec<char>::with_capacity(len + 1);
         if (len > 0) {
@@ -89,11 +93,12 @@ impl String {
     }
 
     /// Creates a new String from a C string (alias for `new`).
-    fn from(s: char*) -> String {
+    fn from(s: const char*) -> String {
         return String::new(s);
     }
 
     /// Creates a String from a single rune.
+    @cfg(not(misra))
     fn from_rune(r: rune) -> String {
         let s = String::new("");
         s.push_rune(r);
@@ -101,6 +106,7 @@ impl String {
     }
 
     /// Creates a String from an array of runes.
+    @cfg(not(misra))
     fn from_runes(runes: rune*, count: usize) -> String {
         let s = String::new("");
         for (let i: usize = 0; i < count; i = i + 1) {
@@ -162,6 +168,7 @@ impl String {
     }
 
     /// Appends a rune (UTF-8 encoded).
+    @cfg(not(misra))
     fn push_rune(self, r: rune) {
         if (self.vec.len > 0) {
             self.vec.len = self.vec.len - 1;
@@ -254,11 +261,13 @@ impl String {
     }
 
     /// Case-insensitive lexicographic comparison.
+    @cfg(not(misra))
     fn compare_ignore_case(self, other: String*) -> int {
         return _z_internal_str_case_cmp(self.vec.data, (*other).vec.data);
     }
 
     /// Case-insensitive equality.
+    @cfg(not(misra))
     fn eq_ignore_case(self, other: String*) -> bool {
         let zero: int = 0;
         return self.compare_ignore_case(other) == zero;
@@ -272,8 +281,11 @@ impl String {
 
     /// Returns the length in bytes (not code points).
     fn length(self) -> usize {
-        if (self.vec.len == 0) { return 0; }
-        return self.vec.len - 1;
+        let result: usize = 0;
+        if (self.vec.len > 0) {
+            result = self.vec.len - 1;
+        }
+        return result;
     }
     
     /// Returns a new String of `len` bytes starting at `start`.
@@ -305,24 +317,33 @@ impl String {
     /// Returns the first index of `target`, or `None`.
     fn find_str(self, target: char*) -> Option<usize> {
         let t_len: usize = strlen(target);
-        if t_len == 0 { return Option<usize>::Some(0); }
-        let s_len = self.length();
-        if t_len > s_len { return Option<usize>::None(); }
-        
-        for (let i: usize = 0; i <= s_len - t_len; i = i + 1) {
-            let is_match = true;
-            for (let k: usize = 0; k < t_len; k = k + 1) {
-                if self.vec.get(i + k) != target[k] {
-                    is_match = false;
-                    break;
+        let result = Option<usize>::None();
+        if (t_len == 0) {
+            result = Option<usize>::Some(0);
+        } else {
+            let s_len = self.length();
+            if (t_len <= s_len) {
+                for (let i: usize = 0; i <= s_len - t_len; i = i + 1) {
+                    let is_match = true;
+                    for (let k: usize = 0; k < t_len; k = k + 1) {
+                        let ch: char = self.vec.get(i + k);
+                        if (ch != target[k]) {
+                            is_match = false;
+                            break;
+                        }
+                    }
+                    if is_match {
+                        result = Option<usize>::Some(i);
+                        break;
+                    }
                 }
             }
-            if is_match { return Option<usize>::Some(i); }
         }
-        return Option<usize>::None();
+        return result;
     }
 
     /// Returns all indices where `target` occurs.
+    @cfg(not(misra))
     fn find_all_str(self, target: char*) -> Vec<usize> {
         let indices = Vec<usize>::new();
         let t_len: usize = strlen(target);
@@ -347,6 +368,7 @@ impl String {
     }
 
     /// Returns a new lowercase copy.
+    @cfg(not(misra))
     fn to_lowercase(self) -> String {
         let len = self.length();
         let v = Vec<char>::with_capacity(len + 1);
@@ -367,6 +389,7 @@ impl String {
     }
 
     /// Returns a new string padded on the right to `target_len`.
+    @cfg(not(misra))
     fn pad_right(self, target_len: usize, pad_char: char) -> String {
         let current_len = self.length();
         if (current_len >= target_len) {
@@ -391,6 +414,7 @@ impl String {
     }
 
     /// Returns a new string padded on the left to `target_len`.
+    @cfg(not(misra))
     fn pad_left(self, target_len: usize, pad_char: char) -> String {
         let current_len = self.length();
         if (current_len >= target_len) {
@@ -417,6 +441,7 @@ impl String {
     }
 
     /// Returns a new uppercase copy.
+    @cfg(not(misra))
     fn to_uppercase(self) -> String {
         let len = self.length();
         let v = Vec<char>::with_capacity(len + 1);
@@ -439,12 +464,15 @@ impl String {
     /// Returns the first index of the character `target`, or `None`.
     fn find(self, target: char) -> Option<usize> {
         let len = self.length();
+        let result = Option<usize>::None();
         for (let i: usize = 0; i < len; i = i + 1) {
-            if (self.vec.get(i) == target) {
-                return Option<usize>::Some(i);
+            let ch: char = self.vec.get(i);
+            if (ch == target) {
+                result = Option<usize>::Some(i);
+                break;
             }
         }
-        return Option<usize>::None();
+        return result;
     }
 
     /// Prints the string to stdout.
@@ -474,20 +502,26 @@ impl String {
     /// Returns whether the string starts with `prefix`.
     fn starts_with(self, prefix: char*) -> bool {
         let plen: usize = strlen(prefix);
-        if plen > self.length() { return false; }
-        let zero: c_int = 0;
-        return strncmp(self.c_str(), prefix, plen) == zero;
+        let result = false;
+        if (plen <= self.length()) {
+            let zero: c_int = 0;
+            result = strncmp(self.c_str(), prefix, plen) == zero;
+        }
+        return result;
     }
     
     /// Returns whether the string ends with `suffix`.
     fn ends_with(self, suffix: char*) -> bool {
         let slen: usize = strlen(suffix);
         let len = self.length();
-        if slen > len { return false; }
-        let offset = (int)(len - slen);
-        let zero: c_int = 0;
-        let base = self.c_str();
-        return strcmp(&base[offset], suffix) == zero;
+        let result = false;
+        if (slen <= len) {
+            let offset: usize = len - slen;
+            let zero: c_int = 0;
+            let base = self.c_str();
+            result = strcmp(&base[offset], suffix) == zero;
+        }
+        return result;
     }
     
     /// Ensures capacity for at least `cap` bytes.
@@ -500,6 +534,7 @@ impl String {
         self.vec.free();
     }
 
+    @cfg(not(misra))
     fn _utf8_seq_len(first_byte: char) -> usize {
         let b = (int)first_byte;
         if ((b & 0x80) == 0) { return 1; }
@@ -510,6 +545,7 @@ impl String {
     }
 
     /// Returns the number of Unicode code points.
+    @cfg(not(misra))
     fn utf8_len(self) -> usize {
         let count: usize = 0;
         let i: usize = 0;
@@ -523,6 +559,7 @@ impl String {
     }
 
     /// Returns the code point at byte index `idx` as a String.
+    @cfg(not(misra))
     fn utf8_at(self, idx: usize) -> String {
         let count: usize = 0;
         let i: usize = 0;
@@ -542,6 +579,7 @@ impl String {
     }
 
     /// Returns the code point at byte index `idx` as a rune.
+    @cfg(not(misra))
     fn utf8_get(self, idx: usize) -> rune {
         let count: usize = 0;
         let i: usize = 0;
@@ -564,6 +602,7 @@ impl String {
     }
 
     /// Returns a Vec of the code points.
+    @cfg(not(misra))
     fn runes(self) -> Vec<rune> {
         let v = Vec<rune>::new();
         let i: usize = 0;
@@ -588,11 +627,13 @@ impl String {
     }
 
     /// Returns an iterator over the code points.
+    @cfg(not(misra))
     fn iterator(self) -> StringCharsIter {
         return self.chars();
     }
 
     /// Returns an iterator over the code points.
+    @cfg(not(misra))
     fn chars(self) -> StringCharsIter {
         return StringCharsIter {
             data: self.c_str(),
@@ -602,6 +643,7 @@ impl String {
     }
 
     /// Creates a String from a Vec of runes.
+    @cfg(not(misra))
     fn from_runes_vec(runes: Vec<rune>) -> String {
         let s = String::new("");
         for (let i: usize = 0; i < runes.len; i = i + 1) {
@@ -611,6 +653,7 @@ impl String {
     }
 
     /// Inserts a rune at byte index `idx`.
+    @cfg(not(misra))
     fn insert_rune(self, idx: usize, r: rune) {
         let i: usize = 0;
         let count: usize = 0;
@@ -639,6 +682,7 @@ impl String {
     }
 
     /// Removes and returns the rune at byte index `idx`.
+    @cfg(not(misra))
     fn remove_rune_at(self, idx: usize) -> rune {
         let i: usize = 0;
         let count: usize = 0;
@@ -667,6 +711,7 @@ impl String {
     }
 
     /// Returns a substring of `num_chars` code points from `start_idx`.
+    @cfg(not(misra))
     fn utf8_substr(self, start_idx: usize, num_chars: usize) -> String {
         if (num_chars == 0) { return String::new(""); }
 
@@ -710,6 +755,7 @@ impl String {
         return self.substring(byte_start, byte_len);
     }
     /// Splits on the delimiter character into a Vec of substrings.
+    @cfg(not(misra))
     fn split(self, delim: char) -> Vec<String> {
         let parts = Vec<String>::new();
         let len = self.length();
@@ -736,6 +782,7 @@ impl String {
     }
 
     /// Returns a copy with leading/trailing whitespace removed.
+    @cfg(not(misra))
     fn trim(self) -> String {
         let start: usize = 0;
         let len = self.length();
@@ -767,6 +814,7 @@ impl String {
     }
     
     /// Returns a copy with all `target` replaced by `replacement`.
+    @cfg(not(misra))
     fn replace(self, target: char*, replacement: char*) -> String {
         let t_len: usize = strlen(target);
         if (t_len == 0) {
@@ -812,6 +860,7 @@ impl String {
     // Parses the string as a decimal integer. Returns 0 when the string is
     // not a valid integer.
     /// Parses the string as a decimal integer (0 when invalid).
+    @cfg(not(misra))
     fn to_int(self) -> int {
         let len = self.length();
         if (len == 0) { return 0; }
@@ -841,6 +890,7 @@ impl String {
 
     // Returns a new string with this string repeated `count` times.
     /// Returns a copy repeated `count` times.
+    @cfg(not(misra))
     fn repeated(self, count: usize) -> String {
         let len = self.length();
         let out = String::new("");
@@ -854,6 +904,7 @@ impl String {
 
     // Returns a new string with the characters in reverse order.
     /// Returns a copy with the characters reversed.
+    @cfg(not(misra))
     fn reverse(self) -> String {
         let len = self.length();
         let out = String::new("");
@@ -874,6 +925,7 @@ impl String {
 
     // Returns a copy with leading whitespace removed.
     /// Returns a copy with leading whitespace removed.
+    @cfg(not(misra))
     fn trim_start(self) -> String {
         let len = self.length();
         let start: usize = 0;
@@ -890,6 +942,7 @@ impl String {
 
     // Returns a copy with trailing whitespace removed.
     /// Returns a copy with trailing whitespace removed.
+    @cfg(not(misra))
     fn trim_end(self) -> String {
         let len = self.length();
         let end = len;

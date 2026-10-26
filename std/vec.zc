@@ -378,6 +378,7 @@ impl Vec<T> {
     }
 
     /// Returns whether an equal item exists.
+    @cfg(not(misra))
     fn contains(self, item: T) -> bool {
         let result = false;
         let i: usize = 0;
@@ -442,6 +443,7 @@ impl Vec<T> {
     
     // Structural equality check.
     // Returns true if both vectors have the same length and identical elements.
+    @cfg(not(misra))
     fn eq(self, other: Vec<T>*) -> bool {
         let result = (self.len == (*other).len);
         if (result) {
@@ -479,6 +481,7 @@ impl Vec<T> {
         self.append(other.clone());
     }
     // Operator overload for `!=` (Inequality)
+    @cfg(not(misra))
     fn neq(self, other: Vec<T>*) -> bool {
         return !self.eq(other);
     }
