@@ -403,6 +403,8 @@ static int compile_program(ZenCompiler *compiler)
     }
 
     int ret = arg_run(&compile_args);
+    char cc_name[256];
+    snprintf(cc_name, sizeof(cc_name), "%s", compile_args.count > 0 ? compile_args.args[0] : "cc");
     arg_list_free(&compile_args);
 
     if (!compiler->config.emit_c)
@@ -411,6 +413,13 @@ static int compile_program(ZenCompiler *compiler)
     }
     if (ret != 0)
     {
+        // Report the failure instead of exiting silently (e.g. when the C
+        // compiler given via --cc is not installed or not on PATH).
+        fprintf(stderr,
+                COLOR_BOLD COLOR_RED "error" COLOR_RESET
+                                     ": C compilation with '%s' failed (exit status %d); "
+                                     "check that it is installed and on your PATH\n",
+                cc_name, ret);
         return 1;
     }
 
