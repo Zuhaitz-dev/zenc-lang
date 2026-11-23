@@ -39,6 +39,7 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
             existing->type_name = t ? xstrdup(t) : NULL;
             existing->type_info = type_info;
             existing->decl_token = tok;
+            existing->decl_file = tok.file ? tok.file : ctx->current_filename;
             return;
         }
     }
@@ -48,6 +49,7 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
     s->type_name = t ? xstrdup(t) : NULL;
     s->type_info = type_info;
     s->decl_token = tok;
+    s->decl_file = tok.file ? tok.file : ctx->current_filename;
     s->is_export = is_export;
 
     register_symbol_to_lsp(ctx, s);

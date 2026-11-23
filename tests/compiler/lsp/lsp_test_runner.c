@@ -1848,6 +1848,115 @@ static void test_std_import_in_other_project(void)
     printf("PASS: test_std_import_in_other_project\n");
 }
 
+// Opens @p name (under /tmp/zc_lsp_shadow) with @p json_src and returns the last diagnostics
+// published for it, or NULL. @p id is used for the request that ends the wait.
+static char *open_and_get_diagnostics(int id, const char *name, const char *json_src)
+{
+    char json[2048];
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"method\": \"textDocument/didOpen\", \"params\": "
+             "{\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_shadow/%s\", "
+             "\"languageId\": \"zenc\", \"version\": 1, \"text\": \"%s\"}}}",
+             name, json_src);
+    send_request(json);
+
+    // The diagnostics arrive before the response to this request.
+    snprintf(json, sizeof(json),
+             "{\"jsonrpc\": \"2.0\", \"id\": %d, \"method\": \"textDocument/documentSymbol\", "
+             "\"params\": {\"textDocument\": {\"uri\": \"file:///tmp/zc_lsp_shadow/%s\"}}}",
+             id, name);
+    send_request(json);
+
+    char id_key[32];
+    snprintf(id_key, sizeof(id_key), "\"id\":%d", id);
+    char *diagnostics = NULL;
+    for (int i = 0; i < 50; i++)
+    {
+        char *msg = read_message();
+        if (!msg)
+        {
+            break;
+        }
+        if (strstr(msg, "textDocument/publishDiagnostics") && strstr(msg, name))
+        {
+            free(diagnostics);
+            diagnostics = msg;
+        }
+        else if (strstr(msg, id_key))
+        {
+            free(msg);
+            break;
+        }
+        else
+        {
+            free(msg);
+        }
+    }
+    return diagnostics;
+}
+
+// The server keeps one global scope for the whole workspace. A global in one file must not
+// make a same-named parameter or local in another file, which never imports it, "shadow" it.
+// Shadowing within a file is still reported, at the shadowing name rather than at 1:1.
+static void test_shadow_across_files(void)
+{
+    printf("Running test_shadow_across_files...\n");
+    mkdir("/tmp/zc_lsp_shadow", 0755);
+    write_config_fixture("/tmp/zc_lsp_shadow/globals.zc", "let ctx: int = 0;\nfn main() {}\n");
+    const char *other_src = "extern fn foo(ctx: void*);\\n"
+                            "fn bar(p: int) { let ctx = p; println \\\"{ctx}\\\"; }\\n";
+    write_config_fixture("/tmp/zc_lsp_shadow/other.zc",
+                         "extern fn foo(ctx: void*);\n"
+                         "fn bar(p: int) { let ctx = p; println \"{ctx}\"; }\n");
+    const char *same_src = "let gx: int = 0;\\nfn baz(gx: int) { let q = gx; println \\\"{q}\\\"; }\\n";
+    write_config_fixture("/tmp/zc_lsp_shadow/same.zc",
+                         "let gx: int = 0;\nfn baz(gx: int) { let q = gx; println \"{q}\"; }\n");
+
+    global_len = 0;
+    global_buf[0] = 0;
+    lsp_cwd = "/tmp/zc_lsp_shadow";
+    start_lsp_server();
+    lsp_cwd = NULL;
+    send_request("{\"jsonrpc\": \"2.0\", \"id\": 1400, \"method\": \"initialize\", \"params\": "
+                 "{\"rootUri\": \"file:///tmp/zc_lsp_shadow\"}}");
+    free(wait_for_response(1400));
+    // Indexes the workspace, so globals.zc's `ctx` is in the shared global scope.
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"initialized\", \"params\": {}}");
+
+    char *diagnostics = open_and_get_diagnostics(1401, "other.zc", other_src);
+    if (!diagnostics)
+    {
+        fail("No diagnostics received for other.zc");
+    }
+    if (strstr(diagnostics, "shadows"))
+    {
+        printf("diagnostics: %s\n", diagnostics);
+        fail("A global from a file that is not imported was reported as shadowed");
+    }
+    free(diagnostics);
+
+    diagnostics = open_and_get_diagnostics(1402, "same.zc", same_src);
+    if (!diagnostics)
+    {
+        fail("No diagnostics received for same.zc");
+    }
+    // The parameter `gx` is on line 1 (0-based), column 7.
+    if (!strstr(diagnostics, "Variable 'gx' shadows") ||
+        !strstr(diagnostics, "\"start\":{\"line\":1,\"character\":7}"))
+    {
+        printf("diagnostics: %s\n", diagnostics);
+        fail("Shadowing a global of the same file was not reported at the parameter");
+    }
+    free(diagnostics);
+
+    send_request(
+        "{\"jsonrpc\": \"2.0\", \"id\": 1403, \"method\": \"shutdown\", \"params\": null}");
+    free(wait_for_response(1403));
+    send_request("{\"jsonrpc\": \"2.0\", \"method\": \"exit\", \"params\": {}}");
+    waitpid(child_pid, NULL, 0);
+    printf("PASS: test_shadow_across_files\n");
+}
+
 int main()
 {
     // Don't die with a cryptic 141 (SIGPIPE) if the LSP server crashes and
@@ -1894,6 +2003,7 @@ int main()
     test_project_config();
     test_index_exclude();
     test_std_import_in_other_project();
+    test_shadow_across_files();
     if (failures > 0)
     {
         fprintf(stderr, "TEST FAIL: %d LSP check(s) failed\n", failures);

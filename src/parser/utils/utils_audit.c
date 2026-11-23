@@ -86,6 +86,24 @@ static void sync_link_names_recursive(ParserContext *ctx, ASTNode *node)
     sync_link_names_recursive_depth(ctx, node, 0);
 }
 
+/**
+ * @brief Whether, in LSP mode, @p sh was declared in a file other than @p cur_file.
+ *
+ * The LSP keeps one global scope for the whole workspace, so it holds globals from files
+ * the current file never imports. Shadowing one of those is not shadowing, so the LSP
+ * leaves it out; the compiler, which only sees what is imported, still checks it.
+ * Symbols with no known file (built-ins) are never treated as foreign.
+ */
+static int lsp_symbol_from_other_file(ParserContext *ctx, const ZenSymbol *sh, const char *cur_file)
+{
+    if (!ctx->config->mode_lsp || ctx->config->misra_mode)
+    {
+        return 0;
+    }
+    const char *sh_file = sh->decl_token.file ? sh->decl_token.file : sh->decl_file;
+    return sh_file && cur_file && strcmp(sh_file, cur_file) != 0;
+}
+
 void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const char *link_name,
                      Token tok)
 {
@@ -108,13 +126,15 @@ void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const c
 
     Scope *p = scope;
     int limit = (p == ctx->global_scope) ? 31 : 63;
+    const char *cur_file = tok.file ? tok.file : ctx->current_filename;
 
     while (p)
     {
         ZenSymbol *sh = p->symbols;
         while (sh)
         {
-            if (p != scope && strcmp(sh->name, name) == 0 && !ctx->silent_warnings)
+            if (p != scope && strcmp(sh->name, name) == 0 && !ctx->silent_warnings &&
+                !lsp_symbol_from_other_file(ctx, sh, cur_file))
             {
                 if (ctx->config->misra_mode)
                 {

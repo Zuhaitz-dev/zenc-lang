@@ -62,8 +62,9 @@ typedef struct ZenSymbol
     int is_written_to;       ///< 1 if the value (or dereferenced memory) was modified.
     int is_dereferenced;     ///< 1 if struct fields were explicitly accessed.
     char *cfg_condition;     ///< Optional @cfg condition.
-    int scope_depth; ///< Nesting level where the symbol was defined (0 = global, 1+ = local).
-    char *link_name; ///< Overriding C identifier.
+    int scope_depth;       ///< Nesting level where the symbol was defined (0 = global, 1+ = local).
+    char *link_name;       ///< Overriding C identifier.
+    const char *decl_file; ///< File the symbol was declared in, even when decl_token is unknown.
 
     union
     {
