@@ -430,6 +430,20 @@ static const char *import_display_path(ParserContext *ctx, const char *resolved)
         (resolved[len] == '/' || resolved[len] == '\\') && resolved[len + 1])
     {
         shown = resolved + len + 1; // within `resolved`, which outlives its tokens
+        if (strchr(shown, '\\'))
+        {
+            // Windows resolves to backslashes. Shown with '/', as the root's is written
+            // and as an import names its file.
+            char *slashed = xstrdup(shown);
+            for (char *c = slashed; *c; c++)
+            {
+                if (*c == '\\')
+                {
+                    *c = '/';
+                }
+            }
+            shown = slashed;
+        }
     }
     libc_free(cwd);
     return shown;
