@@ -1154,16 +1154,29 @@ static char *type_to_c_string_impl(Type *t, int misra_mode)
             total_len += 20;
         }
 
-        char *res = xmalloc((size_t)(total_len));
-        strcpy(res, inner);
-        zfree(inner);
+        // The dimensions go at the end, except for an array of function pointers, where
+        // C puts them inside the declarator, where the name would go: `int (*[2])(int)`,
+        // not `int (*)(int)[2]`.
+        size_t at = strlen(inner);
+        char *fn_ptr = base->kind == TYPE_FUNCTION ? strstr(inner, "(*") : NULL;
+        char *end_paren = fn_ptr ? strchr(fn_ptr, ')') : NULL;
+        if (end_paren)
+        {
+            at = (size_t)(end_paren - inner);
+        }
 
-        char *p = res + strlen(res);
+        char *res = xmalloc((size_t)(total_len));
+        memcpy(res, inner, at);
+        res[at] = '\0';
+
+        char *p = res + at;
         for (int i = 0; i < dims_count; i++)
         {
             snprintf(p, 20, "[%d]", dims[i]);
             p += strlen(p);
         }
+        strcpy(p, inner + at);
+        zfree(inner);
 
         if (dims)
         {
