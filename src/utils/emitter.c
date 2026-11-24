@@ -250,6 +250,7 @@ int emitter_push(Emitter *e)
         s->buffer.cap = e->buffer.cap;
     }
     s->indent_level = e->indent_level;
+    s->pending_indent = e->pending_indent;
     s->output_line = e->output_line;
     return 1;
 }
@@ -277,6 +278,7 @@ int emitter_pop(Emitter *e)
         e->buffer.cap = s->buffer.cap;
     }
     e->indent_level = s->indent_level;
+    e->pending_indent = s->pending_indent;
     e->output_line = s->output_line;
     return 1;
 }

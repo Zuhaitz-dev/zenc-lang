@@ -34,6 +34,7 @@ typedef struct EmitterSavedState
         } buffer;
     };
     int indent_level;
+    int pending_indent;
     size_t output_line;
 } EmitterSavedState;
 
