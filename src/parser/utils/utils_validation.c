@@ -283,29 +283,56 @@ void fix_type_refs_has_drop(ParserContext *ctx)
     }
 }
 
+// A set of function names: open-addressed, NULL slots empty, at most half full.
 typedef struct
 {
     const char **names;
     int count;
-    int cap;
+    int cap; // a power of two
 } DefinedFunctions;
+
+static unsigned defined_functions_slot(const char **names, int cap, const char *name)
+{
+    unsigned h = 2166136261u; // FNV-1a
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    unsigned mask = (unsigned)cap - 1;
+    unsigned i = h & mask;
+    while (*(names + i) && strcmp(*(names + i), name) != 0)
+    {
+        i = (i + 1) & mask;
+    }
+    return i;
+}
 
 // Adds a defined function name; returns 0 if it was already defined.
 static int defined_functions_add(DefinedFunctions *set, const char *name)
 {
-    for (const char **n = set->names; n < set->names + set->count; n++)
+    if ((set->count + 1) * 2 > set->cap)
     {
-        if (strcmp(*n, name) == 0)
+        int cap = set->cap ? set->cap * 2 : 64;
+        const char **names = xmalloc(sizeof(const char *) * (size_t)cap);
+        memset(names, 0, sizeof(const char *) * (size_t)cap);
+        for (int i = 0; i < set->cap; i++)
         {
-            return 0;
+            const char *old = *(set->names + i);
+            if (old)
+            {
+                *(names + defined_functions_slot(names, cap, old)) = old;
+            }
         }
+        zfree(set->names);
+        set->names = names;
+        set->cap = cap;
     }
-    if (set->count == set->cap)
+    unsigned slot = defined_functions_slot(set->names, set->cap, name);
+    if (*(set->names + slot))
     {
-        set->cap = set->cap ? set->cap * 2 : 64;
-        set->names = xrealloc(set->names, sizeof(const char *) * (size_t)set->cap);
+        return 0;
     }
-    *(set->names + set->count) = name;
+    *(set->names + slot) = name;
     set->count++;
     return 1;
 }

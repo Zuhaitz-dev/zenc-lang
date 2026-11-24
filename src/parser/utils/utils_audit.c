@@ -109,6 +109,37 @@ void audit_section_5(ParserContext *ctx, Scope *scope, const char *name, const c
     Scope *p = scope;
     int limit = (p == ctx->global_scope) ? 31 : 63;
 
+    // Outside MISRA mode only the symbols of this name matter (the collision check below
+    // is MISRA's), and a scope's index gives them without a walk of every global.
+    if (!ctx->config->misra_mode)
+    {
+        if (ctx->silent_warnings)
+        {
+            return;
+        }
+        for (p = scope->parent; p; p = p->parent)
+        {
+            if (symbol_index_ready(&p->index))
+            {
+                ZenSymbol *named = NULL;
+                while ((named = symbol_index_find(&p->index, name, named, SYMBOL_LINK_SCOPE)) !=
+                       NULL)
+                {
+                    warn_shadowing(tok, name);
+                }
+                continue;
+            }
+            for (ZenSymbol *sh = p->symbols; sh; sh = sh->next)
+            {
+                if (strcmp(sh->name, name) == 0)
+                {
+                    warn_shadowing(tok, name);
+                }
+            }
+        }
+        return;
+    }
+
     while (p)
     {
         ZenSymbol *sh = p->symbols;

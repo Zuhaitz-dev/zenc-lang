@@ -96,6 +96,11 @@ ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n)
 
 ZenSymbol *find_symbol_in_all(ParserContext *ctx, const char *n)
 {
+    if (symbol_index_ready(&ctx->all_symbols_index))
+    {
+        return symbol_index_find(&ctx->all_symbols_index, n, NULL, SYMBOL_LINK_ALL);
+    }
+
     ZenSymbol *sym = ctx->all_symbols;
     while (sym)
     {
@@ -116,6 +121,82 @@ void init_builtins(void)
         return;
     }
     init = 1;
+}
+
+// ** The name index of func_registry **
+//
+// func_registry only grows at its head, and a function's name doesn't change, so a
+// bucket's chain is in the registry's order and its first match is the registry's.
+
+static unsigned func_name_hash(const char *name)
+{
+    unsigned h = 2166136261u; // FNV-1a
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    return h;
+}
+
+// Makes the buckets anew from the whole registry.
+static void func_registry_index(ParserContext *ctx)
+{
+    unsigned buckets = 64;
+    while (buckets < ctx->func_count * 2)
+    {
+        buckets *= 2;
+    }
+    ctx->func_buckets = xmalloc(buckets * sizeof(FuncSig *));
+    memset(ctx->func_buckets, 0, buckets * sizeof(FuncSig *));
+    ctx->func_bucket_count = buckets;
+
+    // Oldest first, each put at its chain's head, leaves the newest at the head.
+    FuncSig **all = xmalloc((ctx->func_count ? ctx->func_count : 1) * sizeof(FuncSig *));
+    unsigned n = 0;
+    for (FuncSig *f = ctx->func_registry; f && n < ctx->func_count; f = f->next)
+    {
+        all[n++] = f;
+    }
+    while (n > 0)
+    {
+        FuncSig *f = all[--n];
+        unsigned slot = func_name_hash(f->name) & (buckets - 1);
+        f->bucket_next = ctx->func_buckets[slot];
+        ctx->func_buckets[slot] = f;
+    }
+    zfree(all);
+}
+
+// `f` was just put at the head of func_registry.
+static void func_registry_added(ParserContext *ctx, FuncSig *f)
+{
+    ctx->func_count++;
+    if (!ctx->func_buckets || ctx->func_count > ctx->func_bucket_count * 2)
+    {
+        func_registry_index(ctx);
+        return;
+    }
+    unsigned slot = func_name_hash(f->name) & (ctx->func_bucket_count - 1);
+    f->bucket_next = ctx->func_buckets[slot];
+    ctx->func_buckets[slot] = f;
+}
+
+FuncSig *func_registry_find(ParserContext *ctx, const char *name)
+{
+    if (!ctx->func_buckets)
+    {
+        return NULL; // an empty registry
+    }
+    FuncSig *f = ctx->func_buckets[func_name_hash(name) & (ctx->func_bucket_count - 1)];
+    while (f)
+    {
+        if (f->name[0] == name[0] && strcmp(f->name, name) == 0)
+        {
+            return f;
+        }
+        f = f->bucket_next;
+    }
+    return NULL;
 }
 
 void register_func(ParserContext *ctx, Scope *scope, const char *name, int count, char **defaults,
@@ -149,6 +230,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
         f->name = xstrdup(name);
         f->next = ctx->func_registry;
         ctx->func_registry = f;
+        func_registry_added(ctx, f);
     }
 
     f->decl_token = decl_token;

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include <stdint.h>
 #include "plugins/plugin_manager.h"
 #include "parser.h"
 #include "utils/format_expr.h"
@@ -171,17 +172,50 @@ void add_to_enum_list(ParserContext *ctx, ASTNode *node)
     ctx->parsed_enums_list = r;
 }
 
+// A slot for `node` in the set of parsed_funcs_list's nodes: where it is, or would go.
+static unsigned parsed_funcs_seen_slot(ASTNode **slots, unsigned cap, const ASTNode *node)
+{
+    uintptr_t bits = (uintptr_t)node;
+    unsigned i = (unsigned)((bits >> 4) * 2654435761u) & (cap - 1);
+    while (slots[i] && slots[i] != node)
+    {
+        i = (i + 1) & (cap - 1);
+    }
+    return i;
+}
+
 void add_to_func_list(ParserContext *ctx, ASTNode *node)
 {
-    StructRef *curr = ctx->parsed_funcs_list;
-    while (curr)
+    // Already in the list? A set of its nodes answers it: a program has many functions,
+    // and each is added here.
+    if (ctx->parsed_funcs_seen && ctx->parsed_funcs_seen[parsed_funcs_seen_slot(
+                                      ctx->parsed_funcs_seen, ctx->parsed_funcs_seen_cap, node)])
     {
-        if (curr->node == node)
-        {
-            return;
-        }
-        curr = curr->next;
+        return;
     }
+    // Kept at most half full.
+    if ((ctx->parsed_funcs_seen_count + 1) * 2 > ctx->parsed_funcs_seen_cap)
+    {
+        unsigned old_cap = ctx->parsed_funcs_seen_cap;
+        ASTNode **old = ctx->parsed_funcs_seen;
+        unsigned cap = old_cap ? old_cap * 2 : 256;
+        ASTNode **slots = xmalloc(cap * sizeof(ASTNode *));
+        memset(slots, 0, cap * sizeof(ASTNode *));
+        for (unsigned i = 0; i < old_cap; i++)
+        {
+            if (old[i])
+            {
+                slots[parsed_funcs_seen_slot(slots, cap, old[i])] = old[i];
+            }
+        }
+        zfree(old);
+        ctx->parsed_funcs_seen = slots;
+        ctx->parsed_funcs_seen_cap = cap;
+    }
+    ctx->parsed_funcs_seen[parsed_funcs_seen_slot(ctx->parsed_funcs_seen,
+                                                  ctx->parsed_funcs_seen_cap, node)] = node;
+    ctx->parsed_funcs_seen_count++;
+
     StructRef *r = xmalloc(sizeof(StructRef));
     r->node = node;
     r->next = ctx->parsed_funcs_list;
@@ -422,6 +456,77 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
     register_symbol_to_lsp(ctx, sym);
 }
 
+// ** The type names of cg.global_user_structs **
+
+static unsigned type_name_hash(const char *name)
+{
+    unsigned h = 2166136261u; // FNV-1a
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    return h;
+}
+
+// cg.global_user_structs is every top-level node of the program, of which few are structs
+// or enums, and find_struct_def is asked about every name codegen meets. This remembers
+// the names of that list's structs and enums, so a name that is none of them skips the
+// walk. Codegen reorders that list but puts no new type in it: instantiated generics and
+// tuples have lists of their own. The names are taken again if the list's head changes.
+static int global_types_may_have(ParserContext *ctx, const char *name)
+{
+    ASTNode *head = ctx->cg.global_user_structs;
+    if (ctx->cg.type_names_for != head || !ctx->cg.type_names)
+    {
+        unsigned count = 0;
+        for (ASTNode *n = head; n; n = n->next)
+        {
+            if (n->kind == NODE_STRUCT || n->kind == NODE_ENUM)
+            {
+                count++;
+            }
+        }
+        unsigned cap = 64;
+        while (cap < count * 2)
+        {
+            cap *= 2;
+        }
+        const char **names = xmalloc(cap * sizeof(const char *));
+        memset(names, 0, cap * sizeof(const char *));
+        for (ASTNode *n = head; n; n = n->next)
+        {
+            const char *type_name = n->kind == NODE_STRUCT ? n->strct.name
+                                    : n->kind == NODE_ENUM ? n->enm.name
+                                                           : NULL;
+            if (!type_name)
+            {
+                continue;
+            }
+            unsigned i = type_name_hash(type_name) & (cap - 1);
+            while (names[i] && strcmp(names[i], type_name) != 0)
+            {
+                i = (i + 1) & (cap - 1);
+            }
+            names[i] = type_name;
+        }
+        ctx->cg.type_names = names;
+        ctx->cg.type_names_cap = cap;
+        ctx->cg.type_names_for = head;
+    }
+
+    unsigned mask = ctx->cg.type_names_cap - 1;
+    unsigned i = type_name_hash(name) & mask;
+    while (ctx->cg.type_names[i])
+    {
+        if (strcmp(ctx->cg.type_names[i], name) == 0)
+        {
+            return 1;
+        }
+        i = (i + 1) & mask;
+    }
+    return 0;
+}
+
 ASTNode *find_struct_def(ParserContext *ctx, const char *name)
 {
     if (ctx)
@@ -448,7 +553,7 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
         CACHE_RESULT(sym->data.node);
     }
 
-    if (ctx->cg.global_user_structs)
+    if (ctx->cg.global_user_structs && global_types_may_have(ctx, name))
     {
         ASTNode *s = ctx->cg.global_user_structs;
         while (s)
@@ -504,15 +609,16 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
         r = r->next;
     }
 
-    ZenSymbol *all = ctx->all_symbols;
+    // all_symbols' structs and enums, in its order: a list of their own, as all_symbols
+    // holds every local of the program.
+    ZenSymbol *all = ctx->all_type_symbols;
     while (all)
     {
-        if ((all->kind == SYM_STRUCT || all->kind == SYM_ENUM) && all->name[0] == name[0] &&
-            strcmp(all->name, name) == 0 && all->data.node)
+        if (all->name[0] == name[0] && strcmp(all->name, name) == 0 && all->data.node)
         {
             CACHE_RESULT(all->data.node);
         }
-        all = all->next;
+        all = all->type_next;
     }
 
     StructDef *d = ctx->struct_defs;
@@ -858,14 +964,10 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
         return sym->data.sig;
     }
 
-    FuncSig *c = ctx->func_registry;
-    while (c)
+    FuncSig *c = func_registry_find(ctx, name);
+    if (c)
     {
-        if (c->name[0] == name[0] && strcmp(c->name, name) == 0)
-        {
-            return c;
-        }
-        c = c->next;
+        return c;
     }
 
     if (ctx->current_impl_methods)
