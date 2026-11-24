@@ -264,7 +264,7 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
 
     // Count all nodes (structs + enums + traits).
     int count = count_sortable_nodes(head);
-    if (count == 0)
+    if (count <= 0)
     {
         return head;
     }
@@ -302,15 +302,11 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
     }
 
     // Each node's needs, as edges d -> i (i needs d), without repeats.
-    int *need_count = xmalloc((size_t)count * sizeof(int));
-    int **needed_by = xmalloc((size_t)count * sizeof(int *));
-    int *needed_by_count = xmalloc((size_t)count * sizeof(int));
-    int *needed_by_cap = xmalloc((size_t)count * sizeof(int));
+    int *need_count = xcalloc((size_t)count, sizeof(int));
+    int **needed_by = xcalloc((size_t)count, sizeof(int *));
+    int *needed_by_count = xcalloc((size_t)count, sizeof(int));
+    int *needed_by_cap = xcalloc((size_t)count, sizeof(int));
     int *seen = xmalloc((size_t)count * sizeof(int)); // the last i that needed d
-    memset(need_count, 0, (size_t)count * sizeof(int));
-    memset(needed_by, 0, (size_t)count * sizeof(int *));
-    memset(needed_by_count, 0, (size_t)count * sizeof(int));
-    memset(needed_by_cap, 0, (size_t)count * sizeof(int));
     for (int j = 0; j < count; j++)
     {
         seen[j] = -1;
