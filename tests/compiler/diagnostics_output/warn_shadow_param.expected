@@ -1,0 +1,16 @@
+   Compiling tests/compiler/diagnostics_output/warn_shadow_param.zc...
+warning: Variable 'limit' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/warn_shadow_param.zc:7:11
+   |
+7  | fn before(limit: int) -> int {
+   |           ^ here
+   |
+   = note: This can lead to confusion
+warning: Variable 'limit' shadows a previous declaration
+  --> tests/compiler/diagnostics_output/warn_shadow_param.zc:13:10
+   |
+13 | fn after(limit: int) -> int {
+   |          ^ here
+   |
+   = note: This can lead to confusion
+[exit 0]

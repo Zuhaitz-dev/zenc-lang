@@ -404,7 +404,16 @@ void tc_add_symbol(TypeChecker *tc, const char *name, Type *type, Token t, int i
         misra_check_shadowing(tc->pctx, name, t);
         misra_check_typographic_ambiguity(tc->pctx, name, t);
     }
+    // The parser has warned of shadowing already, where the name is declared: registered
+    // again here it would be warned of again, and a parameter at its function's name.
+    // (MISRA mode's own checks are above.)
+    int saved_silent = tc->pctx->silent_warnings;
+    if (!cfg->misra_mode)
+    {
+        tc->pctx->silent_warnings = 1;
+    }
     add_symbol_with_token(tc->pctx, name, NULL, type, t, 0);
+    tc->pctx->silent_warnings = saved_silent;
     ZenSymbol *sym = symbol_lookup(tc->pctx->current_scope, name);
     if (sym)
     {

@@ -26,6 +26,35 @@ void push_pending_body(ParserContext *ctx, PendingBody *pending)
     ctx->pending_bodies_tail = pending;
 }
 
+// Warns of each parameter in `scope`, a function's, that shadows a symbol of an enclosing
+// scope. Called as the function's body is about to be parsed. A parameter of a
+// declaration with no body (an `extern fn`, a prototype) names nothing, so shadows nothing.
+static void check_parameter_shadowing(ParserContext *ctx, Scope *scope)
+{
+    if (ctx->config->misra_mode || !scope)
+    {
+        return; // MISRA mode checked them at the declaration
+    }
+    // In the order they were declared: the scope's list is newest first.
+    int count = 0;
+    for (ZenSymbol *sym = scope->symbols; sym; sym = sym->next)
+    {
+        count++;
+    }
+    ZenSymbol **params = xmalloc(sizeof(ZenSymbol *) * (size_t)(count ? count : 1));
+    int n = 0;
+    for (ZenSymbol *sym = scope->symbols; sym; sym = sym->next)
+    {
+        params[n++] = sym;
+    }
+    while (n > 0)
+    {
+        ZenSymbol *sym = params[--n];
+        audit_section_5(ctx, scope, sym->name, sym->link_name, sym->decl_token);
+    }
+    zfree(params);
+}
+
 // Warns about the parameters in `scope` that the function body never used.
 static void check_unused_parameters(ParserContext *ctx, Scope *scope, const char *func_name)
 {
@@ -151,8 +180,18 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
     char **ctype_overrides;
     int is_varargs = 0;
 
+    // The parameters are checked for shadowing when the body is parsed
+    // (check_parameter_shadowing), not here: by then every global is known, whatever the
+    // order of the declarations, and a declaration with no body is never checked. MISRA
+    // mode keeps its check at the declaration.
+    int saved_silent = ctx->silent_warnings;
+    if (!ctx->config->misra_mode)
+    {
+        ctx->silent_warnings = 1;
+    }
     char *args = parse_and_convert_args(ctx, l, &defaults, &default_values, &count, &arg_types,
                                         &param_names, &is_varargs, &ctype_overrides);
+    ctx->silent_warnings = saved_silent;
     if (!args)
     {
         return NULL;
@@ -243,6 +282,7 @@ ASTNode *parse_function(ParserContext *ctx, Lexer *l, int is_extern, const char 
         }
         else
         {
+            check_parameter_shadowing(ctx, ctx->current_scope);
             body = parse_block(ctx, l);
         }
 
@@ -419,6 +459,10 @@ void parse_pending_bodies(ParserContext *ctx)
             curr_func_ret = node->func.ret_type;
         }
 
+        if (node->kind != NODE_TEST)
+        {
+            check_parameter_shadowing(ctx, pending->scope);
+        }
         Lexer body_lexer = pending->body_start;
         ASTNode *body = parse_block(ctx, &body_lexer);
         if (node->kind == NODE_TEST)
