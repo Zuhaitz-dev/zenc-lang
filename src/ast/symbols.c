@@ -22,7 +22,10 @@ Scope *symbol_scope_create(Scope *parent, const char *name)
 // A list this short is as quick to walk as to index.
 #define SYMBOL_INDEX_MIN 32
 
-#define SYMBOL_LINK(sym, link) (*(ZenSymbol **)((char *)(sym) + (link)))
+// The chain link of `sym` that is `link` bytes into it. Through void *: `link` is the
+// offset of a ZenSymbol * field (SYMBOL_LINK_SCOPE, SYMBOL_LINK_ALL), so it is aligned
+// as one, which a cast straight from char * cannot show (-Wcast-align).
+#define SYMBOL_LINK(sym, link) (*(ZenSymbol **)(void *)((char *)(sym) + (link)))
 
 static unsigned symbol_name_hash(const char *name)
 {
