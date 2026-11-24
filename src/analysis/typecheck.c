@@ -703,7 +703,11 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
         if (node->cast.expr && node->cast.expr->type_info && node->cast.target_type)
         {
             Type *source_type = resolve_alias(node->cast.expr->type_info);
-            Type *target_type = type_from_string_helper(tc->pctx, node->cast.target_type);
+            // A function pointer type keeps the type it was parsed as: its spelling
+            // (`fn*(void*) -> void`) doesn't read back as a type.
+            Type *target_type = type_has_function(node->type_info)
+                                    ? node->type_info
+                                    : type_from_string_helper(tc->pctx, node->cast.target_type);
 
             if (tc->pctx->config->misra_mode && target_type)
             {
