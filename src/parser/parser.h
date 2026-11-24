@@ -99,18 +99,19 @@ extern ParserContext *token_parser_ctx;
  */
 typedef struct FuncSig
 {
-    char *name;           ///< Function name.
-    Token decl_token;     ///< declaration token.
-    int total_args;       ///< Total argument count.
-    char **defaults;      ///< Default values for arguments (or NULL).
-    Type **arg_types;     ///< Argument types.
-    Type *ret_type;       ///< Return type.
-    int is_varargs;       ///< 1 if variadic.
-    int required;         ///< 1 if return value must be used.
-    int is_pure;          ///< 1 if marked @pure.
-    char *link_name;      ///< Overriding C identifier (from @link_name).
-    int elide_from_idx;   ///< Index of parameter for lifetime elision (-1 if none)
-    struct FuncSig *next; ///< Next function in registry.
+    char *name;                  ///< Function name.
+    Token decl_token;            ///< declaration token.
+    int total_args;              ///< Total argument count.
+    char **defaults;             ///< Default values for arguments (or NULL).
+    Type **arg_types;            ///< Argument types.
+    Type *ret_type;              ///< Return type.
+    int is_varargs;              ///< 1 if variadic.
+    int required;                ///< 1 if return value must be used.
+    int is_pure;                 ///< 1 if marked @pure.
+    char *link_name;             ///< Overriding C identifier (from @link_name).
+    int elide_from_idx;          ///< Index of parameter for lifetime elision (-1 if none)
+    struct FuncSig *next;        ///< Next function in registry.
+    struct FuncSig *bucket_next; ///< Next in the registry's name index.
 } FuncSig;
 
 /**
@@ -252,6 +253,8 @@ typedef struct EnumVariantReg
     char *mangled_name; ///< Mangled name (Enum__Variant).
     int tag_id;         ///< Integration tag value.
     struct EnumVariantReg *next;
+    struct EnumVariantReg *variant_bucket_next; ///< Next in the index by variant name.
+    struct EnumVariantReg *enum_bucket_next;    ///< Next in the index by enum name.
 } EnumVariantReg;
 
 /**
@@ -407,15 +410,39 @@ struct ParserContext
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
-    StructRef *parsed_structs_list;                ///< List of all parsed struct nodes.
-    StructHashEntry struct_hash[STRUCT_HASH_SIZE]; ///< Hash table for fast struct/enum lookup.
-    StructRef *parsed_enums_list;                  ///< List of all parsed enum nodes.
-    StructRef *parsed_funcs_list;                  ///< List of all parsed function nodes.
-    StructRef *parsed_impls_list;                  ///< List of all parsed impl blocks.
-    StructRef *parsed_globals_list;                ///< List of all parsed global variables.
-    StructDef *struct_defs;        ///< Registry of struct definitions (map name -> node).
-    EnumVariantReg *enum_variants; ///< Registry of enum variants for global lookup.
-    ImplReg *registered_impls;     ///< Cache of type/trait implementations.
+    StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
+    StructHashEntry *struct_hash;   ///< Hash table for fast struct/enum lookup; NULL until used.
+    unsigned struct_hash_cap;       ///< Its slots, a power of two (STRUCT_HASH_SIZE at first).
+    unsigned struct_hash_count;     ///< Slots in use: kept at most half of them.
+    // Every name a struct or enum has been registered under, anywhere find_struct_def
+    // looks (type_name_note). A name not in it is no type, without a look at the lists.
+    char **known_type_names;       ///< Open-addressed set; NULL slots are empty.
+    unsigned known_type_names_cap; ///< Its slots, a power of two.
+    unsigned known_type_names_count;
+    StructRef *parsed_enums_list;   ///< List of all parsed enum nodes.
+    StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
+    ASTNode **parsed_funcs_seen;    ///< Set of that list's nodes, by address (dedup).
+    unsigned parsed_funcs_seen_cap; ///< Its slots, a power of two.
+    unsigned parsed_funcs_seen_count;
+    ASTNode **parsed_globals_seen;    ///< Set of parsed_globals_list's nodes, by address (dedup).
+    unsigned parsed_globals_seen_cap; ///< Its slots, a power of two.
+    unsigned parsed_globals_seen_count;
+    Instantiation **instantiation_index; ///< `instantiations` by name (each is in it once).
+    unsigned instantiation_index_cap;    ///< Its slots, a power of two.
+    unsigned instantiation_index_count;
+    StructDef **struct_def_index;  ///< `struct_defs` by name: the first of each, from the head.
+    unsigned struct_def_index_cap; ///< Its slots, a power of two.
+    unsigned struct_def_index_count;
+    StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
+    StructRef *parsed_globals_list; ///< List of all parsed global variables.
+    StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).
+    EnumVariantReg *enum_variants;  ///< Registry of enum variants for global lookup.
+    // Its two name indexes (enum_variants_named, enum_variants_of): chains in its order.
+    EnumVariantReg **enum_variant_buckets; ///< By variant name.
+    EnumVariantReg **enum_owner_buckets;   ///< By enum name.
+    unsigned enum_variant_bucket_count;    ///< Of each; a power of two.
+    unsigned enum_variant_count;           ///< Variants in the registry.
+    ImplReg *registered_impls;             ///< Cache of type/trait implementations.
 
     // Types
     SliceType *used_slices;  ///< Cache of generated slice types.
@@ -446,7 +473,15 @@ struct ParserContext
     int had_error; ///< Set by zpanic_at when fault-tolerant; checked by parser loops to bail out.
 
     // LSP: Flat symbol list (persists after parsing for LSP queries)
-    ZenSymbol *all_symbols; ///< comprehensive list of all symbols seen.
+    ZenSymbol *all_symbols;        ///< comprehensive list of all symbols seen.
+    SymbolIndex all_symbols_index; ///< Name index of `all_symbols`.
+    ZenSymbol *all_type_symbols;   ///< The structs and enums of `all_symbols`, in its order.
+    ZenSymbol **all_symbols_seen;  ///< Set of `all_symbols` by name, kind and place (dedup).
+    unsigned all_symbols_seen_cap; ///< Its slots, a power of two.
+    unsigned all_symbols_seen_count;
+    struct FuncSig **func_buckets; ///< Name index of `func_registry`.
+    unsigned func_bucket_count;    ///< A power of two.
+    unsigned func_count;           ///< Functions in `func_registry`.
 
     // External C interop: suppress undefined warnings for external symbols
     int has_external_includes;
@@ -464,12 +499,17 @@ struct ParserContext
         int in_defer_block; ///< 1 if currently parsing inside a defer block.
 
         ASTNode *global_user_structs; ///< List of user defined structs.
-        char *current_impl_type;      ///< Type currently being implemented (in impl block).
-        int tmp_counter;              ///< Counter for temporary variables.
-        ASTNode *defer_stack[1024];   ///< Stack of deferred nodes (max 1024).
-        int defer_count;              ///< Counter for defer statements in current scope.
-        ASTNode *current_lambda;      ///< Current lambda being generated.
-        char *current_func_ret_type;  ///< Return type of current function.
+        // The names of the structs and enums in that list, to answer "not there" without
+        // walking it (it is every top-level node). Made on first use for a given list.
+        ASTNode *type_names_for;     ///< The list the names were taken from.
+        const char **type_names;     ///< Open-addressed set; NULL slots are empty.
+        unsigned type_names_cap;     ///< Its slots, a power of two.
+        char *current_impl_type;     ///< Type currently being implemented (in impl block).
+        int tmp_counter;             ///< Counter for temporary variables.
+        ASTNode *defer_stack[1024];  ///< Stack of deferred nodes (max 1024).
+        int defer_count;             ///< Counter for defer statements in current scope.
+        ASTNode *current_lambda;     ///< Current lambda being generated.
+        char *current_func_ret_type; ///< Return type of current function.
         Type *current_func_ret_type_info;
         char *expected_init_type;      ///< Expected type for initializer (from let declaration).
         int *loop_defer_boundary;      ///< Defer stack index at start of each enclosing loop.
@@ -953,6 +993,32 @@ const char *get_closest_type_hint(ParserContext *ctx, const char *name);
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);
 void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
+/**
+ * @brief Records that a struct or enum is registered under `name`.
+ *
+ * Call it wherever one is put in a list find_struct_def reads (or given its name, if that
+ * comes later): find_struct_def answers "no" for a name never noted, without looking.
+ * Noting a name that turns out not to be findable costs nothing.
+ */
+void type_name_note(ParserContext *ctx, const char *name);
+/**
+ * @brief The registry's variants named `variant_name`, in its order: the first, or the one
+ * after `prev`. NULL when there are no more.
+ */
+EnumVariantReg *enum_variants_named(ParserContext *ctx, const char *variant_name,
+                                    const EnumVariantReg *prev);
+/**
+ * @brief The registry's variants of the enum `enum_name`, in its order: the first, or the
+ * one after `prev`. NULL when there are no more.
+ */
+EnumVariantReg *enum_variants_of(ParserContext *ctx, const char *enum_name,
+                                 const EnumVariantReg *prev);
+/** @brief The first function named `name` in func_registry, through its name index. */
+/** @brief The instantiation named `name` (in `instantiations`), or NULL. */
+Instantiation *instantiation_find(ParserContext *ctx, const char *name);
+/** @brief Indexes `ni`, just put at the head of `instantiations` (its name is not there). */
+void instantiation_added(ParserContext *ctx, Instantiation *ni);
+FuncSig *func_registry_find(ParserContext *ctx, const char *name);
 void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);
 
 // core/ declarations

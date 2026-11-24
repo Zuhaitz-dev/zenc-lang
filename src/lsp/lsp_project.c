@@ -494,22 +494,31 @@ static void scan_dir(const char *dir_path)
     closedir(d);
 }
 
+// The files by URI: a workspace's files are each looked up as they are indexed, and on
+// every request about one.
+static unsigned project_file_slot(ProjectFile **slots, unsigned cap, const char *uri)
+{
+    unsigned h = 2166136261u; // FNV-1a
+    for (const unsigned char *c = (const unsigned char *)uri; *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    unsigned i = h & (cap - 1);
+    while (slots[i] && strcmp(slots[i]->uri, uri) != 0)
+    {
+        i = (i + 1) & (cap - 1);
+    }
+    return i;
+}
+
 ProjectFile *lsp_project_get_file(const char *uri)
 {
-    if (!g_project)
+    if (!g_project || !g_project->file_index || !uri)
     {
         return NULL;
     }
-    ProjectFile *curr = g_project->files;
-    while (curr)
-    {
-        if (strcmp(curr->uri, uri) == 0)
-        {
-            return curr;
-        }
-        curr = curr->next;
-    }
-    return NULL;
+    return g_project
+        ->file_index[project_file_slot(g_project->file_index, g_project->file_index_cap, uri)];
 }
 
 static ProjectFile *add_project_file(const char *uri)
@@ -528,6 +537,30 @@ static ProjectFile *add_project_file(const char *uri)
 
     f->next = g_project->files;
     g_project->files = f;
+
+    // Kept at most half full. Each URI is added once: callers look it up first.
+    if ((g_project->file_index_count + 1) * 2 > g_project->file_index_cap)
+    {
+        unsigned old_cap = g_project->file_index_cap;
+        ProjectFile **old = g_project->file_index;
+        unsigned cap = old_cap ? old_cap * 2 : 256;
+        ProjectFile **slots = xmalloc(cap * sizeof(ProjectFile *));
+        memset(slots, 0, cap * sizeof(ProjectFile *));
+        for (unsigned i = 0; i < old_cap; i++)
+        {
+            if (old[i])
+            {
+                slots[project_file_slot(slots, cap, old[i]->uri)] = old[i];
+            }
+        }
+        zfree(old);
+        g_project->file_index = slots;
+        g_project->file_index_cap = cap;
+    }
+    g_project
+        ->file_index[project_file_slot(g_project->file_index, g_project->file_index_cap, f->uri)] =
+        f;
+    g_project->file_index_count++;
     return f;
 }
 

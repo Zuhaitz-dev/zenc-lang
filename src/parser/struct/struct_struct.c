@@ -76,6 +76,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
         ASTNode *node = ast_create(NODE_STRUCT);
         node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
         node->strct.name = name;
+        type_name_note(ctx, name);
         node->link_name = link_name ? xstrdup(link_name) : NULL;
         node->strct.is_template = (gp_count > 0);
         node->strct.generic_params = gps;
@@ -341,6 +342,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque,
     node->doc_comment = pending_doc; // struct-level /// doc (captured on entry)
 
     node->strct.name = name;
+    type_name_note(ctx, name); // it is in the list of structs already
 
     // Initialize Type Info so we can track traits (like Drop)
     node->type_info = type_new(TYPE_STRUCT);

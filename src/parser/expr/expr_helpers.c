@@ -333,16 +333,7 @@ static const char *aggregate_type_name(ParserContext *ctx, Type *t)
 
 static Instantiation *find_instantiation(ParserContext *ctx, const char *name)
 {
-    Instantiation *inst = ctx->instantiations;
-    while (inst)
-    {
-        if (strcmp(inst->name, name) == 0)
-        {
-            return inst;
-        }
-        inst = inst->next;
-    }
-    return NULL;
+    return instantiation_find(ctx, name);
 }
 
 // Two instances of one generic with different arguments (`Handle<A>` and

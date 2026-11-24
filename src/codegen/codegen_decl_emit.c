@@ -142,15 +142,11 @@ void emit_globals(ParserContext *ctx, ASTNode *node, VisitedModules **visited)
 }
 
 // Emit function prototypes
-typedef struct EmittedProto
-{
-    char *name;
-    char *cfg;
-    struct EmittedProto *next;
-} EmittedProto;
+// The prototypes emitted so far, by name and @cfg (CodegenKeySet's kind is unused: 0).
+typedef CodegenKeySet EmittedProto;
 
 static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModules **visited,
-                                 EmittedProto **emitted, int depth)
+                                 EmittedProto *emitted, int depth)
 {
     if (depth > 1024)
     {
@@ -208,24 +204,11 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
             }
             if (f->func.name)
             {
-                int already_emitted = 0;
-                for (EmittedProto *ep = *emitted; ep; ep = ep->next)
-                {
-                    if (strcmp(ep->name, f->func.name) == 0 &&
-                        ((ep->cfg == NULL && f->cfg_condition == NULL) ||
-                         (ep->cfg && f->cfg_condition && strcmp(ep->cfg, f->cfg_condition) == 0)))
-                    {
-                        already_emitted = 1;
-                        break;
-                    }
-                }
+                int already_emitted =
+                    codegen_keyset_has(emitted, 0, f->func.name, f->cfg_condition);
                 if (!already_emitted)
                 {
-                    EmittedProto *ep = xmalloc(sizeof(EmittedProto));
-                    ep->name = xstrdup(f->func.name);
-                    ep->cfg = f->cfg_condition ? xstrdup(f->cfg_condition) : NULL;
-                    ep->next = *emitted;
-                    *emitted = ep;
+                    codegen_keyset_add(emitted, 0, f->func.name, f->cfg_condition);
                     if (ctx->config->use_cpp && f->func.is_extern)
                     {
                         EMIT(ctx, "extern \"C\" ");
@@ -429,7 +412,7 @@ static void emit_protos_internal(ParserContext *ctx, ASTNode *node, VisitedModul
 
 void emit_protos(ParserContext *ctx, ASTNode *node, VisitedModules **visited)
 {
-    EmittedProto *emitted = NULL;
+    EmittedProto emitted = {0};
     if (visited)
     {
         emit_protos_internal(ctx, node, visited, &emitted, 0);
@@ -439,14 +422,7 @@ void emit_protos(ParserContext *ctx, ASTNode *node, VisitedModules **visited)
         VisitedModules *local_visited = NULL;
         emit_protos_internal(ctx, node, &local_visited, &emitted, 0);
     }
-    while (emitted)
-    {
-        EmittedProto *next = emitted->next;
-        zfree(emitted->name);
-        zfree(emitted->cfg);
-        zfree(emitted);
-        emitted = next;
-    }
+    codegen_keyset_free(&emitted);
 }
 
 // Emit VTable instances for trait implementations.

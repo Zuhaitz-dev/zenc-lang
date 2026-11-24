@@ -41,6 +41,11 @@ typedef struct MoveState
 {
     struct MoveEntry *entries; // List of tracked symbols
     struct MoveState *parent;  // Parent state (for scoping/forking)
+    // A name index of `entries` (a name is in it once), made when the list is long enough
+    // to be worth it: a state can track every global of a program.
+    struct MoveEntry **index; // open-addressed by symbol_name; NULL: walk `entries`
+    unsigned index_cap;       // a power of two
+    unsigned count;           // entries in the list
 } MoveState;
 
 /**

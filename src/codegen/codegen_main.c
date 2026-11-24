@@ -6,139 +6,138 @@
 #include "../zprep.h"
 #include "codegen.h"
 #include "codegen_internal.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 // Helper: Check if a struct depends on another struct/enum by-value.
-static int struct_depends_on(ParserContext *ctx, ASTNode *s1, const char *target_name)
-{
-    if (!s1)
-    {
-        return 0;
-    }
+// ** What a struct or enum needs emitted before it **
+//
+// A field (or an enum payload) of a type that is not a pointer needs that type complete.
+// What it names is matched against the other types by name, as a prefix: a field of type
+// `Vec_int` needs a type `Vec` before it. An enum's match also needs the name to end
+// there ('\0', '[', or a space) in its type as written.
 
-    // Check structs
+// One field's or payload's type, as it is matched.
+typedef struct SortKey
+{
+    char *mangled; // the type with `string` made `const char*`: a name is a prefix of it
+    char *clean;   // an enum payload's type as written (NULL for a struct field)
+    struct SortKey *next;
+} SortKey;
+
+static const char *sort_strip_tag(const char *type_str)
+{
+    if (strncmp(type_str, "struct ", 7) == 0)
+    {
+        return type_str + 7;
+    }
+    if (strncmp(type_str, "enum ", 5) == 0)
+    {
+        return type_str + 5;
+    }
+    if (strncmp(type_str, "union ", 6) == 0)
+    {
+        return type_str + 6;
+    }
+    return type_str;
+}
+
+static SortKey *sort_key_new(ParserContext *ctx, const char *type_str, int keep_clean,
+                             SortKey *next)
+{
+    const char *clean = sort_strip_tag(type_str);
+    if (ctx)
+    {
+        const char *alias = find_type_alias(ctx, clean);
+        if (alias)
+        {
+            clean = alias;
+        }
+    }
+    SortKey *k = xmalloc(sizeof(SortKey));
+    k->mangled = replace_string_type(clean);
+    k->clean = keep_clean ? xstrdup(clean) : NULL;
+    k->next = next;
+    return k;
+}
+
+// The keys of a struct's fields or an enum's payloads, which are not pointers.
+static SortKey *sort_keys_of(ParserContext *ctx, ASTNode *s1)
+{
+    SortKey *keys = NULL;
     if (s1->kind == NODE_STRUCT)
     {
-        ASTNode *field = s1->strct.fields;
-        while (field)
+        for (ASTNode *field = s1->strct.fields; field; field = field->next)
         {
-            if (field->kind == NODE_FIELD && field->field.type)
+            if (field->kind == NODE_FIELD && field->field.type && !strchr(field->field.type, '*'))
             {
-                char *type_str = field->field.type;
-
-                // Skip pointers - they don't create ordering dependency.
-                if (strchr(type_str, '*'))
-                {
-                    field = field->next;
-                    continue;
-                }
-
-                // Clean type string (remove struct/enum prefixes)
-                const char *clean = type_str;
-                if (strncmp(clean, "struct ", 7) == 0)
-                {
-                    clean += 7;
-                }
-                else if (strncmp(clean, "enum ", 5) == 0)
-                {
-                    clean += 5;
-                }
-                else if (strncmp(clean, "union ", 6) == 0)
-                {
-                    clean += 6;
-                }
-
-                if (ctx)
-                {
-                    const char *alias = find_type_alias(ctx, clean);
-                    if (alias)
-                    {
-                        clean = alias;
-                    }
-                }
-
-                char *mangled_clean = replace_string_type(clean);
-
-                // Check for match
-                size_t len = strlen(target_name);
-                int is_match = (strncmp(mangled_clean, target_name, (size_t)(len)) == 0);
-                zfree(mangled_clean);
-
-                if (is_match)
-                {
-                    return 1;
-                }
+                keys = sort_key_new(ctx, field->field.type, 0, keys);
             }
-            field = field->next;
         }
     }
-    // Check enums (ADTs)
     else if (s1->kind == NODE_ENUM)
     {
-        ASTNode *variant = s1->enm.variants;
-        while (variant)
+        for (ASTNode *variant = s1->enm.variants; variant; variant = variant->next)
         {
-            if (variant->kind == NODE_ENUM_VARIANT && variant->variant.payload)
+            if (variant->kind != NODE_ENUM_VARIANT || !variant->variant.payload)
             {
-                char *type_str =
-                    type_to_c_string(variant->variant.payload, ctx->config->misra_mode);
-                if (type_str)
-                {
-                    if (strchr(type_str, '*'))
-                    {
-                        zfree(type_str);
-                        variant = variant->next;
-                        continue;
-                    }
-
-                    const char *clean = type_str;
-                    if (strncmp(clean, "struct ", 7) == 0)
-                    {
-                        clean += 7;
-                    }
-                    else if (strncmp(clean, "enum ", 5) == 0)
-                    {
-                        clean += 5;
-                    }
-                    else if (strncmp(clean, "union ", 6) == 0)
-                    {
-                        clean += 6;
-                    }
-
-                    if (ctx)
-                    {
-                        const char *alias = find_type_alias(ctx, clean);
-                        if (alias)
-                        {
-                            clean = alias;
-                        }
-                    }
-                    char *mangled_clean = replace_string_type(clean);
-
-                    // Check for match
-                    size_t len = strlen(target_name);
-                    int is_match = (strncmp(mangled_clean, target_name, (size_t)(len)) == 0);
-                    zfree(mangled_clean);
-
-                    if (is_match)
-                    {
-                        char next = clean[len];
-                        if (next == 0 || next == '[' || isspace(next))
-                        {
-                            zfree(type_str);
-                            return 1;
-                        }
-                    }
-                    zfree(type_str);
-                }
+                continue;
             }
-            variant = variant->next;
+            char *type_str = type_to_c_string(variant->variant.payload, ctx->config->misra_mode);
+            if (type_str && !strchr(type_str, '*'))
+            {
+                keys = sort_key_new(ctx, type_str, 1, keys);
+            }
+            zfree(type_str);
         }
     }
+    return keys;
+}
 
-    return 0;
+static void sort_keys_free(SortKey *k)
+{
+    while (k)
+    {
+        SortKey *next = k->next;
+        zfree(k->mangled);
+        zfree(k->clean);
+        zfree(k);
+        k = next;
+    }
+}
+
+// The types by name: an open-addressed table of names, each with the indexes of the
+// types of that name.
+typedef struct SortName
+{
+    const char *name; // NULL: an empty slot
+    size_t len;
+    int *idx;
+    int idx_count;
+    int idx_cap;
+} SortName;
+
+static unsigned sort_name_hash(const char *s, size_t len)
+{
+    unsigned h = 2166136261u; // FNV-1a
+    for (size_t i = 0; i < len; i++)
+    {
+        h = (h ^ (unsigned char)s[i]) * 16777619u;
+    }
+    return h;
+}
+
+// The slot of the name s[0..len), or the empty slot it would go in.
+static SortName *sort_name_slot(SortName *table, unsigned cap, const char *s, size_t len)
+{
+    unsigned i = sort_name_hash(s, len) & (cap - 1);
+    while (table[i].name && !(table[i].len == len && memcmp(table[i].name, s, len) == 0))
+    {
+        i = (i + 1) & (cap - 1);
+    }
+    return &table[i];
 }
 
 static int count_sortable_nodes_internal(ASTNode *head, VisitedModules **visited, int depth)
@@ -228,6 +227,35 @@ static void collect_sortable_nodes(ASTNode *head, ASTNode **nodes, int *idx)
 }
 
 // Topologically sort a list of struct/enum nodes.
+//
+// The order is that of a scan repeated until nothing changes: each pass goes through the
+// nodes in their order, and emits a trait at once and a struct or enum when every other
+// type it needs (see SortKey) has been emitted. What is left (a cycle) goes last, in order.
+//
+// That scan compares every node with every other on every pass. The same order comes from
+// the pass each node is emitted in: a node goes in the first pass after each type it needs
+// has gone, or in the same pass when that type comes before it in the list. So
+//
+//     pass(i) = max(1, pass(d) + (d > i ? 1 : 0) for each type d that i needs)
+//
+// worked out in dependency order (Kahn's algorithm); then the nodes in (pass, index) order.
+typedef struct
+{
+    int pass;
+    int index;
+} SortSlot;
+
+static int sort_slot_cmp(const void *a, const void *b)
+{
+    const SortSlot *x = a;
+    const SortSlot *y = b;
+    if (x->pass != y->pass)
+    {
+        return x->pass < y->pass ? -1 : 1;
+    }
+    return x->index < y->index ? -1 : (x->index > y->index ? 1 : 0);
+}
+
 static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
 {
     if (!head)
@@ -237,98 +265,175 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
 
     // Count all nodes (structs + enums + traits).
     int count = count_sortable_nodes(head);
-    if (count == 0)
+    if (count <= 0)
     {
         return head;
     }
 
-    // Build array of all nodes.
-    ASTNode **nodes = malloc((size_t)count * sizeof(ASTNode *));
-    int *emitted = calloc((size_t)count, sizeof(int));
+    ASTNode **nodes = xmalloc((size_t)count * sizeof(ASTNode *));
     int idx = 0;
     collect_sortable_nodes(head, nodes, &idx);
 
-    // Build order array (indices in emission order).
-    int *order = malloc((size_t)count * sizeof(int));
-    int order_idx = 0;
-
-    int changed = 1;
-    int max_iterations = count * count;
-    int iterations = 0;
-
-    while (changed && iterations < max_iterations)
+    // The types by name. A trait is no type a field can need.
+    unsigned cap = 64;
+    while (cap < (unsigned)count * 2)
     {
-        changed = 0;
-        iterations++;
-
-        for (int i = 0; i < count; i++)
+        cap *= 2;
+    }
+    SortName *names = xmalloc(cap * sizeof(SortName));
+    memset(names, 0, cap * sizeof(SortName));
+    for (int j = 0; j < count; j++)
+    {
+        const char *name = nodes[j]->kind == NODE_STRUCT ? nodes[j]->strct.name
+                           : nodes[j]->kind == NODE_ENUM ? nodes[j]->enm.name
+                                                         : NULL;
+        if (!name)
         {
-            if (emitted[i])
-            {
-                continue;
-            }
+            continue;
+        }
+        size_t len = strlen(name);
+        SortName *slot = sort_name_slot(names, cap, name, len);
+        if (!slot->name)
+        {
+            slot->name = name;
+            slot->len = len;
+        }
+        if (slot->idx_count == slot->idx_cap)
+        {
+            // Doubled: the arena does not free, so growing one at a time would cost the
+            // square of the number of types of one name.
+            slot->idx_cap = slot->idx_cap ? slot->idx_cap * 2 : 2;
+            slot->idx = xrealloc(slot->idx, sizeof(int) * (size_t)(slot->idx_cap));
+        }
+        slot->idx[slot->idx_count++] = j;
+    }
 
-            // Traits have no dependencies, emit first.
-            if (nodes[i]->kind == NODE_TRAIT)
-            {
-                order[order_idx++] = i;
-                emitted[i] = 1;
-                changed = 1;
-                continue;
-            }
+    // Each node's needs, as edges d -> i (i needs d), without repeats.
+    int *need_count = xcalloc((size_t)count, sizeof(int));
+    int **needed_by = xcalloc((size_t)count, sizeof(int *));
+    int *needed_by_count = xcalloc((size_t)count, sizeof(int));
+    int *needed_by_cap = xcalloc((size_t)count, sizeof(int));
+    int *seen = xmalloc((size_t)count * sizeof(int)); // the last i that needed d
+    for (int j = 0; j < count; j++)
+    {
+        seen[j] = -1;
+    }
 
-            // For structs/enums, check if all dependencies are emitted.
-            int can_emit = 1;
-            for (int j = 0; j < count; j++)
+    for (int i = 0; i < count; i++)
+    {
+        if (nodes[i]->kind == NODE_TRAIT)
+        {
+            continue; // emitted at once, whatever it names
+        }
+        SortKey *keys = sort_keys_of(ctx, nodes[i]);
+        for (SortKey *k = keys; k; k = k->next)
+        {
+            size_t mlen = strlen(k->mangled);
+            size_t clen = k->clean ? strlen(k->clean) : 0;
+            // Every name that is a prefix of the type, the empty one too.
+            for (size_t len = 0; len <= mlen; len++)
             {
-                if (i == j || emitted[j])
+                if (k->clean)
+                {
+                    // An enum's: the name also ends where the type as written does, or at
+                    // a '[' or a space in it.
+                    if (len > clen)
+                    {
+                        break;
+                    }
+                    char next = k->clean[len];
+                    if (!(next == 0 || next == '[' || isspace((unsigned char)next)))
+                    {
+                        continue;
+                    }
+                }
+                SortName *slot = sort_name_slot(names, cap, k->mangled, len);
+                if (!slot->name)
                 {
                     continue;
                 }
-
-                // Get the name of the potential dependency.
-                const char *dep_name = NULL;
-                if (nodes[j]->kind == NODE_STRUCT)
+                for (int n = 0; n < slot->idx_count; n++)
                 {
-                    dep_name = nodes[j]->strct.name;
-                }
-                else if (nodes[j]->kind == NODE_ENUM)
-                {
-                    dep_name = nodes[j]->enm.name;
-                }
-
-                if (dep_name && struct_depends_on(ctx, nodes[i], dep_name))
-                {
-                    can_emit = 0;
-                    break;
+                    int d = slot->idx[n];
+                    if (d == i || seen[d] == i)
+                    {
+                        continue;
+                    }
+                    seen[d] = i;
+                    need_count[i]++;
+                    if (needed_by_count[d] == needed_by_cap[d])
+                    {
+                        needed_by_cap[d] = needed_by_cap[d] ? needed_by_cap[d] * 2 : 4;
+                        needed_by[d] =
+                            xrealloc(needed_by[d], sizeof(int) * (size_t)(needed_by_cap[d]));
+                    }
+                    needed_by[d][needed_by_count[d]++] = i;
                 }
             }
+        }
+        sort_keys_free(keys);
+    }
 
-            if (can_emit)
+    // Kahn's algorithm, working out each node's pass as its last need is met.
+    int *pass = xmalloc((size_t)count * sizeof(int));
+    int *ready = xmalloc((size_t)count * sizeof(int));
+    int ready_head = 0;
+    int ready_tail = 0;
+    for (int i = 0; i < count; i++)
+    {
+        pass[i] = 1;
+        if (need_count[i] == 0)
+        {
+            ready[ready_tail++] = i;
+        }
+    }
+    while (ready_head < ready_tail)
+    {
+        int d = ready[ready_head++];
+        for (int n = 0; n < needed_by_count[d]; n++)
+        {
+            int i = needed_by[d][n];
+            int p = pass[d] + (d > i ? 1 : 0);
+            if (p > pass[i])
             {
-                order[order_idx++] = i;
-                emitted[i] = 1;
-                changed = 1;
+                pass[i] = p;
+            }
+            if (--need_count[i] == 0)
+            {
+                ready[ready_tail++] = i;
             }
         }
     }
 
-    // Add any remaining nodes (cycles).
+    // The emitted nodes by (pass, index); then the rest (cycles), in order.
+    SortSlot *slots = xmalloc((size_t)count * sizeof(SortSlot));
+    int slot_count = 0;
     for (int i = 0; i < count; i++)
     {
-        if (!emitted[i])
+        if (need_count[i] == 0)
         {
-            order[order_idx++] = i;
+            slots[slot_count].pass = pass[i];
+            slots[slot_count].index = i;
+            slot_count++;
+        }
+    }
+    qsort(slots, (size_t)slot_count, sizeof(SortSlot), sort_slot_cmp);
+    for (int i = 0; i < count; i++)
+    {
+        if (need_count[i] != 0)
+        {
+            slots[slot_count].pass = 0;
+            slots[slot_count].index = i;
+            slot_count++;
         }
     }
 
     // Now build the linked list in the correct order.
     ASTNode *result = NULL;
     ASTNode *result_tail = NULL;
-
-    for (int i = 0; i < order_idx; i++)
+    for (int n = 0; n < slot_count; n++)
     {
-        ASTNode *node = nodes[order[i]];
+        ASTNode *node = nodes[slots[n].index];
         if (!result)
         {
             result = node;
@@ -345,9 +450,24 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
         result_tail->next = NULL;
     }
 
+    for (unsigned c = 0; c < cap; c++)
+    {
+        zfree(names[c].idx);
+    }
+    zfree(names);
+    for (int j = 0; j < count; j++)
+    {
+        zfree(needed_by[j]);
+    }
+    zfree(needed_by);
+    zfree(needed_by_count);
+    zfree(needed_by_cap);
+    zfree(need_count);
+    zfree(seen);
+    zfree(pass);
+    zfree(ready);
+    zfree(slots);
     zfree(nodes);
-    zfree(emitted);
-    zfree(order);
     return result;
 }
 
@@ -725,31 +845,29 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
             er = er->next;
         }
 
+        // The structs and enums in `merged` by kind and name: a top-level one already there
+        // is not added again.
+        CodegenKeySet merged_types = {0};
+        for (ASTNode *m = merged; m; m = m->next)
+        {
+            if (m->kind == NODE_STRUCT || m->kind == NODE_ENUM)
+            {
+                codegen_keyset_add(&merged_types, (int)m->kind,
+                                   m->kind == NODE_STRUCT ? m->strct.name : m->enm.name, NULL);
+            }
+        }
+
         ASTNode *k = kids;
         while (k)
         {
             if (k->kind == NODE_STRUCT || k->kind == NODE_ENUM)
             {
-                int found = 0;
-                ASTNode *chk = merged;
-                while (chk)
-                {
-                    if (chk->kind == k->kind)
-                    {
-                        const char *n1 = (k->kind == NODE_STRUCT) ? k->strct.name : k->enm.name;
-                        const char *n2 =
-                            (chk->kind == NODE_STRUCT) ? chk->strct.name : chk->enm.name;
-                        if (n1 && n2 && strcmp(n1, n2) == 0)
-                        {
-                            found = 1;
-                            break;
-                        }
-                    }
-                    chk = chk->next;
-                }
+                const char *k_name = (k->kind == NODE_STRUCT) ? k->strct.name : k->enm.name;
+                int found = codegen_keyset_has(&merged_types, (int)k->kind, k_name, NULL);
 
                 if (!found)
                 {
+                    codegen_keyset_add(&merged_types, (int)k->kind, k_name, NULL);
                     ASTNode *copy = xmalloc(sizeof(ASTNode));
                     *copy = *k;
                     copy->next = NULL;
@@ -800,6 +918,8 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
             tup = tup->next;
         }
 
+        codegen_keyset_free(&merged_types);
+
         // Topologically sort.
         ASTNode *sorted = topo_sort_structs(ctx, merged);
 
@@ -837,7 +957,8 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
 
         // Emit type aliases was here (moved up)
 
-        ASTNode *merged_globals = NULL; // Head
+        ASTNode *merged_globals = NULL;          // Head
+        CodegenKeySet merged_global_names = {0}; // its globals and defs, by name
 
         if (ctx->parsed_globals_list)
         {
@@ -846,25 +967,21 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
             {
                 // Check if this global is already in the merged list (by name)
                 int is_duplicate = 0;
-                if (struct_ref->node && (struct_ref->node->kind == NODE_VAR_DECL ||
-                                         struct_ref->node->kind == NODE_CONST))
+                int is_var = struct_ref->node && (struct_ref->node->kind == NODE_VAR_DECL ||
+                                                  struct_ref->node->kind == NODE_CONST);
+                if (is_var)
                 {
-                    const char *var_name = struct_ref->node->var_decl.name;
-                    ASTNode *check = merged_globals;
-                    while (check)
-                    {
-                        if ((check->kind == NODE_VAR_DECL || check->kind == NODE_CONST) &&
-                            check->var_decl.name && strcmp(check->var_decl.name, var_name) == 0)
-                        {
-                            is_duplicate = 1;
-                            break;
-                        }
-                        check = check->next;
-                    }
+                    is_duplicate = codegen_keyset_has(&merged_global_names, 0,
+                                                      struct_ref->node->var_decl.name, NULL);
                 }
 
                 if (!is_duplicate && struct_ref->node)
                 {
+                    if (is_var)
+                    {
+                        codegen_keyset_add(&merged_global_names, 0, struct_ref->node->var_decl.name,
+                                           NULL);
+                    }
                     ASTNode *copy = xmalloc(sizeof(ASTNode));
                     *copy = *struct_ref->node;
                     copy->next = merged_globals;
@@ -874,6 +991,8 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
                 struct_ref = struct_ref->next;
             }
         }
+
+        codegen_keyset_free(&merged_global_names);
 
         ASTNode *merged_funcs = NULL;
         ASTNode *merged_funcs_tail = NULL;

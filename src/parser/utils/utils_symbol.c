@@ -96,6 +96,11 @@ ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n)
 
 ZenSymbol *find_symbol_in_all(ParserContext *ctx, const char *n)
 {
+    if (symbol_index_ready(&ctx->all_symbols_index))
+    {
+        return symbol_index_find(&ctx->all_symbols_index, n, NULL, SYMBOL_LINK_ALL);
+    }
+
     ZenSymbol *sym = ctx->all_symbols;
     while (sym)
     {
@@ -116,6 +121,82 @@ void init_builtins(void)
         return;
     }
     init = 1;
+}
+
+// ** The name index of func_registry **
+//
+// func_registry only grows at its head, and a function's name doesn't change, so a
+// bucket's chain is in the registry's order and its first match is the registry's.
+
+static unsigned func_name_hash(const char *name)
+{
+    unsigned h = 2166136261u; // FNV-1a
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    return h;
+}
+
+// Makes the buckets anew from the whole registry.
+static void func_registry_index(ParserContext *ctx)
+{
+    unsigned buckets = 64;
+    while (buckets < ctx->func_count * 2)
+    {
+        buckets *= 2;
+    }
+    ctx->func_buckets = xmalloc(buckets * sizeof(FuncSig *));
+    memset(ctx->func_buckets, 0, buckets * sizeof(FuncSig *));
+    ctx->func_bucket_count = buckets;
+
+    // Oldest first, each put at its chain's head, leaves the newest at the head.
+    FuncSig **all = xmalloc((ctx->func_count ? ctx->func_count : 1) * sizeof(FuncSig *));
+    unsigned n = 0;
+    for (FuncSig *f = ctx->func_registry; f && n < ctx->func_count; f = f->next)
+    {
+        all[n++] = f;
+    }
+    while (n > 0)
+    {
+        FuncSig *f = all[--n];
+        unsigned slot = func_name_hash(f->name) & (buckets - 1);
+        f->bucket_next = ctx->func_buckets[slot];
+        ctx->func_buckets[slot] = f;
+    }
+    zfree(all);
+}
+
+// `f` was just put at the head of func_registry.
+static void func_registry_added(ParserContext *ctx, FuncSig *f)
+{
+    ctx->func_count++;
+    if (!ctx->func_buckets || ctx->func_count > ctx->func_bucket_count * 2)
+    {
+        func_registry_index(ctx);
+        return;
+    }
+    unsigned slot = func_name_hash(f->name) & (ctx->func_bucket_count - 1);
+    f->bucket_next = ctx->func_buckets[slot];
+    ctx->func_buckets[slot] = f;
+}
+
+FuncSig *func_registry_find(ParserContext *ctx, const char *name)
+{
+    if (!ctx->func_buckets)
+    {
+        return NULL; // an empty registry
+    }
+    FuncSig *f = ctx->func_buckets[func_name_hash(name) & (ctx->func_bucket_count - 1)];
+    while (f)
+    {
+        if (f->name[0] == name[0] && strcmp(f->name, name) == 0)
+        {
+            return f;
+        }
+        f = f->bucket_next;
+    }
+    return NULL;
 }
 
 void register_func(ParserContext *ctx, Scope *scope, const char *name, int count, char **defaults,
@@ -149,6 +230,7 @@ void register_func(ParserContext *ctx, Scope *scope, const char *name, int count
         f->name = xstrdup(name);
         f->next = ctx->func_registry;
         ctx->func_registry = f;
+        func_registry_added(ctx, f);
     }
 
     f->decl_token = decl_token;
@@ -314,6 +396,112 @@ void add_instantiated_func(ParserContext *ctx, ASTNode *fn)
     ctx->instantiated_funcs = fn;
 }
 
+// ** The name indexes of enum_variants **
+//
+// enum_variants only grows at its head and a variant's names don't change, so a bucket's
+// chain is in the registry's order. A variant with no name of a kind is not in that index,
+// as the walks it replaces never matched one.
+
+// Makes both sets of buckets anew from the whole registry.
+static void enum_variants_index(ParserContext *ctx)
+{
+    unsigned buckets = 64;
+    while (buckets < ctx->enum_variant_count * 2)
+    {
+        buckets *= 2;
+    }
+    size_t bytes = buckets * sizeof(EnumVariantReg *);
+    ctx->enum_variant_buckets = xmalloc(bytes);
+    ctx->enum_owner_buckets = xmalloc(bytes);
+    memset(ctx->enum_variant_buckets, 0, bytes);
+    memset(ctx->enum_owner_buckets, 0, bytes);
+    ctx->enum_variant_bucket_count = buckets;
+
+    // Oldest first, each put at its chain's head, leaves the newest at the head.
+    unsigned total = ctx->enum_variant_count ? ctx->enum_variant_count : 1;
+    EnumVariantReg **all = xmalloc(total * sizeof(EnumVariantReg *));
+    unsigned n = 0;
+    for (EnumVariantReg *r = ctx->enum_variants; r && n < ctx->enum_variant_count; r = r->next)
+    {
+        all[n++] = r;
+    }
+    while (n > 0)
+    {
+        EnumVariantReg *r = all[--n];
+        if (r->variant_name)
+        {
+            unsigned slot = func_name_hash(r->variant_name) & (buckets - 1);
+            r->variant_bucket_next = ctx->enum_variant_buckets[slot];
+            ctx->enum_variant_buckets[slot] = r;
+        }
+        if (r->enum_name)
+        {
+            unsigned slot = func_name_hash(r->enum_name) & (buckets - 1);
+            r->enum_bucket_next = ctx->enum_owner_buckets[slot];
+            ctx->enum_owner_buckets[slot] = r;
+        }
+    }
+    zfree(all);
+}
+
+// `r` was just put at the head of enum_variants.
+static void enum_variants_added(ParserContext *ctx, EnumVariantReg *r)
+{
+    ctx->enum_variant_count++;
+    if (!ctx->enum_variant_buckets || ctx->enum_variant_count > ctx->enum_variant_bucket_count * 2)
+    {
+        enum_variants_index(ctx);
+        return;
+    }
+    unsigned mask = ctx->enum_variant_bucket_count - 1;
+    if (r->variant_name)
+    {
+        unsigned slot = func_name_hash(r->variant_name) & mask;
+        r->variant_bucket_next = ctx->enum_variant_buckets[slot];
+        ctx->enum_variant_buckets[slot] = r;
+    }
+    if (r->enum_name)
+    {
+        unsigned slot = func_name_hash(r->enum_name) & mask;
+        r->enum_bucket_next = ctx->enum_owner_buckets[slot];
+        ctx->enum_owner_buckets[slot] = r;
+    }
+}
+
+EnumVariantReg *enum_variants_named(ParserContext *ctx, const char *variant_name,
+                                    const EnumVariantReg *prev)
+{
+    if (!ctx->enum_variant_buckets)
+    {
+        return NULL; // an empty registry
+    }
+    EnumVariantReg *r = prev ? prev->variant_bucket_next
+                             : ctx->enum_variant_buckets[func_name_hash(variant_name) &
+                                                         (ctx->enum_variant_bucket_count - 1)];
+    while (r && strcmp(r->variant_name, variant_name) != 0)
+    {
+        r = r->variant_bucket_next;
+    }
+    return r;
+}
+
+EnumVariantReg *enum_variants_of(ParserContext *ctx, const char *enum_name,
+                                 const EnumVariantReg *prev)
+{
+    if (!ctx->enum_variant_buckets)
+    {
+        return NULL; // an empty registry
+    }
+    EnumVariantReg *r = prev ? prev->enum_bucket_next
+                             : ctx->enum_owner_buckets[func_name_hash(enum_name) &
+                                                       (ctx->enum_variant_bucket_count - 1)];
+    while (r && strcmp(r->enum_name, enum_name) != 0)
+    {
+        r = r->enum_bucket_next;
+    }
+    return r;
+}
+
 void register_enum_variant(ParserContext *ctx, const char *vname, const char *ename, int tag)
 {
     if (ctx->config->mode_lsp)
@@ -334,6 +522,7 @@ void register_enum_variant(ParserContext *ctx, const char *vname, const char *en
     r->tag_id = tag;
     r->next = ctx->enum_variants;
     ctx->enum_variants = r;
+    enum_variants_added(ctx, r);
 }
 
 EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
@@ -355,21 +544,27 @@ EnumVariantReg *find_enum_variant(ParserContext *ctx, const char *name)
         vname = sep + 2;
     }
 
-    EnumVariantReg *r = ctx->enum_variants;
-    while (r)
+    // With an enum named, through that enum's variants: many enums share a variant's name
+    // (`None`, `Ok`), few variants share an enum. Either way the registry's first match.
+    EnumVariantReg *r = NULL;
+    if (ename)
     {
-        if (strcmp(r->variant_name, vname) == 0)
+        while ((r = enum_variants_of(ctx, ename, r)) != NULL)
         {
-            if (!ename || strcmp(r->enum_name, ename) == 0)
+            if (r->variant_name && strcmp(r->variant_name, vname) == 0)
             {
-                if (ename)
-                {
-                    zfree(ename);
-                }
+                zfree(ename);
                 return r;
             }
         }
-        r = r->next;
+    }
+    else
+    {
+        r = enum_variants_named(ctx, vname, NULL);
+        if (r)
+        {
+            return r;
+        }
     }
     if (ename)
     {
@@ -388,15 +583,13 @@ EnumVariantReg *find_enum_variant_of(ParserContext *ctx, const char *enum_name,
     {
         return NULL;
     }
-    EnumVariantReg *r = ctx->enum_variants;
-    while (r)
+    EnumVariantReg *r = NULL;
+    while ((r = enum_variants_of(ctx, enum_name, r)) != NULL)
     {
-        if (r->variant_name && r->enum_name && strcmp(r->variant_name, variant_name) == 0 &&
-            strcmp(r->enum_name, enum_name) == 0)
+        if (r->variant_name && strcmp(r->variant_name, variant_name) == 0)
         {
             return r;
         }
-        r = r->next;
     }
     return NULL;
 }
