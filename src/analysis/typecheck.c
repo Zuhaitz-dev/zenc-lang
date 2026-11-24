@@ -625,9 +625,13 @@ void check_node(TypeChecker *tc, ASTNode *node, int depth)
 
                 if (struct_name)
                 {
-                    char buf[MAX_ERROR_MSG_LEN];
-                    snprintf(buf, sizeof(buf), "%s__%s", struct_name, node->member.field);
+                    // On the heap: check_node is on the stack twice for every level of
+                    // nested imports, so a buffer here would cost each level 4 KB.
+                    size_t len = strlen(struct_name) + strlen(node->member.field) + 3;
+                    char *buf = xmalloc(len);
+                    snprintf(buf, len, "%s__%s", struct_name, node->member.field);
                     char *mangled = merge_underscores(buf);
+                    zfree(buf);
 
                     FuncSig *sig = find_func(tc->pctx, mangled);
                     if (sig)

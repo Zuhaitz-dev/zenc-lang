@@ -47,6 +47,20 @@ static void check_global_initializers(ASTNode *decls)
     }
 }
 
+// realpath of "dir/path", as libc's memory (libc_free it), or NULL.
+//
+// The joined path is made on the heap, not in a buffer of this frame's caller:
+// parse_top_level_nodes is on the stack once for every level of nested imports.
+static char *realpath_joined(const char *dir, const char *path)
+{
+    size_t len = strlen(dir) + strlen(path) + 2;
+    char *joined = xmalloc(len);
+    snprintf(joined, len, "%s/%s", dir, path);
+    char *resolved = realpath(joined, NULL);
+    zfree(joined);
+    return resolved;
+}
+
 static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
 {
     ASTNode *h = 0, *tl = 0;
@@ -127,18 +141,14 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
             {
                 // The path may be relative to the workspace/stdlib root
                 // (ZC_ROOT) rather than the current working directory.
-                char alt[MAX_PATH_LEN];
-                snprintf(alt, sizeof(alt), "%s/%s", ctx->config->root_path, path);
-                resolved = realpath(alt, NULL);
+                resolved = realpath_joined(ctx->config->root_path, path);
             }
             if (!resolved && ctx->config->std_root[0])
             {
                 // Installed compilers resolve the std root from an actual std
                 // import; @link paths inside std (e.g. the vendored TRE unity
                 // build) are relative to that root.
-                char alt[MAX_PATH_LEN];
-                snprintf(alt, sizeof(alt), "%s/%s", ctx->config->std_root, path);
-                resolved = realpath(alt, NULL);
+                resolved = realpath_joined(ctx->config->std_root, path);
             }
             zvec_push_Str(&ctx->config->c_files, xstrdup(resolved ? resolved : path));
             if (resolved)

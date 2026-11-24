@@ -536,7 +536,11 @@ struct ParserContext
 // Recursion Safety
 enum
 {
-    MAX_RECURSION_DEPTH = 1024
+    MAX_RECURSION_DEPTH = 1024,
+    // Deepest chain of imports in progress at once (a imports b, which imports c...). Each
+    // level puts the parser and the type checker on the stack again, about 3 KB at -O0, so
+    // this stays well inside a 1 MB stack, the default on Windows.
+    MAX_IMPORT_DEPTH = 256
 };
 
 #define RECURSION_GUARD(ctx, l, ret)                                                               \
