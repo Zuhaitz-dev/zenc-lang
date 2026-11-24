@@ -1,0 +1,17 @@
+// As test_cfg_defs.zc, with none of the flags defined: the last def is the one used.
+
+@cfg(CFG_DEFS_A)
+def CFG_TIER = 1;
+
+@cfg(CFG_DEFS_B)
+def CFG_TIER = 2;
+
+@cfg(not(CFG_DEFS_A))
+@cfg(not(CFG_DEFS_B))
+def CFG_TIER = 3;
+
+fn main() {
+    assert(CFG_TIER == 3, "the def whose condition holds");
+    assert(CFG_TIER * 10 + 1 == 31, "in an expression");
+    println "cfg defs default test passed";
+}
