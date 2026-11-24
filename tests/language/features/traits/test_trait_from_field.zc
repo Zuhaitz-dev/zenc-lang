@@ -1,0 +1,79 @@
+// traits: test_trait_from_field
+// A trait object made from a field or an element, not only from a variable:
+// `h.pet = &h.dog`, `&h.dogs[1]`, and a field holding a pointer; assigned, in a `let`
+// and as an argument.
+trait Speak {
+    fn speak(self) -> int;
+}
+
+struct Dog {
+    n: int;
+}
+
+impl Speak for Dog {
+    fn speak(self) -> int {
+        return self.n;
+    }
+}
+
+struct Home {
+    dog: Dog;
+    dogs: [Dog; 2];
+    dog_ptr: Dog*;
+    pet: Speak;
+}
+
+fn speak_of(s: Speak) -> int {
+    return s.speak();
+}
+
+fn adopt(h: Home*) {
+    h.pet = &h.dog;
+}
+
+test "trait_from_field_through_pointer" {
+    let h: Home;
+    h.dog.n = 7;
+    adopt(&h);
+    assert(h.pet.speak() == 7, "&h.dog, h a pointer");
+    h.dog.n = 8;
+    assert(h.pet.speak() == 8, "it points at the field, not a copy");
+}
+
+test "trait_from_field_of_local" {
+    let h: Home;
+    h.dog.n = 3;
+    h.pet = &h.dog;
+    assert(h.pet.speak() == 3, "&h.dog, h a local");
+}
+
+test "trait_from_element" {
+    let h: Home;
+    h.dogs[0].n = 10;
+    h.dogs[1].n = 11;
+    h.pet = &h.dogs[1];
+    assert(h.pet.speak() == 11, "&h.dogs[1]");
+}
+
+test "trait_from_pointer_field" {
+    let d = Dog { n: 5 };
+    let h: Home;
+    h.dog_ptr = &d;
+    h.pet = h.dog_ptr;
+    assert(h.pet.speak() == 5, "a field holding a Dog*");
+}
+
+test "trait_from_field_in_let_and_argument" {
+    let h: Home;
+    h.dog.n = 9;
+    let s: Speak = &h.dog;
+    assert(s.speak() == 9, "let s: Speak = &h.dog");
+    assert(speak_of(&h.dog) == 9, "an argument, speak_of(&h.dog)");
+}
+
+test "trait_from_variable_still_works" {
+    let d = Dog { n: 4 };
+    let h: Home;
+    h.pet = &d;
+    assert(h.pet.speak() == 4, "&d");
+}
