@@ -1,0 +1,35 @@
+// language/functions: functions: test_fn_ptr_return_fn_ptr
+// A function pointer whose function returns a function pointer.
+fn add(a: int, b: int) -> int { return a + b; }
+fn mul(a: int, b: int) -> int { return a * b; }
+fn pick_add() -> fn*(int, int) -> int { return add; }
+fn pick_mul() -> fn*(int, int) -> int { return mul; }
+fn picker() -> fn*() -> fn*(int, int) -> int { return pick_mul; }
+
+struct Table {
+    chooser: fn*() -> fn*(int, int) -> int;
+}
+
+fn run(choose: fn*() -> fn*(int, int) -> int, a: int, b: int) -> int {
+    return choose()(a, b);
+}
+
+test "fn_ptr_return_fn_ptr_local" {
+    let choose: fn*() -> fn*(int, int) -> int = pick_add;
+    assert(choose()(3, 4) == 7, "called and its result called");
+    let op = choose();
+    assert(op(5, 5) == 10, "its result kept");
+    choose = pick_mul;
+    assert(choose()(3, 4) == 12, "pointed at another");
+}
+
+test "fn_ptr_return_fn_ptr_field_and_param" {
+    let t = Table { chooser: pick_mul };
+    assert(t.chooser()(2, 5) == 10, "a struct field");
+    assert(run(pick_add, 2, 5) == 7, "a parameter");
+}
+
+test "fn_ptr_return_fn_ptr_two_levels" {
+    let outer: fn*() -> fn*() -> fn*(int, int) -> int = picker;
+    assert(outer()()(6, 7) == 42, "a function pointer returning one returning one");
+}
