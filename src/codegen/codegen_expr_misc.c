@@ -16,10 +16,18 @@
 
 void handle_expr_cast(ParserContext *ctx, ASTNode *node)
 {
-    const char *t = node->cast.target_type;
-    const char *mapped = map_to_c_type(t);
-
-    EMIT(ctx, "((%s)(", mapped);
+    // target_type is Zen C's spelling, which isn't C for a function pointer (`fn*(void*)`):
+    // that one is written from its type.
+    if (type_has_function(node->type_info))
+    {
+        char *c_type = type_to_c_string(node->type_info, ctx->config->misra_mode);
+        EMIT(ctx, "((%s)(", c_type);
+        zfree(c_type);
+    }
+    else
+    {
+        EMIT(ctx, "((%s)(", map_to_c_type(node->cast.target_type));
+    }
     Type *src_type = node->cast.expr->type_info;
     int cast_tag = 0;
     if (src_type && src_type->kind == TYPE_ENUM)

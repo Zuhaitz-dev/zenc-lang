@@ -947,6 +947,18 @@ static char *type_to_string_impl(Type *t)
 // Does NOT mangle pointers to 'Ptr'.
 static char *type_to_c_string_impl(Type *t, int misra_mode);
 
+int type_has_function(Type *t)
+{
+    for (; t; t = t->inner)
+    {
+        if (t->kind == TYPE_FUNCTION)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 char *type_to_c_string(Type *t, int misra_mode)
 {
     if (!t)

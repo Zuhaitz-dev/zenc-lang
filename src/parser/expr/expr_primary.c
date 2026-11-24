@@ -18,6 +18,64 @@ ASTNode *parse_primary(ParserContext *ctx, Lexer *l)
     return parse_primary_impl(ctx, l);
 }
 
+// After a cast's `(`: its type, the `)` and the value cast. `at` is the token the
+// cast's node is placed at.
+static ASTNode *parse_cast_rest(ParserContext *ctx, Lexer *l, Token at)
+{
+    Type *cast_type_obj = parse_type_formal(ctx, l);
+    if (!cast_type_obj)
+    {
+        return NULL;
+    }
+    char *cast_type = type_to_string(cast_type_obj);
+    {
+        Token inner_t = lexer_next(l);
+        if (inner_t.kind != TOK_RPAREN)
+        {
+            zpanic_at(inner_t, "Expected ) after cast");
+            return NULL;
+        }
+    }
+    ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
+
+    if (is_trait(cast_type))
+    {
+        zfree(cast_type);
+        return transform_to_trait_object(ctx, type_to_string(cast_type_obj), target);
+    }
+
+    ASTNode *node = ast_create(NODE_EXPR_CAST);
+    node->token = at;
+    node->cast.target_type = cast_type;
+    node->cast.expr = target;
+    node->type_info = cast_type_obj;
+    return node;
+}
+
+// Whether the next tokens are `fn` and stars: a function pointer type.
+static int is_fn_ptr_type_start(Lexer *l)
+{
+    Lexer look = *l;
+    Token fn = lexer_next(&look);
+    if (fn.kind != TOK_IDENT || fn.len != 2 || strncmp(fn.start, "fn", 2) != 0)
+    {
+        return 0;
+    }
+    Token stars = lexer_peek(&look);
+    if (stars.kind != TOK_OP || stars.len == 0)
+    {
+        return 0;
+    }
+    for (size_t i = 0; i < stars.len; i++)
+    {
+        if (stars.start[i] != '*')
+        {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
 {
     ASTNode *node = NULL;
@@ -2223,40 +2281,17 @@ ASTNode *parse_primary_impl(ParserContext *ctx, Lexer *l)
                                              is_token(next, "**") || is_token(next, "!"))) ||
                     next.kind == TOK_IDENT || next.kind == TOK_LPAREN)
                 {
-
-                    Type *cast_type_obj = parse_type_formal(ctx, l);
-                    if (!cast_type_obj)
-                    {
-                        return NULL;
-                    }
-                    char *cast_type = type_to_string(cast_type_obj);
-                    {
-                        Token inner_t = lexer_next(l);
-                        if (inner_t.kind != TOK_RPAREN)
-                        {
-                            zpanic_at(inner_t, "Expected ) after cast");
-                            return NULL;
-                        }
-                    }
-                    ASTNode *target = parse_expr_prec(ctx, l, PREC_UNARY);
-
-                    if (is_trait(cast_type))
-                    {
-                        zfree(cast_type);
-                        return transform_to_trait_object(ctx, type_to_string(cast_type_obj),
-                                                         target);
-                    }
-
-                    node = ast_create(NODE_EXPR_CAST);
-                    node->token = next;
-                    node->cast.target_type = cast_type;
-                    node->cast.expr = target;
-                    node->type_info = cast_type_obj;
-                    return node;
+                    return parse_cast_rest(ctx, l, next);
                 }
             }
         }
         l->pos = saved;
+
+        // A function pointer type, `(fn*(void*) -> int) p`: no expression starts with `fn*`.
+        if (is_fn_ptr_type_start(l))
+        {
+            return parse_cast_rest(ctx, l, lexer_peek(l));
+        }
 
         ASTNode *expr = parse_expression(ctx, l);
 

@@ -1,0 +1,27 @@
+// language/functions: functions: test_fn_ptr_cast
+// A cast to a function pointer type: `(fn*(...) -> T) value`.
+fn add(a: int, b: int) -> int { return a + b; }
+fn twice(x: int) -> int { return x * 2; }
+fn touch(p: void*) { *(int*)p = 1; }
+
+test "fn_ptr_cast_from_void_ptr" {
+    let p: void* = (void*)add;
+    let f = (fn*(int, int) -> int) p;
+    assert(f(2, 3) == 5, "a void* cast back to its function pointer type");
+    assert(((fn*(int) -> int) (void*)twice)(4) == 8, "called straight away");
+}
+
+test "fn_ptr_cast_no_return" {
+    let p: void* = (void*)touch;
+    let flag = 0;
+    let g: fn*(void*) = (fn*(void*)) p;
+    g(&flag);
+    assert(flag == 1, "a function pointer without a return type");
+}
+
+test "fn_ptr_cast_between_types" {
+    let f: fn*(int) -> int = twice;
+    let raw = (fn*()) f;
+    let back = (fn*(int) -> int) raw;
+    assert(back(5) == 10, "to another function pointer type and back");
+}
