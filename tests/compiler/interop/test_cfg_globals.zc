@@ -1,0 +1,40 @@
+// @cfg on a global, a def, a raw block, an include and an alias: each is under its
+// condition, and two of a name under different conditions are both kept.
+//> define: CFG_GLOBALS_ON
+
+@cfg(CFG_GLOBALS_ON)
+include <string.h>
+
+@cfg(CFG_GLOBALS_ON)
+let cfg_counter: int = 5;
+@cfg(not(CFG_GLOBALS_ON))
+let cfg_counter: int = 50;
+
+@cfg(CFG_GLOBALS_ON)
+def CFG_LIMIT = 7;
+@cfg(not(CFG_GLOBALS_ON))
+def CFG_LIMIT = 70;
+
+@cfg(CFG_GLOBALS_ON)
+alias CfgNumber = int;
+@cfg(not(CFG_GLOBALS_ON))
+alias CfgNumber = float;
+
+@cfg(CFG_GLOBALS_ON)
+raw {
+    static int cfg_raw_value(void) { return (int)strlen("four"); }
+}
+@cfg(not(CFG_GLOBALS_ON))
+raw {
+    static int cfg_raw_value(void) { return 40; }
+}
+extern fn cfg_raw_value() -> int;
+
+fn main() {
+    let n: CfgNumber = 3;
+    assert(cfg_counter == 5, "the global under the flag");
+    assert(CFG_LIMIT == 7, "the def under the flag");
+    assert(cfg_raw_value() == 4, "the raw block under the flag");
+    assert(n == 3, "the alias under the flag");
+    println "cfg globals test passed";
+}

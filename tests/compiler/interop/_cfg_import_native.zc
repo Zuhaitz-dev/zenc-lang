@@ -1,0 +1,15 @@
+// The other of the two (see _cfg_import_web.zc).
+include <stdlib.h>
+
+def CFG_PLATFORM_NAME = "native";
+let cfg_platform_calls: int = 10;
+
+raw {
+    static int cfg_platform_raw_id(void) { return 200 + abs(-4); }
+}
+extern fn cfg_platform_raw_id() -> int;
+
+fn cfg_platform_id() -> int {
+    cfg_platform_calls = cfg_platform_calls + 2;
+    return cfg_platform_raw_id();
+}

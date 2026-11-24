@@ -33,11 +33,11 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
         }
         if (node->kind == NODE_VAR_DECL || node->kind == NODE_CONST)
         {
-            EMIT(ctx, "ZC_GLOBAL ");
             if (node->cfg_condition)
             {
-                EMIT(ctx, "#if %s\n", node->cfg_condition);
+                EMIT(ctx, "#if %s\n", node->cfg_condition); // on a line of its own
             }
+            EMIT(ctx, "ZC_GLOBAL ");
             if (node->kind == NODE_CONST)
             {
                 EMIT(ctx, "__attribute__((unused)) const ");

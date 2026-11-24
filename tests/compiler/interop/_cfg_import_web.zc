@@ -1,0 +1,17 @@
+// One of two files with the same declarations: test_cfg_import*.zc import one or the
+// other by @cfg. Every kind that differs by platform is here.
+import "_cfg_import_shared.zc"
+include <string.h>
+
+def CFG_PLATFORM_NAME = "web";
+let cfg_platform_calls: int = 0;
+
+raw {
+    static int cfg_platform_raw_id(void) { return 100 + (int)strlen("web"); }
+}
+extern fn cfg_platform_raw_id() -> int;
+
+fn cfg_platform_id() -> int {
+    cfg_platform_calls = cfg_platform_calls + 1;
+    return cfg_platform_raw_id() + cfg_shared_value();
+}

@@ -1,0 +1,5 @@
+// Imported by _cfg_import_web.zc (itself under a @cfg) and by _cfg_import_user.zc
+// (plainly): the plain import means it is always needed.
+fn cfg_shared_value() -> int {
+    return 40;
+}
