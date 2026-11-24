@@ -172,6 +172,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 
         char **bindings = NULL;
         int *binding_refs = NULL;
+        Token *binding_toks = NULL; // where each is named, for diagnostics about it
         int binding_count = 0;
 
         skip_comments(l);
@@ -183,6 +184,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
 
             bindings = xcalloc(8, sizeof(char *));
             binding_refs = xcalloc(8, sizeof(int));
+            binding_toks = xcalloc(8, sizeof(Token));
             int binding_cap = 8;
 
             while (lexer_peek(l).kind != TOK_RPAREN && lexer_peek(l).kind != TOK_RBRACE)
@@ -207,6 +209,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                     binding_cap *= 2;
                     bindings = xrealloc(bindings, sizeof(char *) * (size_t)(binding_cap));
                     binding_refs = xrealloc(binding_refs, sizeof(int) * (size_t)(binding_cap));
+                    binding_toks = xrealloc(binding_toks, sizeof(Token) * (size_t)(binding_cap));
                 }
 
                 if (is_brace && lexer_peek(l).kind == TOK_COLON)
@@ -216,6 +219,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                     if (val.kind == TOK_IDENT)
                     {
                         bindings[binding_count] = token_strdup(val);
+                        binding_toks[binding_count] = val;
                     }
                     else
                     {
@@ -225,6 +229,7 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                 else
                 {
                     bindings[binding_count] = token_strdup(b);
+                    binding_toks[binding_count] = b;
                 }
 
                 binding_refs[binding_count] = is_r;
@@ -521,7 +526,8 @@ ASTNode *parse_match(ParserContext *ctx, Lexer *l)
                 if (strcmp(binding, "parsed") == 0)
                 {
                 }
-                add_symbol(ctx, binding, binding_type, binding_type_info, 0);
+                add_symbol_with_token(ctx, binding, binding_type, binding_type_info,
+                                      binding_toks[i], 0);
             }
         }
 

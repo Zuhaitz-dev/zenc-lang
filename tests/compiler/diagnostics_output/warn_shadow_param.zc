@@ -1,0 +1,19 @@
+// ARGS: check
+// A parameter that shadows a global is warned of once, at the parameter, whether the
+// global is declared before or after the function. A declaration with no body is not
+// checked: its parameters name nothing.
+extern fn c_side(limit: int) -> int;
+
+fn before(limit: int) -> int {
+    return limit + 1;
+}
+
+let limit: int = 3;
+
+fn after(limit: int) -> int {
+    return limit + 2;
+}
+
+fn main() {
+    println "{before(1) + after(2) + limit}";
+}
