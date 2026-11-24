@@ -1,0 +1,8 @@
+// ARGS: check
+// A diagnostic in an imported file shows its path as this file's is shown: relative,
+// when this one was given so. (It was the absolute path the import resolved to.)
+import "imported/unused_local.zc"
+
+fn main() {
+    let also_unused = imported_helper(1);
+}

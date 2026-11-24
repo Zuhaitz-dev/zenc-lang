@@ -1,0 +1,16 @@
+   Compiling tests/compiler/diagnostics_output/warn_import_path.zc...
+warning: Unused variable 'never_used'
+  --> tests/compiler/diagnostics_output/imported/unused_local.zc:3:9
+   |
+3  |     let never_used = 1;
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+warning: Unused variable 'also_unused'
+  --> tests/compiler/diagnostics_output/warn_import_path.zc:7:9
+   |
+7  |     let also_unused = imported_helper(1);
+   |         ^ here
+   |
+   = note: Consider removing it or prefixing with '_'
+[exit 0]
