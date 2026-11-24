@@ -310,6 +310,21 @@ else
     check "emit-c #line of an imported method names the imported file" 0
 fi
 
+# --- @packed and @align under tcc --------------------------------------------
+
+# tcc can't make a packed struct more aligned, so zc says so when it writes C for tcc,
+# and only then.
+printf '@packed @align(4)\nstruct Both { a: u8; b: u32; }\nfn main() { let x: Both; }\n' \
+    > "$workdir/packed_align.zc"
+out_tcc=$("$ZC" transpile --cc tcc "$workdir/packed_align.zc" -o "$workdir/packed_align_tcc.c" 2>&1)
+out_gcc=$("$ZC" transpile --cc gcc "$workdir/packed_align.zc" -o "$workdir/packed_align_gcc.c" 2>&1)
+if echo "$out_tcc" | grep -q "tcc can't make a @packed struct more aligned: 'Both'" &&
+    ! echo "$out_gcc" | grep -q "tcc can't"; then
+    check "@packed with @align warns only when writing C for tcc" 1
+else
+    check "@packed with @align warns only when writing C for tcc" 0
+fi
+
 # --- Installed layout ------------------------------------------------------
 
 # `make install` puts the binary in PREFIX/bin and the stdlib in

@@ -157,6 +157,24 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 continue;
             }
 
+            // tcc ignores attributes on a struct, so @packed and @align would change
+            // nothing: for it, packing is #pragma pack, and the alignment a zero-size last
+            // member with _Alignas (below). Both lay the struct out as the attributes do,
+            // in gcc and clang too. tcc can't combine them: inside the pack, the member's
+            // alignment is capped at 1.
+            int tcc_layout = !ctx->config->use_cpp && z_path_match_compiler(ctx->config->cc, "tcc");
+            if (tcc_layout && node->strct.is_packed && node->strct.align > 1)
+            {
+                zwarn_at(node->token,
+                         "tcc can't make a @packed struct more aligned: '%s' will have "
+                         "alignment 1, not %d, when tcc compiles it",
+                         node->strct.name ? node->strct.name : "(anonymous)", node->strct.align);
+            }
+            if (tcc_layout && node->strct.is_packed)
+            {
+                EMIT(ctx, "#pragma pack(push, 1)\n");
+            }
+
             if (node->strct.is_union)
             {
                 EMIT(ctx, "union");
@@ -242,10 +260,18 @@ static void emit_struct_defs_internal(ParserContext *ctx, ASTNode *node, Visited
                 // C requires at least one member in a struct.
                 EMIT(ctx, "char _placeholder;\n");
             }
+            if (tcc_layout && node->strct.align > 1 && !node->strct.is_packed)
+            {
+                EMIT(ctx, "_Alignas(%d) char _z_align[0];\n", node->strct.align);
+            }
             emitter_dedent(&ctx->cg.emitter);
             EMIT(ctx, "}");
 
             EMIT(ctx, ";\n\n");
+            if (tcc_layout && node->strct.is_packed)
+            {
+                EMIT(ctx, "#pragma pack(pop)\n");
+            }
             if (node->cfg_condition)
             {
                 EMIT(ctx, "#endif\n");
