@@ -116,6 +116,7 @@ typedef struct SortName
     size_t len;
     int *idx;
     int idx_count;
+    int idx_cap;
 } SortName;
 
 static unsigned sort_name_hash(const char *s, size_t len)
@@ -297,7 +298,13 @@ static ASTNode *topo_sort_structs(ParserContext *ctx, ASTNode *head)
             slot->name = name;
             slot->len = len;
         }
-        slot->idx = xrealloc(slot->idx, sizeof(int) * (size_t)(slot->idx_count + 1));
+        if (slot->idx_count == slot->idx_cap)
+        {
+            // Doubled: the arena does not free, so growing one at a time would cost the
+            // square of the number of types of one name.
+            slot->idx_cap = slot->idx_cap ? slot->idx_cap * 2 : 2;
+            slot->idx = xrealloc(slot->idx, sizeof(int) * (size_t)(slot->idx_cap));
+        }
         slot->idx[slot->idx_count++] = j;
     }
 
