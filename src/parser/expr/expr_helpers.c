@@ -5,6 +5,7 @@
 #include "analysis/move_check.h"
 #include "utils/utils.h"
 #include "ast/ast.h"
+#include "utils/format_expr.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -257,6 +258,18 @@ ASTNode *find_function_definition(ParserContext *ctx, const char *name)
     return NULL;
 }
 
+// A field or an element, `h.dog` or `dogs[0]`: a place whose C can be written again.
+static int is_field_or_element(ASTNode *node)
+{
+    return node && (node->kind == NODE_EXPR_MEMBER || node->kind == NODE_EXPR_INDEX);
+}
+
+// The struct a type names, or NULL.
+static char *struct_name_of(Type *t)
+{
+    return t && t->kind == TYPE_STRUCT ? t->name : NULL;
+}
+
 void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
                      char **out_var_ref_name)
 {
@@ -265,6 +278,21 @@ void get_struct_name(ParserContext *ctx, ASTNode *node, char **out_struct_name,
     {
         *out_var_ref_name = node->unary.operand->var_ref.name;
         *out_struct_name = find_symbol_type(ctx, *out_var_ref_name);
+    }
+    else if (node->kind == NODE_EXPR_UNARY && strcmp(node->unary.op, "&") == 0 &&
+             is_field_or_element(node->unary.operand) &&
+             struct_name_of(node->unary.operand->type_info))
+    {
+        // `&h.dog`: the out name is the place's C, `h->dog`.
+        *out_struct_name = struct_name_of(node->unary.operand->type_info);
+        *out_var_ref_name = format_expression_as_c(ctx, node->unary.operand);
+    }
+    else if (is_field_or_element(node) && node->type_info &&
+             node->type_info->kind == TYPE_POINTER && struct_name_of(node->type_info->inner))
+    {
+        // `h.dog_ptr`, a field holding a pointer to the struct.
+        *out_struct_name = struct_name_of(node->type_info->inner);
+        *out_var_ref_name = format_expression_as_c(ctx, node);
     }
     else if (node->kind == NODE_EXPR_VAR)
     {
