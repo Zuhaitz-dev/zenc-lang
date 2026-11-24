@@ -1,0 +1,16 @@
+// Rule 17.3: A function shall not be declared implicitly
+// EXPECT: MISRA Rule 17.3
+//
+// The checker has no type for the value of a C function it only knows from a header.
+// An assignment between two such values used to crash the Rule 11 pointer check, which
+// was given no type for either side.
+
+include <string.h>
+
+fn main() -> int {
+    let first = strchr("a/b?c", 47);
+    let chosen = first;
+    let second = strchr("a/b?c", 63);
+    chosen = second;
+    return 0;
+}

@@ -246,6 +246,12 @@ void misra_check_pointer_conversion(ParserContext *ctx, Type *target, Type *sour
     }
     Type *rt = resolve_alias(target);
     Type *rs = resolve_alias(source);
+    if (!rt || !rs)
+    {
+        // A type the checker doesn't know (the value of a C function declared only in
+        // an included header): there is nothing to compare.
+        return;
+    }
 
     if ((rt->kind == TYPE_POINTER || rt->kind == TYPE_FUNCTION) &&
         (rs->kind == TYPE_POINTER || rs->kind == TYPE_FUNCTION))

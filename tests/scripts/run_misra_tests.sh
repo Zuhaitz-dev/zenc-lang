@@ -42,6 +42,7 @@ for test_file in "$TEST_DIR"/*.zc; do
     
     file_failed=0
     missing_rules=""
+    error_msg=""
     
     if [ "$expect_pass" -gt 0 ]; then
         if [ $exit_code -ne 0 ]; then
@@ -69,6 +70,12 @@ for test_file in "$TEST_DIR"/*.zc; do
         fi
     fi
     
+    # Killed by a signal: a crash is a failure, whatever was reported before it.
+    if [ $exit_code -ge 128 ]; then
+        file_failed=1
+        error_msg="The compiler crashed (exit code $exit_code)"
+    fi
+
     if [ $file_failed -eq 0 ]; then
         echo -e "${GREEN}PASS${NC}"
         ((PASSED++))
