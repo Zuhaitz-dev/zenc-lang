@@ -150,5 +150,6 @@ void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s)
     {
         lsp_copy->type_next = ctx->all_type_symbols;
         ctx->all_type_symbols = lsp_copy;
+        type_name_note(ctx, lsp_copy->name);
     }
 }

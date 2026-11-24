@@ -831,6 +831,7 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
     ni->struct_node = NULL;                           // Placeholder to break cycles
     ni->next = ctx->instantiations;
     ctx->instantiations = ni;
+    type_name_note(ctx, ni->name);
 
     ASTNode *struct_node_copy = NULL;
 
@@ -936,6 +937,8 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
 
         struct_node_copy->next = ctx->instantiated_structs;
         ctx->instantiated_structs = struct_node_copy;
+        type_name_note(ctx, struct_node_copy->kind == NODE_ENUM ? struct_node_copy->enm.name
+                                                                : struct_node_copy->strct.name);
     }
 
     GenericImplTemplate *it = ctx->impl_templates;
@@ -1049,6 +1052,7 @@ void instantiate_generic_multi(ParserContext *ctx, const char *tpl, char **args,
     ni->struct_node = NULL;
     ni->next = ctx->instantiations;
     ctx->instantiations = ni;
+    type_name_note(ctx, ni->name);
 
     if (t->struct_node->kind == NODE_STRUCT)
     {
@@ -1096,6 +1100,7 @@ void instantiate_generic_multi(ParserContext *ctx, const char *tpl, char **args,
 
         i->next = ctx->instantiated_structs;
         ctx->instantiated_structs = i;
+        type_name_note(ctx, i->kind == NODE_ENUM ? i->enm.name : i->strct.name);
     }
     else if (t->struct_node->kind == NODE_ENUM)
     {
@@ -1169,6 +1174,7 @@ void instantiate_generic_multi(ParserContext *ctx, const char *tpl, char **args,
 
         i->next = ctx->instantiated_structs;
         ctx->instantiated_structs = i;
+        type_name_note(ctx, i->kind == NODE_ENUM ? i->enm.name : i->strct.name);
     }
     zfree(m);
 }

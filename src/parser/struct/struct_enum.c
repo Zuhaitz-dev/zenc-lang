@@ -250,6 +250,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l, const char *link_name, int is_
     ASTNode *node = ast_create(NODE_ENUM);
     node->token = n;
     node->enm.name = ename;
+    type_name_note(ctx, ename);
     node->link_name = link_name ? xstrdup(link_name) : NULL;
     node->type_info = type_new(TYPE_ENUM);
     node->type_info->name = xstrdup(ename);

@@ -21,42 +21,123 @@ static unsigned int struct_name_hash(const char *name)
     return h;
 }
 
+// ** The names structs and enums are registered under **
+
+static unsigned known_type_name_slot(char **names, unsigned cap, const char *name)
+{
+    unsigned slot = struct_name_hash(name) & (cap - 1);
+    while (names[slot] && strcmp(names[slot], name) != 0)
+    {
+        slot = (slot + 1) & (cap - 1);
+    }
+    return slot;
+}
+
+void type_name_note(ParserContext *ctx, const char *name)
+{
+    if (!ctx || !name || !name[0])
+    {
+        return;
+    }
+    // Kept at most half full.
+    if ((ctx->known_type_names_count + 1) * 2 > ctx->known_type_names_cap)
+    {
+        unsigned old_cap = ctx->known_type_names_cap;
+        char **old = ctx->known_type_names;
+        unsigned cap = old_cap ? old_cap * 2 : 256;
+        char **names = xmalloc(cap * sizeof(char *));
+        memset(names, 0, cap * sizeof(char *));
+        for (unsigned i = 0; i < old_cap; i++)
+        {
+            if (old[i])
+            {
+                names[known_type_name_slot(names, cap, old[i])] = old[i];
+            }
+        }
+        zfree(old);
+        ctx->known_type_names = names;
+        ctx->known_type_names_cap = cap;
+    }
+    unsigned slot = known_type_name_slot(ctx->known_type_names, ctx->known_type_names_cap, name);
+    if (!ctx->known_type_names[slot])
+    {
+        ctx->known_type_names[slot] = xstrdup(name);
+        ctx->known_type_names_count++;
+    }
+}
+
+static int type_name_known(ParserContext *ctx, const char *name)
+{
+    if (!ctx->known_type_names)
+    {
+        return 0;
+    }
+    return ctx->known_type_names[known_type_name_slot(ctx->known_type_names,
+                                                      ctx->known_type_names_cap, name)] != NULL;
+}
+
+// The slot `name` is in, or the empty one it would go in. The table is never full.
+static unsigned struct_hash_slot(const StructHashEntry *table, unsigned cap, const char *name)
+{
+    unsigned slot = struct_name_hash(name) & (cap - 1);
+    while (table[slot].name[0] &&
+           !(table[slot].name[0] == name[0] && strcmp(table[slot].name, name) == 0))
+    {
+        slot = (slot + 1) & (cap - 1);
+    }
+    return slot;
+}
+
 void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node)
 {
-    unsigned int idx = struct_name_hash(name) & (STRUCT_HASH_SIZE - 1);
-    for (int i = 0; i < STRUCT_HASH_SIZE; i++)
+    if (!name[0])
     {
-        unsigned int slot =
-            ((unsigned)(idx) + (unsigned)(i) + STRUCT_HASH_SIZE) & (STRUCT_HASH_SIZE - 1U);
-        if (!ctx->struct_hash[slot].name[0] || (ctx->struct_hash[slot].name[0] == name[0] &&
-                                                strcmp(ctx->struct_hash[slot].name, name) == 0))
-        {
-            strncpy(ctx->struct_hash[slot].name, name, sizeof(ctx->struct_hash[slot].name) - 1);
-            ctx->struct_hash[slot].name[sizeof(ctx->struct_hash[slot].name) - 1] = '\0';
-            ctx->struct_hash[slot].node = node;
-            return;
-        }
+        return; // an empty name is an empty slot
     }
+    type_name_note(ctx, name);
+    // A key is a name as the table holds it: its first bytes, if it is longer than a slot.
+    char key[sizeof(ctx->struct_hash->name)];
+    strncpy(key, name, sizeof(key) - 1);
+    key[sizeof(key) - 1] = '\0';
+
+    // It grows before it is more than half full: a program has as many types as it has,
+    // and a full table can neither take a new one nor say quickly that a name isn't there.
+    if ((ctx->struct_hash_count + 1) * 2 > ctx->struct_hash_cap)
+    {
+        unsigned old_cap = ctx->struct_hash_cap;
+        StructHashEntry *old = ctx->struct_hash;
+        unsigned cap = old_cap ? old_cap * 2 : STRUCT_HASH_SIZE;
+        StructHashEntry *table = xmalloc(cap * sizeof(StructHashEntry));
+        memset(table, 0, cap * sizeof(StructHashEntry));
+        for (unsigned i = 0; i < old_cap; i++)
+        {
+            if (old[i].name[0])
+            {
+                table[struct_hash_slot(table, cap, old[i].name)] = old[i];
+            }
+        }
+        zfree(old);
+        ctx->struct_hash = table;
+        ctx->struct_hash_cap = cap;
+    }
+
+    unsigned slot = struct_hash_slot(ctx->struct_hash, ctx->struct_hash_cap, key);
+    if (!ctx->struct_hash[slot].name[0])
+    {
+        memcpy(ctx->struct_hash[slot].name, key, sizeof(key));
+        ctx->struct_hash_count++;
+    }
+    ctx->struct_hash[slot].node = node;
 }
 
 static ASTNode *struct_hash_lookup(ParserContext *ctx, const char *name)
 {
-    unsigned int idx = struct_name_hash(name) & (STRUCT_HASH_SIZE - 1);
-    for (int i = 0; i < STRUCT_HASH_SIZE; i++)
+    if (!ctx->struct_hash || !name[0])
     {
-        unsigned int slot =
-            ((unsigned)(idx) + (unsigned)(i) + STRUCT_HASH_SIZE) & (STRUCT_HASH_SIZE - 1U);
-        if (!ctx->struct_hash[slot].name[0])
-        {
-            return NULL;
-        }
-        if (ctx->struct_hash[slot].name[0] == name[0] &&
-            strcmp(ctx->struct_hash[slot].name, name) == 0)
-        {
-            return ctx->struct_hash[slot].node;
-        }
+        return NULL;
     }
-    return NULL;
+    unsigned slot = struct_hash_slot(ctx->struct_hash, ctx->struct_hash_cap, name);
+    return ctx->struct_hash[slot].name[0] ? ctx->struct_hash[slot].node : NULL;
 }
 
 #define CACHE_RESULT(node)                                                                         \
@@ -75,6 +156,11 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     r->node = node;
     r->next = ctx->parsed_structs_list;
     ctx->parsed_structs_list = r;
+    // (parse_struct names its node after this, and notes the name then)
+    if (node)
+    {
+        type_name_note(ctx, node->kind == NODE_ENUM ? node->enm.name : node->strct.name);
+    }
 
     if (node->kind == NODE_STRUCT && node->strct.name)
     {
@@ -170,6 +256,10 @@ void add_to_enum_list(ParserContext *ctx, ASTNode *node)
     r->node = node;
     r->next = ctx->parsed_enums_list;
     ctx->parsed_enums_list = r;
+    if (node)
+    {
+        type_name_note(ctx, node->kind == NODE_ENUM ? node->enm.name : node->strct.name);
+    }
 }
 
 // A slot for `node` in the set of parsed_funcs_list's nodes: where it is, or would go.
@@ -362,6 +452,8 @@ void register_tuple_with_types(ParserContext *ctx, const char *sig, const char *
 
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
 {
+    type_name_note(ctx, name);
+
     if (ctx->config->mode_lsp)
     {
         StructDef *existing = NULL;
@@ -539,6 +631,13 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
     }
 
     if (!ctx)
+    {
+        return NULL;
+    }
+
+    // Most names asked about are no type at all (a variable's, `int`), and each would
+    // walk every list of types below.
+    if (!type_name_known(ctx, name))
     {
         return NULL;
     }

@@ -253,6 +253,8 @@ typedef struct EnumVariantReg
     char *mangled_name; ///< Mangled name (Enum__Variant).
     int tag_id;         ///< Integration tag value.
     struct EnumVariantReg *next;
+    struct EnumVariantReg *variant_bucket_next; ///< Next in the index by variant name.
+    struct EnumVariantReg *enum_bucket_next;    ///< Next in the index by enum name.
 } EnumVariantReg;
 
 /**
@@ -408,10 +410,17 @@ struct ParserContext
     ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
-    StructRef *parsed_structs_list;                ///< List of all parsed struct nodes.
-    StructHashEntry struct_hash[STRUCT_HASH_SIZE]; ///< Hash table for fast struct/enum lookup.
-    StructRef *parsed_enums_list;                  ///< List of all parsed enum nodes.
-    StructRef *parsed_funcs_list;                  ///< List of all parsed function nodes.
+    StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
+    StructHashEntry *struct_hash;   ///< Hash table for fast struct/enum lookup; NULL until used.
+    unsigned struct_hash_cap;       ///< Its slots, a power of two (STRUCT_HASH_SIZE at first).
+    unsigned struct_hash_count;     ///< Slots in use: kept at most half of them.
+    // Every name a struct or enum has been registered under, anywhere find_struct_def
+    // looks (type_name_note). A name not in it is no type, without a look at the lists.
+    char **known_type_names;       ///< Open-addressed set; NULL slots are empty.
+    unsigned known_type_names_cap; ///< Its slots, a power of two.
+    unsigned known_type_names_count;
+    StructRef *parsed_enums_list;   ///< List of all parsed enum nodes.
+    StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
     ASTNode **parsed_funcs_seen;    ///< Set of that list's nodes, by address (dedup).
     unsigned parsed_funcs_seen_cap; ///< Its slots, a power of two.
     unsigned parsed_funcs_seen_count;
@@ -419,7 +428,12 @@ struct ParserContext
     StructRef *parsed_globals_list; ///< List of all parsed global variables.
     StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).
     EnumVariantReg *enum_variants;  ///< Registry of enum variants for global lookup.
-    ImplReg *registered_impls;      ///< Cache of type/trait implementations.
+    // Its two name indexes (enum_variants_named, enum_variants_of): chains in its order.
+    EnumVariantReg **enum_variant_buckets; ///< By variant name.
+    EnumVariantReg **enum_owner_buckets;   ///< By enum name.
+    unsigned enum_variant_bucket_count;    ///< Of each; a power of two.
+    unsigned enum_variant_count;           ///< Variants in the registry.
+    ImplReg *registered_impls;             ///< Cache of type/trait implementations.
 
     // Types
     SliceType *used_slices;  ///< Cache of generated slice types.
@@ -970,6 +984,26 @@ const char *get_closest_type_hint(ParserContext *ctx, const char *name);
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);
 void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
+/**
+ * @brief Records that a struct or enum is registered under `name`.
+ *
+ * Call it wherever one is put in a list find_struct_def reads (or given its name, if that
+ * comes later): find_struct_def answers "no" for a name never noted, without looking.
+ * Noting a name that turns out not to be findable costs nothing.
+ */
+void type_name_note(ParserContext *ctx, const char *name);
+/**
+ * @brief The registry's variants named `variant_name`, in its order: the first, or the one
+ * after `prev`. NULL when there are no more.
+ */
+EnumVariantReg *enum_variants_named(ParserContext *ctx, const char *variant_name,
+                                    const EnumVariantReg *prev);
+/**
+ * @brief The registry's variants of the enum `enum_name`, in its order: the first, or the
+ * one after `prev`. NULL when there are no more.
+ */
+EnumVariantReg *enum_variants_of(ParserContext *ctx, const char *enum_name,
+                                 const EnumVariantReg *prev);
 /** @brief The first function named `name` in func_registry, through its name index. */
 FuncSig *func_registry_find(ParserContext *ctx, const char *name);
 void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);

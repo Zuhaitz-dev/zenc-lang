@@ -310,11 +310,11 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
 
     if (enum_name && !has_wildcard)
     {
-        // Iterate through all registered variants for this enum
-        EnumVariantReg *v = ctx->enum_variants;
-        while (v)
+        // Iterate through all registered variants for this enum (the registry's index by
+        // enum name gives them, in the registry's order)
+        EnumVariantReg *v = NULL;
+        while ((v = enum_variants_of(ctx, enum_name, v)) != NULL)
         {
-            if (v->enum_name && strcmp(v->enum_name, enum_name) == 0)
             {
                 int covered = 0;
                 ASTNode *c2 = node->match_stmt.cases;
@@ -337,7 +337,6 @@ void codegen_match_internal(ParserContext *ctx, ASTNode *node, int use_result)
                              v->variant_name);
                 }
             }
-            v = v->next;
         }
     }
 
