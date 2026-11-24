@@ -285,7 +285,10 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
             strcat(param_suffix, "__");
             const char *p_next = (char *)strchr(p_ptr, ',');
             int sub_len = p_next ? (int)(p_next - p_ptr) : (int)strlen(p_ptr);
-            strncat(param_suffix, p_ptr, (size_t)(sub_len));
+            // sub_len bytes of p_ptr, appended: the buffer has room for all of them
+            size_t suffix_len = strlen(param_suffix);
+            memcpy(param_suffix + suffix_len, p_ptr, (size_t)(sub_len));
+            param_suffix[suffix_len + (size_t)(sub_len)] = 0;
             if (p_next)
             {
                 p_ptr = p_next + 1;
@@ -339,7 +342,7 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
                         types_next ? (int)(types_next - types_ptr) : (int)strlen(types_ptr);
 
                     args[count] = xmalloc((size_t)(types_len + 1));
-                    strncpy(args[count], types_ptr, (size_t)(types_len));
+                    memcpy(args[count], types_ptr, (size_t)(types_len));
                     args[count][types_len] = 0;
                     count++;
 

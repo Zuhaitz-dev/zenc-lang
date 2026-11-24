@@ -1085,7 +1085,7 @@ static int cmd_doc(ReplState *state, const char *args)
     {
         slen = 255;
     }
-    strncpy(safe_sym, sym, (size_t)(slen));
+    memcpy(safe_sym, sym, (size_t)(slen));
     safe_sym[slen] = 0;
     for (int i = 0; safe_sym[i]; i++)
     {

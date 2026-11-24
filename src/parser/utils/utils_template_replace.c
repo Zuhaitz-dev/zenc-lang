@@ -629,7 +629,7 @@ Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char
                 const char *p_next = (char *)strchr(p_ptr, ',');
                 int sub_len = p_next ? (int)(p_next - p_ptr) : (int)strlen(p_ptr);
                 char *sub = xmalloc((size_t)(sub_len + 1));
-                strncpy(sub, p_ptr, (size_t)(sub_len));
+                memcpy(sub, p_ptr, (size_t)(sub_len));
                 sub[sub_len] = 0;
 
                 char *clean_sub = sanitize_mangled_name(sub);
@@ -706,7 +706,7 @@ Type *replace_type_formal(ParserContext *ctx, Type *t, const char *p, const char
                     int sub_len = c_next ? (int)(c_next - c_ptr) : (int)strlen(c_ptr);
 
                     char *sub = xmalloc((size_t)(sub_len + 1));
-                    strncpy(sub, c_ptr, (size_t)(sub_len));
+                    memcpy(sub, c_ptr, (size_t)(sub_len));
                     sub[sub_len] = 0;
 
                     char *clean = sanitize_mangled_name(sub);
