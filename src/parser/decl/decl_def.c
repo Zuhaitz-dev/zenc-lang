@@ -96,6 +96,23 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
                     }
                 }
             }
+            else if (i && i->type_info && i->type_info->kind != TYPE_UNKNOWN)
+            {
+                // Not an integer constant, and no type written: the def has its value's
+                // type (a string's, a float's), as an integer one has `int`. Left unknown,
+                // a use of it is checked against nothing, or wrongly (a `%s` given one).
+                ZenSymbol *s = find_symbol_entry(ctx, ns);
+                if (s && (!s->type_name || strcmp(s->type_name, "unknown") == 0))
+                {
+                    if (s->type_name)
+                    {
+                        zfree(s->type_name);
+                    }
+                    s->type_name = type_to_string(i->type_info);
+                    s->type_info = type_clone(i->type_info);
+                    s->type_info->is_const = 1;
+                }
+            }
         }
     }
 

@@ -1,0 +1,9 @@
+   Compiling tests/compiler/diagnostics_output/warn_format_def.zc...
+warning: Format argument 2: expected 'integer', got 'const string'
+  --> tests/compiler/diagnostics_output/warn_format_def.zc:12:5
+   |
+12 |     printf("%d\n", NAME);
+   |     ^ here
+   |
+   = note: Mismatched format specifier may cause undefined behavior
+[exit 0]

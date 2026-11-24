@@ -1,0 +1,13 @@
+// ARGS: check
+// A def has its value's type, so a format string is checked against it: a string def
+// suits %s and a float def %f, and only the wrong one is warned of.
+include <stdio.h>
+
+def NAME = "world";
+def RATIO = 1.5;
+def COUNT = 3;
+
+fn main() {
+    printf("%s %f %d\n", NAME, RATIO, COUNT);
+    printf("%d\n", NAME);
+}
