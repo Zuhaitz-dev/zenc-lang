@@ -1,0 +1,72 @@
+// types: test_packed_aligned_layout
+// @packed and @align give the same layout under every C compiler the tests run with,
+// tcc included (it ignores attributes on a struct, so they are emitted for it another way).
+
+@packed
+struct Packed {
+    a: u8;
+    b: u32;
+}
+
+@align(16)
+struct Aligned {
+    a: i32;
+    c: u8;
+}
+
+// Its alignment shows in where a containing struct puts it.
+struct HoldsAligned {
+    c: u8;
+    v: Aligned;
+}
+
+// @align can't make a struct less aligned than its fields.
+@align(2)
+struct Wide {
+    d: f64;
+}
+
+@packed
+union PackedUnion {
+    a: u8;
+    b: u64;
+}
+
+struct HoldsPackedUnion {
+    c: u8;
+    u: PackedUnion;
+}
+
+@packed
+struct PackedPair<T> {
+    a: u8;
+    v: T;
+}
+
+// A struct after a packed one is laid out normally.
+struct Plain {
+    a: u8;
+    b: u32;
+}
+
+test "packed struct has no padding" {
+    assert(sizeof(Packed) == 5, "Packed should be 5 bytes");
+    let p = Packed { a: 1, b: 70000 };
+    assert(p.a == 1 && p.b == 70000, "Packed fields keep their values");
+}
+
+test "aligned struct is rounded up and placed on its alignment" {
+    assert(sizeof(Aligned) == 16, "Aligned should be 16 bytes");
+    assert(sizeof(HoldsAligned) == 32, "HoldsAligned should place v at 16");
+    assert(sizeof(Wide) == 8, "Wide keeps its natural alignment");
+}
+
+test "packed union and packed generic" {
+    assert(sizeof(PackedUnion) == 8, "PackedUnion should be 8 bytes");
+    assert(sizeof(HoldsPackedUnion) == 9, "PackedUnion should have alignment 1");
+    assert(sizeof(PackedPair<u32>) == 5, "PackedPair<u32> should be 5 bytes");
+}
+
+test "packing does not leak into later structs" {
+    assert(sizeof(Plain) == 8, "Plain should have its padding");
+}
