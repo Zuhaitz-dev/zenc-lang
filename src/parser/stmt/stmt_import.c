@@ -430,10 +430,13 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
             if (last_slash)
             {
                 *last_slash = 0;
-                char resolved_path[MAX_PATH_LEN];
-                snprintf(resolved_path, sizeof(resolved_path), "%s/%s", current_dir, plugin_name);
+                // On the heap: parse_import is on the stack once for every level of nested
+                // imports, so a path buffer here would cost each level 4 KB.
+                size_t len = strlen(current_dir) + strlen(plugin_name) + 2;
+                char *resolved_path = xmalloc(len);
+                snprintf(resolved_path, len, "%s/%s", current_dir, plugin_name);
                 zfree(plugin_name);
-                plugin_name = xstrdup(resolved_path);
+                plugin_name = resolved_path;
             }
             zfree(current_dir);
         }
@@ -664,9 +667,17 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         return NULL;
     }
 
-    if (zmap_get(&ctx->imports.currently_parsing, fn))
+    int circular = zmap_get(&ctx->imports.currently_parsing, fn) != NULL;
+    if (circular || zmap_size(&ctx->imports.currently_parsing) >= MAX_IMPORT_DEPTH)
     {
-        zpanic_at(t, "Circular import detected: '%s'", fn);
+        if (circular)
+        {
+            zpanic_at(t, "Circular import detected: '%s'", fn);
+        }
+        else
+        {
+            zpanic_at(t, "Imports are nested more than %d levels deep: '%s'", MAX_IMPORT_DEPTH, fn);
+        }
         for (size_t _c = 0; _c < symbols.length; _c++)
         {
             zfree(symbols.data[_c]);

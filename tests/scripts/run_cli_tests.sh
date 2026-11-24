@@ -310,6 +310,47 @@ else
     check "emit-c #line of an imported method names the imported file" 0
 fi
 
+# --- Deeply nested imports -----------------------------------------------
+
+# A chain of imports (d0 imports d1, which imports d2...) puts the parser on the
+# stack again for every level. MAX_IMPORT_DEPTH (256) levels must work; one more
+# must be a clear error at the import, not a stack overflow.
+make_import_chain() {
+    local dir="$1" n="$2" i
+    mkdir -p "$dir"
+    for ((i = 0; i < n; i++)); do
+        if [ $((i + 1)) -lt "$n" ]; then
+            printf 'import "d%d.zc"\n' $((i + 1)) > "$dir/d$i.zc"
+        else
+            : > "$dir/d$i.zc"
+        fi
+        printf 'fn d%d_f(x: int) -> int { return x + 1; }\n' "$i" >> "$dir/d$i.zc"
+    done
+    printf 'import "d0.zc"\nfn main() { println "deep-ok {d%d_f(1)}"; }\n' $((n - 1)) > "$dir/main.zc"
+}
+
+zc_abs="$(cd "$(dirname "$ZC")" && pwd)/$(basename "$ZC")"
+make_import_chain "$workdir/chain_ok" 256
+out=$(cd "$workdir/chain_ok" && "$zc_abs" run main.zc -o chain_ok 2>&1)
+if echo "$out" | grep -q "deep-ok 2"; then
+    check "imports nested 256 deep compile" 1
+else
+    check "imports nested 256 deep compile" 0
+    echo "$out" | head -5
+fi
+
+make_import_chain "$workdir/chain_deep" 257
+out=$(cd "$workdir/chain_deep" && "$zc_abs" transpile main.zc -o chain_deep.c 2>&1)
+rc=$?
+if [ "$rc" -eq 1 ] && echo "$out" | grep -q "Imports are nested more than 256 levels deep" &&
+    echo "$out" | grep -q "d255.zc:1:8"; then
+    check "imports nested 257 deep are an error at the import" 1
+else
+    check "imports nested 257 deep are an error at the import" 0
+    echo "rc=$rc"
+    echo "$out" | head -5
+fi
+
 # --- Installed layout ------------------------------------------------------
 
 # `make install` puts the binary in PREFIX/bin and the stdlib in
