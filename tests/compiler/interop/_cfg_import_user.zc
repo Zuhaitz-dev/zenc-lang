@@ -1,0 +1,6 @@
+// Imports the shared file plainly.
+import "_cfg_import_shared.zc"
+
+fn cfg_user_value() -> int {
+    return cfg_shared_value() + 2;
+}

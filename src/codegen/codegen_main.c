@@ -436,7 +436,13 @@ static void emit_raw_statements_internal(ParserContext *ctx, ASTNode *node,
 
             if ((preproc_only && is_preproc) || (!preproc_only && !is_preproc))
             {
-                if (!is_content_emitted(*emitted_raw, node->raw_stmt.content))
+                if (node->cfg_condition)
+                {
+                    // Under its @cfg, and never taken for another's copy: the same text
+                    // under another condition is another piece of the program.
+                    EMIT(ctx, "#if %s\n%s\n#endif\n", node->cfg_condition, node->raw_stmt.content);
+                }
+                else if (!is_content_emitted(*emitted_raw, node->raw_stmt.content))
                 {
                     EMIT(ctx, "%s\n", node->raw_stmt.content);
                     mark_content_emitted(emitted_raw, node->raw_stmt.content);
@@ -844,7 +850,8 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
             StructRef *struct_ref = ctx->parsed_globals_list;
             while (struct_ref)
             {
-                // Check if this global is already in the merged list (by name)
+                // Check if this global is already in the merged list (by name, and by @cfg:
+                // one of the same name under another condition is another global)
                 int is_duplicate = 0;
                 if (struct_ref->node && (struct_ref->node->kind == NODE_VAR_DECL ||
                                          struct_ref->node->kind == NODE_CONST))
@@ -853,8 +860,13 @@ void codegen_c_program(ParserContext *ctx, ASTNode *node)
                     ASTNode *check = merged_globals;
                     while (check)
                     {
+                        const char *cfg = struct_ref->node->cfg_condition;
+                        int same_cfg =
+                            (!cfg && !check->cfg_condition) ||
+                            (cfg && check->cfg_condition && strcmp(cfg, check->cfg_condition) == 0);
                         if ((check->kind == NODE_VAR_DECL || check->kind == NODE_CONST) &&
-                            check->var_decl.name && strcmp(check->var_decl.name, var_name) == 0)
+                            check->var_decl.name && strcmp(check->var_decl.name, var_name) == 0 &&
+                            same_cfg)
                         {
                             is_duplicate = 1;
                             break;

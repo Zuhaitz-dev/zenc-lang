@@ -1,0 +1,17 @@
+// As test_cfg_import.zc, with the flag not defined: the native file is the one built.
+
+@cfg(CFG_IMPORT_WEB)
+import "_cfg_import_web.zc"
+
+@cfg(not(CFG_IMPORT_WEB))
+import "_cfg_import_native.zc"
+
+import "_cfg_import_user.zc"
+
+fn main() {
+    assert(cfg_platform_id() == 204, "the native file's function, raw block and include");
+    assert(cfg_platform_calls == 12, "the native file's global");
+    assert(CFG_PLATFORM_NAME[0] == 'n', "the native file's def");
+    assert(cfg_user_value() == 42, "the shared file");
+    println "cfg import default test passed";
+}

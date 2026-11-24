@@ -316,7 +316,32 @@ typedef struct TypeAlias
     struct TypeAlias *next;
     int is_opaque;
     char *defined_in_file;
+    struct ASTNode *node; ///< Its declaration, if it has one: for the @cfg it is under.
 } TypeAlias;
+
+/**
+ * @brief One `import` statement, for working out the @cfg of the files (import_cfg_apply).
+ */
+typedef struct ImportCfgEdge
+{
+    char *importer; ///< The file the statement is in (the root's is not an ImportCfgFile).
+    char *imported; ///< The file it imports, as resolved.
+    char *cond;     ///< The statement's own @cfg as a C condition, or NULL for none.
+    struct ImportCfgEdge *next;
+} ImportCfgEdge;
+
+/**
+ * @brief An imported file: its declarations, and the condition they are needed under.
+ */
+typedef struct ImportCfgFile
+{
+    char *path;            ///< As resolved.
+    struct ASTNode *nodes; ///< Its top-level nodes.
+    char *cond;            ///< Worked out: NULL when it is always needed.
+    int resolved;          ///< `cond` has been worked out.
+    int applied;           ///< `cond` has been put on `nodes`.
+    struct ImportCfgFile *next;
+} ImportCfgFile;
 
 // zmap type registration (generates type-safe hash maps)
 #define REGISTER_ZMAP_TYPES(X)                                                                     \
@@ -424,6 +449,11 @@ struct ParserContext
 
     // Modules/Imports
     ModuleState imports;
+    // @cfg on imports (stmt_import.c): the statements, the files, and the @cfg of the
+    // `import` about to be parsed (the attributes come before the statement).
+    ImportCfgEdge *import_cfg_edges;
+    ImportCfgFile *import_cfg_files;
+    char *next_import_cfg;
     const char *current_filename; ///< Current file being parsed (for token/file attribution).
 
     // Config/State
@@ -953,6 +983,15 @@ const char *get_closest_type_hint(ParserContext *ctx, const char *name);
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 char *ast_to_string(ASTNode *node);
 void struct_hash_insert(ParserContext *ctx, const char *name, ASTNode *node);
+/**
+ * @brief Puts each imported file's @cfg on its declarations.
+ *
+ * `@cfg(X) import "f.zc"` means f.zc's declarations are under X. A file can be imported
+ * from several places, and by a file that is itself under a condition, so a file is
+ * needed when any import of it is: the condition of its importer and the statement's own,
+ * for any of its imports. Called once every file has been parsed.
+ */
+void import_cfg_apply(ParserContext *ctx);
 void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);
 
 // core/ declarations

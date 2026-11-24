@@ -404,6 +404,171 @@ ASTNode *parse_include(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+// ** @cfg on imports **
+
+static void import_cfg_note_edge(ParserContext *ctx, const char *imported, const char *cond)
+{
+    if (ctx->config->mode_lsp || !imported)
+    {
+        return; // the LSP parses files again and again, and emits no C
+    }
+    ImportCfgEdge *e = xcalloc(1, sizeof(ImportCfgEdge));
+    e->importer = ctx->current_filename ? xstrdup(ctx->current_filename) : NULL;
+    e->imported = xstrdup(imported);
+    e->cond = cond ? xstrdup(cond) : NULL;
+    e->next = ctx->import_cfg_edges;
+    ctx->import_cfg_edges = e;
+}
+
+static void import_cfg_note_file(ParserContext *ctx, const char *path, ASTNode *nodes)
+{
+    if (ctx->config->mode_lsp || !path)
+    {
+        return;
+    }
+    ImportCfgFile *f = xcalloc(1, sizeof(ImportCfgFile));
+    f->path = xstrdup(path);
+    f->nodes = nodes;
+    f->next = ctx->import_cfg_files;
+    ctx->import_cfg_files = f;
+}
+
+static ImportCfgFile *import_cfg_file(ParserContext *ctx, const char *path)
+{
+    for (ImportCfgFile *f = ctx->import_cfg_files; path && f; f = f->next)
+    {
+        if (strcmp(f->path, path) == 0)
+        {
+            return f;
+        }
+    }
+    return NULL;
+}
+
+// `a && b` of two conditions, where NULL is "always".
+static char *import_cfg_and(const char *a, const char *b)
+{
+    if (!a)
+    {
+        return b ? xstrdup(b) : NULL;
+    }
+    if (!b)
+    {
+        return xstrdup(a);
+    }
+    char *out = xmalloc(strlen(a) + strlen(b) + 16);
+    sprintf(out, "(%s) && (%s)", a, b); /* safe: sized above */
+    return out;
+}
+
+// Puts `cond` on a file's own declarations. An import among them is another file's.
+static void import_cfg_put(ASTNode *node, const char *cond, int depth)
+{
+    for (; node && depth < 1024; node = node->next)
+    {
+        if (node->kind == NODE_IMPORT)
+        {
+            continue;
+        }
+        if (node->kind == NODE_ROOT)
+        {
+            import_cfg_put(node->root.children, cond, depth + 1);
+            continue;
+        }
+        char *both = import_cfg_and(cond, node->cfg_condition);
+        node->cfg_condition = both;
+    }
+}
+
+void import_cfg_apply(ParserContext *ctx)
+{
+    // Nothing to do, and nothing changed, in a program with no @cfg on an import.
+    int any = 0;
+    for (ImportCfgEdge *e = ctx->import_cfg_edges; e; e = e->next)
+    {
+        if (e->cond)
+        {
+            any = 1;
+            break;
+        }
+    }
+    if (!any)
+    {
+        return;
+    }
+
+    // A file's condition needs its importers' first. Imports make no cycle, so each pass
+    // settles at least one file; a file left unsettled is left as it is (always needed).
+    int progress = 1;
+    while (progress)
+    {
+        progress = 0;
+        for (ImportCfgFile *f = ctx->import_cfg_files; f; f = f->next)
+        {
+            if (f->resolved)
+            {
+                continue;
+            }
+            int ready = 1;
+            int always = 0;
+            char *any_of = NULL;
+            for (ImportCfgEdge *e = ctx->import_cfg_edges; e && ready; e = e->next)
+            {
+                if (strcmp(e->imported, f->path) != 0)
+                {
+                    continue;
+                }
+                ImportCfgFile *importer = import_cfg_file(ctx, e->importer);
+                if (importer && !importer->resolved)
+                {
+                    ready = 0;
+                    break;
+                }
+                // The root file is no ImportCfgFile: it is always needed.
+                char *term = import_cfg_and(importer ? importer->cond : NULL, e->cond);
+                if (!term)
+                {
+                    always = 1;
+                }
+                else if (!any_of)
+                {
+                    any_of = term;
+                }
+                else if (strcmp(any_of, term) != 0)
+                {
+                    char *joined = xmalloc(strlen(any_of) + strlen(term) + 16);
+                    sprintf(joined, "%s || (%s)", any_of, term); /* safe: sized above */
+                    any_of = joined;
+                }
+            }
+            if (!ready)
+            {
+                continue;
+            }
+            if (always || !any_of)
+            {
+                f->cond = NULL;
+            }
+            else
+            {
+                f->cond = xmalloc(strlen(any_of) + 8);
+                sprintf(f->cond, "(%s)", any_of); /* safe: sized above */
+            }
+            f->resolved = 1;
+            progress = 1;
+        }
+    }
+
+    for (ImportCfgFile *f = ctx->import_cfg_files; f; f = f->next)
+    {
+        if (f->resolved && !f->applied && f->cond)
+        {
+            import_cfg_put(f->nodes, f->cond, 0);
+        }
+        f->applied = 1;
+    }
+}
+
 ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
 {
     lexer_next(l);
@@ -618,6 +783,11 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         dummy->block.statements = NULL;
         return dummy;
     }
+
+    // Every import of the file counts towards its @cfg, a repeated one too.
+    char *statement_cfg = ctx->next_import_cfg;
+    ctx->next_import_cfg = NULL; // this statement's, not those of the file it reads
+    import_cfg_note_edge(ctx, fn, statement_cfg);
 
     if (is_file_imported(ctx, fn))
     {
@@ -886,6 +1056,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
     import_node->token = t;
     import_node->import_stmt.path = xstrdup(fn);
     import_node->import_stmt.module_root = r;
+    import_cfg_note_file(ctx, fn, r);
 
     return import_node;
 }

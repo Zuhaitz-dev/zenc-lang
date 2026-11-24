@@ -1,0 +1,21 @@
+// @cfg on an import puts the imported file's declarations under the condition: its
+// functions, globals, defs, raw blocks and includes. Here the flag is defined, so the
+// web file is the one built. test_cfg_import_default.zc is the same without the flag.
+//> define: CFG_IMPORT_WEB
+
+@cfg(CFG_IMPORT_WEB)
+import "_cfg_import_web.zc"
+
+@cfg(not(CFG_IMPORT_WEB))
+import "_cfg_import_native.zc"
+
+import "_cfg_import_user.zc"
+
+fn main() {
+    assert(cfg_platform_id() == 143, "the web file's function, raw block and include");
+    assert(cfg_platform_calls == 1, "the web file's global");
+    assert(CFG_PLATFORM_NAME[0] == 'w', "the web file's def");
+    // A file imported under a @cfg in one place and plainly in another is always needed.
+    assert(cfg_user_value() == 42, "the shared file");
+    println "cfg import test passed";
+}

@@ -250,12 +250,16 @@ static ASTNode *parse_top_level_nodes(ParserContext *ctx, Lexer *l)
                 Token next = lexer_peek(l);
                 if (next.len == 6 && strncmp(next.start, "import", 6) == 0)
                 {
+                    ctx->next_import_cfg = attrs.cfg_condition;
                     s = parse_import(ctx, l, 1);
+                    ctx->next_import_cfg = NULL;
                 }
             }
             else if (t.len == 6 && strncmp(t.start, "import", 6) == 0)
             {
+                ctx->next_import_cfg = attrs.cfg_condition;
                 s = parse_import(ctx, l, 0);
+                ctx->next_import_cfg = NULL;
             }
             else if (t.len == 6 && strncmp(t.start, "static", 6) == 0)
             {
@@ -616,6 +620,7 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
     if (ctx->parse_depth == 0)
     {
         parse_pending_bodies(ctx);
+        import_cfg_apply(ctx);
     }
     return nodes;
 }

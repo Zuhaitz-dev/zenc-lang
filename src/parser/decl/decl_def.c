@@ -33,6 +33,15 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
     }
 
     char *ns = token_strdup(n);
+    // Another def of this name, already? Then each is under a @cfg of its own (a plain
+    // redefinition is an error), and which one a use means is settled when the C is
+    // compiled. Neither's value may stand in for the name here.
+    // (In this scope: a def in a block that shadows one outside it is not this.)
+    ZenSymbol *earlier = symbol_lookup_local(ctx->current_scope, ns);
+    if (earlier && !(earlier->kind == SYM_CONSTANT && earlier->is_def))
+    {
+        earlier = NULL;
+    }
     if (!type_obj)
     {
         type_obj = type_new(TYPE_UNKNOWN); // Ensure we have an object
@@ -73,9 +82,13 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l, int is_export)
                 ZenSymbol *s = find_symbol_entry(ctx, ns);
                 if (s)
                 {
-                    s->is_const_value = 1;
+                    s->is_const_value = earlier ? 0 : 1;
                     s->const_int_val = val;
                     s->is_def = 1;
+                    if (earlier)
+                    {
+                        earlier->is_const_value = 0;
+                    }
 
                     // Auto-infer type for def if unknown: `int`, or `i64` when the
                     // value does not fit in 32 bits.
@@ -161,6 +174,11 @@ ASTNode *parse_type_alias(ParserContext *ctx, Lexer *l, int is_opaque, int is_ex
 
     register_type_alias(ctx, node->type_alias.alias, o, t, is_opaque,
                         node->type_alias.defined_in_file, n, is_export);
+    TypeAlias *registered = find_type_alias_node(ctx, node->type_alias.alias);
+    if (registered)
+    {
+        registered->node = node; // for the @cfg the declaration is under
+    }
 
     return node;
 }

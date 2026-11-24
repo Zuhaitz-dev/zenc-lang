@@ -111,6 +111,7 @@ void register_type_alias(ParserContext *ctx, const char *alias, const char *orig
     {
         ta = xmalloc(sizeof(TypeAlias));
         ta->alias = xstrdup(alias);
+        ta->node = NULL;
         ta->next = ctx->type_aliases;
         ctx->type_aliases = ta;
     }

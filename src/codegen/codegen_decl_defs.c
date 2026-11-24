@@ -66,6 +66,10 @@ static void emit_includes_and_aliases_internal(ParserContext *ctx, ASTNode *node
         {
             if (node->include.path)
             {
+                if (node->cfg_condition)
+                {
+                    EMIT(ctx, "#if %s\n", node->cfg_condition);
+                }
                 if (node->include.is_system)
                 {
                     EMIT(ctx, "#include <%s>\n", node->include.path);
@@ -73,6 +77,10 @@ static void emit_includes_and_aliases_internal(ParserContext *ctx, ASTNode *node
                 else
                 {
                     EMIT(ctx, "#include \"%s\"\n", node->include.path);
+                }
+                if (node->cfg_condition)
+                {
+                    EMIT(ctx, "#endif\n");
                 }
             }
         }
@@ -173,6 +181,11 @@ void emit_global_aliases(ParserContext *ctx)
     TypeAlias *ta = ctx->type_aliases;
     while (ta)
     {
+        const char *cfg = ta->node ? ta->node->cfg_condition : NULL;
+        if (cfg)
+        {
+            EMIT(ctx, "#if %s\n", cfg);
+        }
         if (ta->type_info)
         {
             char *c_type_str = type_to_c_string(ta->type_info, ctx->config->misra_mode);
@@ -199,6 +212,10 @@ void emit_global_aliases(ParserContext *ctx)
         else
         {
             EMIT(ctx, "typedef %s %s;\n", ta->original_type, ta->alias);
+        }
+        if (cfg)
+        {
+            EMIT(ctx, "#endif\n");
         }
         ta = ta->next;
     }

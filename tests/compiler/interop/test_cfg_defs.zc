@@ -1,0 +1,20 @@
+// Three defs of one name, each under its own @cfg: the one whose condition holds is the
+// one used, whichever place it has among the three. Here it is the middle one;
+// test_cfg_defs_default.zc is the same with none of the flags, for the last.
+//> define: CFG_DEFS_B
+
+@cfg(CFG_DEFS_A)
+def CFG_TIER = 1;
+
+@cfg(CFG_DEFS_B)
+def CFG_TIER = 2;
+
+@cfg(not(CFG_DEFS_A))
+@cfg(not(CFG_DEFS_B))
+def CFG_TIER = 3;
+
+fn main() {
+    assert(CFG_TIER == 2, "the def whose condition holds");
+    assert(CFG_TIER * 10 + 1 == 21, "in an expression");
+    println "cfg defs test passed";
+}
