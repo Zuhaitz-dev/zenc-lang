@@ -28,7 +28,7 @@ static ZC_NORETURN void fail(const char *msg)
     exit(1);
 }
 
-static void start_lsp_server()
+static void start_lsp_server(void)
 {
     if (pipe(pipe_in) < 0 || pipe(pipe_out) < 0)
     {
@@ -83,7 +83,7 @@ static void send_request(const char *json)
 char global_buf[MAX_BUFFER];
 int global_len = 0;
 
-static char *read_message()
+static char *read_message(void)
 {
     while (1)
     {
@@ -190,7 +190,7 @@ static char *wait_for_response(int id)
     return NULL;
 }
 
-static void test_initialize()
+static void test_initialize(void)
 {
     printf("Running test_initialize...\n");
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": "
@@ -210,7 +210,7 @@ static void test_initialize()
     free(resp);
 }
 
-static void test_hover()
+static void test_hover(void)
 {
     printf("Running test_hover...\n");
     int fd = open("/tmp/test_lsp.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -297,7 +297,7 @@ static void test_hover_signature(void)
     printf("PASS: test_hover_signature\n");
 }
 
-static void test_definition_partial_code()
+static void test_definition_partial_code(void)
 {
     printf("Running test_definition_partial_code...\n");
     // Incomplete call: "foo(" without closing paren or args.
@@ -331,7 +331,7 @@ static void test_definition_partial_code()
     free(resp);
 }
 
-static void test_references_partial_code()
+static void test_references_partial_code(void)
 {
     printf("Running test_references_partial_code...\n");
     // Same partial code as above — references on incomplete call
@@ -350,7 +350,7 @@ static void test_references_partial_code()
     free(resp);
 }
 
-static void test_request_unopened_file()
+static void test_request_unopened_file(void)
 {
     printf("Running test_request_unopened_file...\n");
     // Hover on a URI that was never didOpen'd — tests null-pointer guards.
@@ -377,7 +377,7 @@ static void test_request_unopened_file()
     free(resp);
 }
 
-static void test_empty_source()
+static void test_empty_source(void)
 {
     printf("Running test_empty_source...\n");
     int fd = open("/tmp/test_empty.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -426,7 +426,7 @@ static void test_empty_source()
     }
 }
 
-static void test_did_change()
+static void test_did_change(void)
 {
     printf("Running test_did_change...\n");
     // Open a file, then send didChange with modified content
@@ -484,7 +484,7 @@ static void test_did_change()
     free(resp2);
 }
 
-static void test_code_action()
+static void test_code_action(void)
 {
     printf("Running test_code_action...\n");
     // Open a file with 'var' to trigger deprecation diagnostics
@@ -522,7 +522,7 @@ static void test_code_action()
     free(resp);
 }
 
-static void test_completion_prefix()
+static void test_completion_prefix(void)
 {
     printf("Running test_completion_prefix...\n");
     int fd = open("/tmp/test_prefix.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1179,7 +1179,7 @@ static void test_index_gitignore(void)
     printf("PASS: test_index_gitignore\n");
 }
 
-static void test_shutdown()
+static void test_shutdown(void)
 {
     printf("Running test_shutdown...\n");
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"shutdown\", \"params\": {}}");
@@ -1195,7 +1195,7 @@ static void test_shutdown()
     }
 }
 
-static void test_completion()
+static void test_completion(void)
 {
     printf("Running test_completion...\n");
     int fd = open("/tmp/test_compl.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1248,7 +1248,7 @@ static void test_completion()
     free(resp);
 }
 
-static void test_struct_completion()
+static void test_struct_completion(void)
 {
     printf("Running test_struct_completion...\n");
     int fd = open("/tmp/test_struct.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1295,7 +1295,7 @@ static void test_struct_completion()
     free(resp);
 }
 
-static void test_diagnostics()
+static void test_diagnostics(void)
 {
     printf("Running test_diagnostics...\n");
     // Create a file with a syntax error
@@ -1379,7 +1379,7 @@ static void test_diagnostic_hints(void)
     exit(1);
 }
 
-static void test_semantic_tokens()
+static void test_semantic_tokens(void)
 {
     printf("Running test_semantic_tokens...\n");
     int fd = open("/tmp/test_semantic.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1426,7 +1426,7 @@ static void test_semantic_tokens()
     free(resp);
 }
 
-static void test_definition()
+static void test_definition(void)
 {
     printf("Running test_definition...\n");
     int fd = open("/tmp/test_def.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1473,7 +1473,7 @@ static void test_definition()
     free(resp);
 }
 
-static void test_references()
+static void test_references(void)
 {
     printf("Running test_references...\n");
     // Reuse test_def.zc
@@ -1506,7 +1506,7 @@ static void test_references()
     free(resp);
 }
 
-static void test_rename()
+static void test_rename(void)
 {
     printf("Running test_rename...\n");
     // Reuse test_def.zc
@@ -1536,7 +1536,7 @@ static void test_rename()
     free(resp);
 }
 
-static void test_outline()
+static void test_outline(void)
 {
     printf("Running test_outline...\n");
     int fd = open("/tmp/test_outline.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1586,7 +1586,7 @@ static void test_outline()
     free(resp);
 }
 
-static void test_formatting()
+static void test_formatting(void)
 {
     printf("Running test_formatting...\n");
     int fd = open("/tmp/test_format.zc", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -1622,7 +1622,7 @@ static void test_formatting()
     free(resp);
 }
 
-static void test_signature_help()
+static void test_signature_help(void)
 {
     printf("Running test_signature_help...\n");
     send_request("{\"jsonrpc\": \"2.0\", \"id\": 96, \"method\": \"textDocument/signatureHelp\", "
@@ -1848,7 +1848,7 @@ static void test_std_import_in_other_project(void)
     printf("PASS: test_std_import_in_other_project\n");
 }
 
-int main()
+int main(void)
 {
     // Don't die with a cryptic 141 (SIGPIPE) if the LSP server crashes and
     // closes its pipe; send_request will report a clear failure instead.
