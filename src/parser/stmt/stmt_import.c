@@ -404,6 +404,37 @@ ASTNode *parse_include(ParserContext *ctx, Lexer *l)
     return n;
 }
 
+// The path an imported file's tokens carry, which is only ever shown (diagnostics, #line).
+//
+// `resolved` is absolute, as imports are resolved, while the root file's is as it was
+// given. So the output mixed the two (`src/main.zc` beside `/home/me/proj/src/util.zc`),
+// and the generated C held the place the project was built in. As a C compiler does, a
+// path is shown as the root's was given: when that was relative, a file under the current
+// directory is shown relative to it. One outside it (the standard library) stays absolute.
+// The LSP keeps absolute paths: it needs them to point at a file.
+static const char *import_display_path(ParserContext *ctx, const char *resolved)
+{
+    const char *root = ctx->config->input_file;
+    if (ctx->config->mode_lsp || !resolved || !root || z_is_abs_path(root))
+    {
+        return resolved;
+    }
+    char *cwd = realpath(".", NULL); // libc's own memory
+    if (!cwd)
+    {
+        return resolved;
+    }
+    size_t len = strlen(cwd);
+    const char *shown = resolved;
+    if (len > 0 && strncmp(resolved, cwd, len) == 0 &&
+        (resolved[len] == '/' || resolved[len] == '\\') && resolved[len + 1])
+    {
+        shown = resolved + len + 1; // within `resolved`, which outlives its tokens
+    }
+    libc_free(cwd);
+    return shown;
+}
+
 ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
 {
     lexer_next(l);
@@ -796,7 +827,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
 
     Lexer i;
     // The imported file's own path: tokens carry it into diagnostics and #line.
-    lexer_init(&i, src, ctx->config, fn);
+    lexer_init(&i, src, ctx->config, import_display_path(ctx, fn));
 
     char *prev_module_prefix = ctx->imports.current_module_prefix;
     char *temp_module_prefix = NULL;

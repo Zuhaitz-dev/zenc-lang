@@ -1,0 +1,5 @@
+// Imported by ../warn_import_path.zc: a warning in an imported file.
+fn imported_helper(x: int) -> int {
+    let never_used = 1;
+    return x;
+}
