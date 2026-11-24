@@ -310,6 +310,18 @@ else
     check "emit-c #line of an imported method names the imported file" 0
 fi
 
+# An imported file's build directives apply, as the main file's do: its `//> link:`
+# reaches the link (here a library that doesn't exist, so the linker names it).
+mkdir -p "$workdir/linklib"
+printf '//> link: -lzc_no_such_library\nfn helper() -> int { return 1; }\n' > "$workdir/linklib/needs_lib.zc"
+printf 'import "linklib/needs_lib.zc"\nfn main() {\n    println "{helper()}";\n}\n' > "$workdir/link_main.zc"
+out=$("$ZC" build "$workdir/link_main.zc" -o "$workdir/link_out" 2>&1)
+if echo "$out" | grep -q "zc_no_such_library"; then
+    check "an imported file's //> link: reaches the link" 1
+else
+    check "an imported file's //> link: reaches the link" 0
+fi
+
 # --- Installed layout ------------------------------------------------------
 
 # `make install` puts the binary in PREFIX/bin and the stdlib in

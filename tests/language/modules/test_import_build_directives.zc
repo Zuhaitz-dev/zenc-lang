@@ -1,0 +1,25 @@
+// language/modules: modules: test_import_build_directives
+// An imported file's `//> ` build directives apply, as the main file's do.
+import "./test_modules/_directives.zc"
+
+include <stdio.h>
+
+@cfg(ZC_IMPORTED_DEFINE)
+fn mode() -> int {
+    return 1;
+}
+
+@cfg(not(ZC_IMPORTED_DEFINE))
+fn mode() -> int {
+    return 0;
+}
+
+test "import_build_directives" {
+    assert(imported_value() == 7, "the module is imported");
+    assert(mode() == 1, "its //> define: is seen by @cfg");
+    let v: int = 0;
+    raw {
+        v = ZC_IMPORTED_DEFINE;
+    }
+    assert(v == 42, "and passed to the C compiler");
+}

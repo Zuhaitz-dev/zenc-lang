@@ -794,6 +794,13 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l, int is_re_export)
         }
     }
 
+    // An imported file's build directives count as the main file's do: a library module
+    // can say what it links (`//> link: -lz`). Not in the LSP, which doesn't build.
+    if (ctx->compiler && !ctx->config->mode_lsp)
+    {
+        scan_build_directives(ctx, src);
+    }
+
     Lexer i;
     // The imported file's own path: tokens carry it into diagnostics and #line.
     lexer_init(&i, src, ctx->config, fn);

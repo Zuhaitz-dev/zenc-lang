@@ -1,0 +1,6 @@
+// Imported by test_import_build_directives.zc: its build directives apply too.
+//> define: ZC_IMPORTED_DEFINE=42
+
+fn imported_value() -> int {
+    return 7;
+}
