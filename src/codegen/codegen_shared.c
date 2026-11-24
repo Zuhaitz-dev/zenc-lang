@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "codegen_shared.h"
+#include "codegen_internal.h"
 #include "../parser/parser.h"
 #include "../ast/primitives.h"
 #include <string.h>
@@ -178,4 +179,97 @@ const char *map_to_c_type(const char *t)
     }
 
     return normalize_type_name(t);
+}
+
+// ** CodegenKeySet **
+
+typedef struct CodegenKey
+{
+    int kind;
+    const char *name; // NULL: an empty slot
+    const char *extra;
+} CodegenKey;
+
+static unsigned codegen_key_hash(int kind, const char *name, const char *extra)
+{
+    unsigned h = 2166136261u ^ (unsigned)kind; // FNV-1a
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    h = (h ^ 0xFFu) * 16777619u; // between the two strings
+    for (const unsigned char *c = (const unsigned char *)extra; c && *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    return h;
+}
+
+static int codegen_key_eq(const CodegenKey *k, int kind, const char *name, const char *extra)
+{
+    return k->kind == kind && strcmp(k->name, name) == 0 &&
+           ((!k->extra && !extra) || (k->extra && extra && strcmp(k->extra, extra) == 0));
+}
+
+// The slot of the key, or the empty slot it would go in. The set is never full.
+static CodegenKey *codegen_key_slot(CodegenKey *slots, unsigned cap, int kind, const char *name,
+                                    const char *extra)
+{
+    unsigned i = codegen_key_hash(kind, name, extra) & (cap - 1);
+    while (slots[i].name && !codegen_key_eq(&slots[i], kind, name, extra))
+    {
+        i = (i + 1) & (cap - 1);
+    }
+    return &slots[i];
+}
+
+int codegen_keyset_has(const CodegenKeySet *set, int kind, const char *name, const char *extra)
+{
+    if (!set->slots || !name)
+    {
+        return 0;
+    }
+    return codegen_key_slot(set->slots, set->cap, kind, name, extra)->name != NULL;
+}
+
+void codegen_keyset_add(CodegenKeySet *set, int kind, const char *name, const char *extra)
+{
+    if (!name)
+    {
+        return;
+    }
+    // Kept at most half full.
+    if ((set->count + 1) * 2 > set->cap)
+    {
+        unsigned cap = set->cap ? set->cap * 2 : 256;
+        CodegenKey *slots = xmalloc(cap * sizeof(CodegenKey));
+        memset(slots, 0, cap * sizeof(CodegenKey));
+        for (unsigned i = 0; i < set->cap; i++)
+        {
+            CodegenKey *k = &set->slots[i];
+            if (k->name)
+            {
+                *codegen_key_slot(slots, cap, k->kind, k->name, k->extra) = *k;
+            }
+        }
+        zfree(set->slots);
+        set->slots = slots;
+        set->cap = cap;
+    }
+    CodegenKey *slot = codegen_key_slot(set->slots, set->cap, kind, name, extra);
+    if (!slot->name)
+    {
+        slot->kind = kind;
+        slot->name = name;
+        slot->extra = extra;
+        set->count++;
+    }
+}
+
+void codegen_keyset_free(CodegenKeySet *set)
+{
+    zfree(set->slots);
+    set->slots = NULL;
+    set->cap = 0;
+    set->count = 0;
 }

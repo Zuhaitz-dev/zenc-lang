@@ -84,4 +84,25 @@ void emit_defers_down_to(ParserContext *ctx, int boundary);
 extern int g_emitting_callee;
 
 const char *get_missing_function_hint(ParserContext *ctx, const char *name);
+
+/**
+ * @brief A set of keys (a kind, a name, and a second string or NULL), for the duplicate
+ * checks of codegen that would otherwise walk everything kept so far.
+ *
+ * Two keys are the same when their kinds are, their names are, and their second strings
+ * are both NULL or the same. The set keeps the pointers, not copies: the strings must
+ * outlive it. Zero-initialised it is empty.
+ */
+typedef struct CodegenKeySet
+{
+    struct CodegenKey *slots;
+    unsigned cap;
+    unsigned count;
+} CodegenKeySet;
+
+/** @brief Whether the key is in the set. */
+int codegen_keyset_has(const CodegenKeySet *set, int kind, const char *name, const char *extra);
+/** @brief Puts the key in the set (once). `name` must not be NULL. */
+void codegen_keyset_add(CodegenKeySet *set, int kind, const char *name, const char *extra);
+void codegen_keyset_free(CodegenKeySet *set);
 #endif

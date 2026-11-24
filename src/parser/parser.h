@@ -424,6 +424,9 @@ struct ParserContext
     ASTNode **parsed_funcs_seen;    ///< Set of that list's nodes, by address (dedup).
     unsigned parsed_funcs_seen_cap; ///< Its slots, a power of two.
     unsigned parsed_funcs_seen_count;
+    ASTNode **parsed_globals_seen;    ///< Set of parsed_globals_list's nodes, by address (dedup).
+    unsigned parsed_globals_seen_cap; ///< Its slots, a power of two.
+    unsigned parsed_globals_seen_count;
     StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
     StructRef *parsed_globals_list; ///< List of all parsed global variables.
     StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).

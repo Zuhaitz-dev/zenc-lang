@@ -331,15 +331,35 @@ void add_to_impl_list(ParserContext *ctx, ASTNode *node)
 
 void add_to_global_list(ParserContext *ctx, ASTNode *node)
 {
-    StructRef *curr = ctx->parsed_globals_list;
-    while (curr)
+    // Already in the list? A set of its nodes answers it (as for add_to_func_list).
+    if (ctx->parsed_globals_seen &&
+        ctx->parsed_globals_seen[parsed_funcs_seen_slot(ctx->parsed_globals_seen,
+                                                        ctx->parsed_globals_seen_cap, node)])
     {
-        if (curr->node == node)
-        {
-            return;
-        }
-        curr = curr->next;
+        return;
     }
+    if ((ctx->parsed_globals_seen_count + 1) * 2 > ctx->parsed_globals_seen_cap)
+    {
+        unsigned old_cap = ctx->parsed_globals_seen_cap;
+        ASTNode **old = ctx->parsed_globals_seen;
+        unsigned cap = old_cap ? old_cap * 2 : 256;
+        ASTNode **slots = xmalloc(cap * sizeof(ASTNode *));
+        memset(slots, 0, cap * sizeof(ASTNode *));
+        for (unsigned i = 0; i < old_cap; i++)
+        {
+            if (old[i])
+            {
+                slots[parsed_funcs_seen_slot(slots, cap, old[i])] = old[i];
+            }
+        }
+        zfree(old);
+        ctx->parsed_globals_seen = slots;
+        ctx->parsed_globals_seen_cap = cap;
+    }
+    ctx->parsed_globals_seen[parsed_funcs_seen_slot(ctx->parsed_globals_seen,
+                                                    ctx->parsed_globals_seen_cap, node)] = node;
+    ctx->parsed_globals_seen_count++;
+
     StructRef *r = xmalloc(sizeof(StructRef));
     r->node = node;
     r->next = ctx->parsed_globals_list;
@@ -768,6 +788,13 @@ ASTNode *find_trait_def(ParserContext *ctx, const char *name)
 
 ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
 {
+    // The lists below are all ones type_name_note covers: a name never noted is in none of
+    // them. parse_struct asks this of every struct, which is most often a new name.
+    if (!type_name_known(ctx, name))
+    {
+        return NULL;
+    }
+
     Instantiation *i = ctx->instantiations;
     while (i)
     {

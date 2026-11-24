@@ -10,11 +10,101 @@
 
 #include "zprep.h"
 
+// ** The name index of a state's entries **
+
+// A list this short is as quick to walk as to index.
+#define MOVE_INDEX_MIN 32
+
+static unsigned move_name_hash(const char *name)
+{
+    unsigned h = 2166136261u; // FNV-1a
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++)
+    {
+        h = (h ^ *c) * 16777619u;
+    }
+    return h;
+}
+
+// The slot of `name` in the index, or the empty slot it would go in.
+static unsigned move_index_slot(MoveEntry **index, unsigned cap, const char *name)
+{
+    unsigned i = move_name_hash(name) & (cap - 1);
+    while (index[i] && strcmp(index[i]->symbol_name, name) != 0)
+    {
+        i = (i + 1) & (cap - 1);
+    }
+    return i;
+}
+
+// Makes the index anew from the whole list, at most half full.
+static void move_index_build(MoveState *state)
+{
+    unsigned cap = 64;
+    while (cap < state->count * 2)
+    {
+        cap *= 2;
+    }
+    zfree(state->index);
+    state->index = xmalloc(cap * sizeof(MoveEntry *));
+    memset(state->index, 0, cap * sizeof(MoveEntry *));
+    state->index_cap = cap;
+    for (MoveEntry *e = state->entries; e; e = e->next)
+    {
+        unsigned slot = move_index_slot(state->index, cap, e->symbol_name);
+        if (!state->index[slot])
+        {
+            state->index[slot] = e; // the first in the list, as a walk finds
+        }
+    }
+}
+
+// The entry of `path` in this state alone, or NULL.
+static MoveEntry *move_state_find(MoveState *state, const char *path)
+{
+    if (state->index)
+    {
+        return state->index[move_index_slot(state->index, state->index_cap, path)];
+    }
+    for (MoveEntry *e = state->entries; e; e = e->next)
+    {
+        if (strcmp(e->symbol_name, path) == 0)
+        {
+            return e;
+        }
+    }
+    return NULL;
+}
+
+// Puts a new entry, of a name not in the state, at the head of its list.
+static void move_state_add(MoveState *state, MoveEntry *entry)
+{
+    entry->next = state->entries;
+    state->entries = entry;
+    state->count++;
+    if (!state->index)
+    {
+        if (state->count >= MOVE_INDEX_MIN)
+        {
+            move_index_build(state);
+        }
+        return;
+    }
+    if (state->count * 2 > state->index_cap)
+    {
+        move_index_build(state);
+        return;
+    }
+    state->index[move_index_slot(state->index, state->index_cap, entry->symbol_name)] = entry;
+}
+
 MoveState *move_state_create(MoveState *parent)
 {
     MoveState *s = xmalloc(sizeof(MoveState));
     s->entries = NULL;
     s->parent = parent;
+    s->index = NULL;
+    s->index_cap = 0;
+    s->count = 0;
     return s;
 }
 
@@ -37,7 +127,12 @@ MoveState *move_state_clone(MoveState *src)
         new_entry->next = NULL;
         *tail = new_entry;
         tail = &new_entry->next;
+        new_state->count++;
         curr = curr->next;
+    }
+    if (new_state->count >= MOVE_INDEX_MIN)
+    {
+        move_index_build(new_state);
     }
     return new_state;
 }
@@ -56,6 +151,7 @@ void move_state_free(MoveState *state)
         zfree(e);
         e = next;
     }
+    zfree(state->index);
     zfree(state);
 }
 
@@ -96,24 +192,19 @@ static void mark_moved_in_state(MoveState *state, const char *path, Token t)
         return;
     }
 
-    MoveEntry *e = state->entries;
-    while (e)
+    MoveEntry *e = move_state_find(state, path);
+    if (e)
     {
-        if (strcmp(e->symbol_name, path) == 0)
-        {
-            e->status = MOVE_STATE_MOVED;
-            e->moved_at = t;
-            return;
-        }
-        e = e->next;
+        e->status = MOVE_STATE_MOVED;
+        e->moved_at = t;
+        return;
     }
 
     MoveEntry *new_entry = xmalloc(sizeof(MoveEntry));
     new_entry->symbol_name = xstrdup(path);
     new_entry->status = MOVE_STATE_MOVED;
     new_entry->moved_at = t;
-    new_entry->next = state->entries;
-    state->entries = new_entry;
+    move_state_add(state, new_entry);
 }
 
 MoveStatus get_move_status(MoveState *state, const char *path)
@@ -125,14 +216,10 @@ MoveStatus get_move_status(MoveState *state, const char *path)
     MoveState *s = state;
     while (s)
     {
-        MoveEntry *e = s->entries;
-        while (e)
+        MoveEntry *e = move_state_find(s, path);
+        if (e)
         {
-            if (strcmp(e->symbol_name, path) == 0)
-            {
-                return e->status;
-            }
-            e = e->next;
+            return e->status;
         }
         s = s->parent;
     }
@@ -409,24 +496,19 @@ static void mark_valid_in_state(MoveState *state, const char *path, Token t)
         return;
     }
 
-    MoveEntry *e = state->entries;
-    while (e)
+    MoveEntry *e = move_state_find(state, path);
+    if (e)
     {
-        if (strcmp(e->symbol_name, path) == 0)
-        {
-            e->status = MOVE_STATE_VALID;
-            e->moved_at = t;
-            return;
-        }
-        e = e->next;
+        e->status = MOVE_STATE_VALID;
+        e->moved_at = t;
+        return;
     }
 
     MoveEntry *new_entry = xmalloc(sizeof(MoveEntry));
     new_entry->symbol_name = xstrdup(path);
     new_entry->status = MOVE_STATE_VALID;
     new_entry->moved_at = t;
-    new_entry->next = state->entries;
-    state->entries = new_entry;
+    move_state_add(state, new_entry);
 }
 
 void mark_symbol_valid(ParserContext *ctx, ZenSymbol *sym, ASTNode *context_node)
