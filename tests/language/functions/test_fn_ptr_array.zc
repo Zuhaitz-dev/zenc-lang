@@ -1,0 +1,45 @@
+// language/functions: functions: test_fn_ptr_array
+// An array of function pointers, as a local, a struct field and a 2-D array.
+fn add(a: int, b: int) -> int { return a + b; }
+fn sub(a: int, b: int) -> int { return a - b; }
+fn mul(a: int, b: int) -> int { return a * b; }
+
+fn pick_add() -> fn*(int, int) -> int { return add; }
+
+struct Calc {
+    ops: [fn*(int, int) -> int; 3];
+}
+
+test "fn_ptr_array_local" {
+    let ops: [fn*(int, int) -> int; 3];
+    ops[0] = add;
+    ops[1] = sub;
+    ops[2] = mul;
+    assert(ops[0](6, 3) == 9, "add");
+    assert(ops[1](6, 3) == 3, "sub");
+    assert(ops[2](6, 3) == 18, "mul");
+    let total = 0;
+    for i in 0..3 {
+        total = total + ops[i](2, 1);
+    }
+    assert(total == 6, "called in a loop: 3 + 1 + 2");
+}
+
+test "fn_ptr_array_field" {
+    let c: Calc;
+    c.ops[0] = add;
+    c.ops[1] = pick_add();
+    c.ops[2] = mul;
+    assert(c.ops[1](1, 2) == 3, "a field's element");
+    assert(sizeof(c.ops) == 3 * sizeof(c.ops[0]), "three pointers, not one");
+}
+
+test "fn_ptr_array_2d" {
+    let grid: [[fn*(int, int) -> int; 2]; 2];
+    grid[0][0] = add;
+    grid[0][1] = sub;
+    grid[1][0] = mul;
+    grid[1][1] = add;
+    assert(grid[0][1](5, 2) == 3, "row 0, column 1");
+    assert(grid[1][0](5, 2) == 10, "row 1, column 0");
+}

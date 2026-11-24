@@ -72,18 +72,19 @@ static void emit_c_decl(ParserContext *ctx, const char *type_str, const char *na
 
     if (fn_ptr)
     {
-        char *end_paren = (char *)strchr(fn_ptr, ')');
-        if (end_paren)
+        // The name goes where the declarator ends, `int (*name)(int)`, or before an array's
+        // dimensions there, `int (*name[2])(int)`.
+        const char *at = strchr(fn_ptr, ')');
+        if (!at)
         {
-            ptrdiff_t prefix_len = end_paren - type_str;
-            EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, end_paren);
+            at = fn_ptr + 2; // malformed (shouldn't happen)
         }
-        else
+        const char *dims = memchr(fn_ptr, '[', (size_t)(at - fn_ptr));
+        if (dims)
         {
-            // Fallback if malformed (shouldn't happen)
-            ptrdiff_t prefix_len = fn_ptr - type_str + 2;
-            EMIT(ctx, "%.*s%s%s", (int)prefix_len, type_str, name, fn_ptr + 2);
+            at = dims;
         }
+        EMIT(ctx, "%.*s%s%s", (int)(at - type_str), type_str, name, at);
     }
     else if (generic && (!bracket || generic < bracket))
     {
