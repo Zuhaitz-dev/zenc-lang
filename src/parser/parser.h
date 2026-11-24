@@ -427,6 +427,12 @@ struct ParserContext
     ASTNode **parsed_globals_seen;    ///< Set of parsed_globals_list's nodes, by address (dedup).
     unsigned parsed_globals_seen_cap; ///< Its slots, a power of two.
     unsigned parsed_globals_seen_count;
+    Instantiation **instantiation_index; ///< `instantiations` by name (each is in it once).
+    unsigned instantiation_index_cap;    ///< Its slots, a power of two.
+    unsigned instantiation_index_count;
+    StructDef **struct_def_index;  ///< `struct_defs` by name: the first of each, from the head.
+    unsigned struct_def_index_cap; ///< Its slots, a power of two.
+    unsigned struct_def_index_count;
     StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
     StructRef *parsed_globals_list; ///< List of all parsed global variables.
     StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).
@@ -1008,6 +1014,10 @@ EnumVariantReg *enum_variants_named(ParserContext *ctx, const char *variant_name
 EnumVariantReg *enum_variants_of(ParserContext *ctx, const char *enum_name,
                                  const EnumVariantReg *prev);
 /** @brief The first function named `name` in func_registry, through its name index. */
+/** @brief The instantiation named `name` (in `instantiations`), or NULL. */
+Instantiation *instantiation_find(ParserContext *ctx, const char *name);
+/** @brief Indexes `ni`, just put at the head of `instantiations` (its name is not there). */
+void instantiation_added(ParserContext *ctx, Instantiation *ni);
 FuncSig *func_registry_find(ParserContext *ctx, const char *name);
 void register_symbol_to_lsp(ParserContext *ctx, ZenSymbol *s);
 

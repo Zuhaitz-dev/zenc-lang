@@ -66,6 +66,58 @@ void type_name_note(ParserContext *ctx, const char *name)
     }
 }
 
+// ** The name index of ctx->instantiations **
+
+static unsigned instantiation_slot(Instantiation **slots, unsigned cap, const char *name)
+{
+    unsigned i = struct_name_hash(name) & (cap - 1);
+    while (slots[i] && strcmp(slots[i]->name, name) != 0)
+    {
+        i = (i + 1) & (cap - 1);
+    }
+    return i;
+}
+
+void instantiation_added(ParserContext *ctx, Instantiation *ni)
+{
+    // Kept at most half full.
+    if ((ctx->instantiation_index_count + 1) * 2 > ctx->instantiation_index_cap)
+    {
+        unsigned old_cap = ctx->instantiation_index_cap;
+        Instantiation **old = ctx->instantiation_index;
+        unsigned cap = old_cap ? old_cap * 2 : 256;
+        Instantiation **slots = xmalloc(cap * sizeof(Instantiation *));
+        memset(slots, 0, cap * sizeof(Instantiation *));
+        for (unsigned i = 0; i < old_cap; i++)
+        {
+            if (old[i])
+            {
+                slots[instantiation_slot(slots, cap, old[i]->name)] = old[i];
+            }
+        }
+        zfree(old);
+        ctx->instantiation_index = slots;
+        ctx->instantiation_index_cap = cap;
+    }
+    unsigned slot =
+        instantiation_slot(ctx->instantiation_index, ctx->instantiation_index_cap, ni->name);
+    if (!ctx->instantiation_index[slot])
+    {
+        ctx->instantiation_index_count++;
+    }
+    ctx->instantiation_index[slot] = ni; // the newest, as a walk from the head finds first
+}
+
+Instantiation *instantiation_find(ParserContext *ctx, const char *name)
+{
+    if (!ctx->instantiation_index || !name)
+    {
+        return NULL;
+    }
+    return ctx->instantiation_index[instantiation_slot(ctx->instantiation_index,
+                                                       ctx->instantiation_index_cap, name)];
+}
+
 static int type_name_known(ParserContext *ctx, const char *name)
 {
     if (!ctx->known_type_names)
@@ -470,41 +522,72 @@ void register_tuple_with_types(ParserContext *ctx, const char *sig, const char *
     register_struct_def(ctx, struct_name, s_def);
 }
 
+// ** The name index of ctx->struct_defs **
+//
+// It holds the first StructDef of each name from the list's head, as a walk finds: the
+// list only grows at its head, so the newest of a name is it.
+
+static unsigned struct_def_slot(StructDef **slots, unsigned cap, const char *name)
+{
+    unsigned i = struct_name_hash(name) & (cap - 1);
+    while (slots[i] && strcmp(slots[i]->name, name) != 0)
+    {
+        i = (i + 1) & (cap - 1);
+    }
+    return i;
+}
+
+static StructDef *struct_def_find(ParserContext *ctx, const char *name)
+{
+    if (!ctx->struct_def_index)
+    {
+        return NULL;
+    }
+    return ctx
+        ->struct_def_index[struct_def_slot(ctx->struct_def_index, ctx->struct_def_index_cap, name)];
+}
+
+// `d` was just put at the head of struct_defs.
+static void struct_def_added(ParserContext *ctx, StructDef *d)
+{
+    if ((ctx->struct_def_index_count + 1) * 2 > ctx->struct_def_index_cap)
+    {
+        unsigned old_cap = ctx->struct_def_index_cap;
+        StructDef **old = ctx->struct_def_index;
+        unsigned cap = old_cap ? old_cap * 2 : 256;
+        StructDef **slots = xmalloc(cap * sizeof(StructDef *));
+        memset(slots, 0, cap * sizeof(StructDef *));
+        for (unsigned i = 0; i < old_cap; i++)
+        {
+            if (old[i])
+            {
+                slots[struct_def_slot(slots, cap, old[i]->name)] = old[i];
+            }
+        }
+        zfree(old);
+        ctx->struct_def_index = slots;
+        ctx->struct_def_index_cap = cap;
+    }
+    unsigned slot = struct_def_slot(ctx->struct_def_index, ctx->struct_def_index_cap, d->name);
+    if (!ctx->struct_def_index[slot])
+    {
+        ctx->struct_def_index_count++;
+    }
+    ctx->struct_def_index[slot] = d;
+}
+
 void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
 {
     type_name_note(ctx, name);
 
-    if (ctx->config->mode_lsp)
-    {
-        StructDef *existing = NULL;
-        StructDef *curr = ctx->struct_defs;
-        while (curr)
-        {
-            if (curr->name[0] == name[0] && strcmp(curr->name, name) == 0)
-            {
-                existing = curr;
-                break;
-            }
-            curr = curr->next;
-        }
-        if (existing)
-        {
-            existing->node = node;
-        }
-    }
-
     StructDef *d = NULL;
     if (ctx->config->mode_lsp)
     {
-        StructDef *curr = ctx->struct_defs;
-        while (curr)
+        // The LSP parses files again: a struct seen before keeps its entry.
+        d = struct_def_find(ctx, name);
+        if (d)
         {
-            if (curr->name[0] == name[0] && strcmp(curr->name, name) == 0)
-            {
-                d = curr;
-                break;
-            }
-            curr = curr->next;
+            d->node = node;
         }
     }
 
@@ -514,6 +597,7 @@ void register_struct_def(ParserContext *ctx, const char *name, ASTNode *node)
         d->name = xstrdup(name);
         d->next = ctx->struct_defs;
         ctx->struct_defs = d;
+        struct_def_added(ctx, d);
     }
 
     d->node = node;
@@ -690,14 +774,10 @@ ASTNode *find_struct_def(ParserContext *ctx, const char *name)
         }
     }
 
-    Instantiation *i = ctx->instantiations;
-    while (i)
+    Instantiation *i = instantiation_find(ctx, name);
+    if (i)
     {
-        if (i->name[0] == name[0] && strcmp(i->name, name) == 0)
-        {
-            CACHE_RESULT(i->struct_node);
-        }
-        i = i->next;
+        CACHE_RESULT(i->struct_node);
     }
 
     ASTNode *s = ctx->instantiated_structs;
@@ -795,15 +875,11 @@ ASTNode *find_concrete_struct_def(ParserContext *ctx, const char *name)
         return NULL;
     }
 
-    Instantiation *i = ctx->instantiations;
-    while (i)
+    Instantiation *i = instantiation_find(ctx, name);
+    if (i && i->struct_node && i->struct_node->kind == NODE_STRUCT &&
+        !i->struct_node->strct.is_template)
     {
-        if (i->name[0] == name[0] && strcmp(i->name, name) == 0 && i->struct_node &&
-            i->struct_node->kind == NODE_STRUCT && !i->struct_node->strct.is_template)
-        {
-            return i->struct_node;
-        }
-        i = i->next;
+        return i->struct_node;
     }
 
     ASTNode *s = ctx->instantiated_structs;

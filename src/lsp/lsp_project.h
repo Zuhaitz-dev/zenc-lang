@@ -29,7 +29,10 @@ typedef struct ProjectFile
 typedef struct
 {
     ParserContext *ctx;
-    ProjectFile *files;        ///< List of tracked open files.
+    ProjectFile *files;       ///< List of tracked open files.
+    ProjectFile **file_index; ///< `files` by URI (each is in it once); NULL while empty.
+    unsigned file_index_cap;  ///< Its slots, a power of two.
+    unsigned file_index_count;
     char *root_path;           ///< Project root directory.
     zvec_Str exclude_patterns; ///< `exclude` of zenc.server.json, in .gitignore syntax.
     int use_gitignore;         ///< `use_gitignore` of zenc.server.json (default 1).
