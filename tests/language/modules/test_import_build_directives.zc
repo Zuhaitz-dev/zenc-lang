@@ -17,9 +17,13 @@ fn mode() -> int {
 test "import_build_directives" {
     assert(imported_value() == 7, "the module is imported");
     assert(mode() == 1, "its //> define: is seen by @cfg");
+    // The define is passed on the C compiler's command line, so C made by `zc transpile`
+    // and compiled without it (as CI's syntax checks do) has to build without it too.
     let v: int = 0;
     raw {
+        #ifdef ZC_IMPORTED_DEFINE
         v = ZC_IMPORTED_DEFINE;
+        #endif
     }
     assert(v == 42, "and passed to the C compiler");
 }
