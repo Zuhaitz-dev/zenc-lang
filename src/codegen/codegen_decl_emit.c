@@ -93,11 +93,20 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
-                char *tname =
-                    node->var_decl.type_str
-                        ? xstrdup(node->var_decl.type_str)
-                        : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                    : NULL);
+                // For C++'s cast to the global's type: C's spelling, as in the declaration.
+                char *tname = NULL;
+                if (node->var_decl.type_str && has_function_type(node->type_info))
+                {
+                    tname = type_to_c_string(node->type_info, ctx->config->misra_mode);
+                }
+                else if (node->var_decl.type_str)
+                {
+                    tname = xstrdup(node->var_decl.type_str);
+                }
+                else if (node->var_decl.init_expr)
+                {
+                    tname = infer_type(ctx, node->var_decl.init_expr);
+                }
                 if (ctx->config->use_cpp && tname &&
                     (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
                 {
