@@ -1,0 +1,21 @@
+// language/functions: functions: test_fn_ptr_global
+// A global can hold a function pointer, as a local or a struct field can.
+fn add(a: int, b: int) -> int { return a + b; }
+fn mul(a: int, b: int) -> int { return a * b; }
+fn nothing() {}
+
+let op: fn*(int, int) -> int = add;
+let unset: fn*(int, int) -> int;
+let callback: fn*() = nothing;
+let op_ref: fn**(int, int) -> int = &op;
+
+test "fn_ptr_global" {
+    assert(op(2, 3) == 5, "a global initialized to a function calls it");
+    op = mul;
+    assert(op(2, 3) == 6, "and can be pointed at another");
+    assert(unset == NULL, "one without an initializer is null");
+    unset = add;
+    assert(unset(1, 1) == 2, "until it is set");
+    callback();
+    assert((*op_ref)(4, 5) == 20, "a pointer to a global function pointer");
+}

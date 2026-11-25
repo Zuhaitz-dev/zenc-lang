@@ -12,6 +12,20 @@
 #include "../platform/misra.h"
 #include "codegen_internal.h"
 
+// Whether `t` is a function type or holds one (a pointer to, or an array of, function
+// pointers).
+static int has_function_type(Type *t)
+{
+    for (; t; t = t->inner)
+    {
+        if (t->kind == TYPE_FUNCTION)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModules **visited,
                                   int depth)
 {
@@ -42,7 +56,15 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             {
                 EMIT(ctx, "__attribute__((unused)) const ");
             }
-            if (node->var_decl.type_str)
+            if (node->var_decl.type_str && has_function_type(node->type_info))
+            {
+                // type_str is Zen C's spelling (`fn*() -> void`), which isn't C for a
+                // function pointer: write the C one, as a local or a field does.
+                char *ctype = type_to_c_string(node->type_info, ctx->config->misra_mode);
+                emit_var_decl_type(ctx, ctype, node->var_decl.name);
+                zfree(ctype);
+            }
+            else if (node->var_decl.type_str)
             {
                 emit_var_decl_type(ctx, node->var_decl.type_str, node->var_decl.name);
             }
@@ -71,11 +93,20 @@ static void emit_globals_internal(ParserContext *ctx, ASTNode *node, VisitedModu
             if (node->var_decl.init_expr)
             {
                 EMIT(ctx, " = ");
-                char *tname =
-                    node->var_decl.type_str
-                        ? xstrdup(node->var_decl.type_str)
-                        : (node->var_decl.init_expr ? infer_type(ctx, node->var_decl.init_expr)
-                                                    : NULL);
+                // For C++'s cast to the global's type: C's spelling, as in the declaration.
+                char *tname = NULL;
+                if (node->var_decl.type_str && has_function_type(node->type_info))
+                {
+                    tname = type_to_c_string(node->type_info, ctx->config->misra_mode);
+                }
+                else if (node->var_decl.type_str)
+                {
+                    tname = xstrdup(node->var_decl.type_str);
+                }
+                else if (node->var_decl.init_expr)
+                {
+                    tname = infer_type(ctx, node->var_decl.init_expr);
+                }
                 if (ctx->config->use_cpp && tname &&
                     (strchr(tname, '*') || is_enum_type_name(ctx, tname)))
                 {
